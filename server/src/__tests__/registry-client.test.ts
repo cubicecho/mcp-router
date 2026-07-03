@@ -36,6 +36,33 @@ describe('RegistryClient.listServers', () => {
     expect(first?.server.version).toBeDefined();
   });
 
+  it('accepts positional package arguments that carry no name', async () => {
+    // The registry omits `name` on positional args (they use value/valueHint) —
+    // only named args have a name. A real /v0/servers?search=filesystem row.
+    const body = {
+      servers: [
+        {
+          server: {
+            name: 'com.pulsemcp/remote-filesystem',
+            version: '0.1.5',
+            packages: [
+              {
+                registryType: 'npm',
+                identifier: 'remote-filesystem-mcp-server',
+                transport: { type: 'stdio' },
+                runtimeArguments: [{ value: '-y', type: 'positional' }],
+              },
+            ],
+          },
+        },
+      ],
+      metadata: { count: 1 },
+    };
+    const { client } = clientReturning(body);
+    const result = await client.listServers(registry, { search: 'filesystem' });
+    expect(result.servers[0]?.server.packages?.[0]?.runtimeArguments?.[0]?.value).toBe('-y');
+  });
+
   it('normalizes servers: null (empty result set) to an empty array', async () => {
     const { client } = clientReturning({ servers: null, metadata: { count: 0 } });
     const result = await client.listServers(registry);

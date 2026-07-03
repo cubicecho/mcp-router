@@ -23,6 +23,9 @@ export const registryKeyValueInputSchema = z
 
 export const registryArgumentSchema = registryKeyValueInputSchema
   .extend({
+    // Positional arguments carry no `name` (they use `value`/`valueHint`);
+    // only named arguments do — so relax the inherited required `name`.
+    name: z.string().optional(),
     type: z.string().optional(), // 'positional' | 'named'
     valueHint: z.string().optional(),
     isRepeated: z.boolean().optional(),
