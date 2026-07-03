@@ -1,3 +1,4 @@
+import type { ServerStatus } from '@mcp-router/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
@@ -5,11 +6,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '@/lib/api';
 import { AddServerDialog } from '../add-server-dialog';
 
-function renderDialog() {
+function renderDialog(server?: ServerStatus) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <AddServerDialog open onOpenChange={() => {}} />
+      <AddServerDialog open onOpenChange={() => {}} server={server} />
     </QueryClientProvider>,
   );
 }
@@ -79,5 +80,41 @@ describe('AddServerDialog', () => {
       env: {},
       enabled: true,
     });
+  });
+
+  it('prefills from an existing server and PATCHes changes without installing', async () => {
+    const updateSpy = vi.spyOn(api, 'updateServer').mockResolvedValue({ config: { name: 'my-server' } } as never);
+    const installSpy = vi.spyOn(api, 'installServer');
+
+    const server = {
+      config: {
+        name: 'my-server',
+        enabled: true,
+        source: { type: 'npm', package: 'some-mcp-server' },
+        transport: { type: 'stdio', command: 'node', args: ['/path/bin.js'], cwd: undefined },
+        env: { API_KEY: 'old' },
+        envMeta: {},
+      },
+      state: 'running',
+    } as ServerStatus;
+
+    renderDialog(server);
+
+    // Name is prefilled and locked; the command is prefilled and editable.
+    const nameInput = screen.getByLabelText('Local name') as HTMLInputElement;
+    expect(nameInput.value).toBe('my-server');
+    expect(nameInput).toBeDisabled();
+    expect((screen.getByLabelText('Command') as HTMLInputElement).value).toBe('node');
+    expect((screen.getByDisplayValue('old') as HTMLInputElement).value).toBe('old');
+
+    fireEvent.change(screen.getByDisplayValue('old'), { target: { value: 'new-secret' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(updateSpy).toHaveBeenCalledWith('my-server', {
+      transport: { type: 'stdio', command: 'node', args: ['/path/bin.js'], cwd: undefined },
+      env: { API_KEY: 'new-secret' },
+    });
+    expect(installSpy).not.toHaveBeenCalled();
   });
 });

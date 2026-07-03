@@ -1,4 +1,4 @@
-import { type InstallRequest, serverNameSchema } from '@mcp-router/shared';
+import { type InstallRequest, type ServerStatus, serverNameSchema } from '@mcp-router/shared';
 import { PlusIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -15,7 +15,7 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
-import { useInstallServer } from '@/lib/queries';
+import { useInstallServer, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 interface KeyValueRow {
@@ -26,6 +26,8 @@ interface KeyValueRow {
 
 let nextRowId = 0;
 const newRow = (): KeyValueRow => ({ id: nextRowId++, key: '', value: '' });
+const recordToRows = (record: Record<string, string>): KeyValueRow[] =>
+  Object.entries(record).map(([key, value]) => ({ id: nextRowId++, key, value }));
 
 function rowsToRecord(rows: KeyValueRow[]): Record<string, string> {
   const result: Record<string, string> = {};
@@ -75,26 +77,35 @@ function parseJsonConfig(text: string): {
 export function AddServerDialog({
   open,
   onOpenChange,
-  onAdded,
+  onSaved,
+  server,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onAdded?: (name: string) => void;
+  onSaved?: (name: string) => void;
+  /** When provided, the dialog edits this server (prefilled) instead of creating one. */
+  server?: ServerStatus;
 }) {
   const install = useInstallServer();
-  const [mode, setMode] = useState<'stdio' | 'http'>('stdio');
-  const [name, setName] = useState('');
+  const update = useUpdateServer();
+  const isEdit = server !== undefined;
+  const transport = server?.config.transport;
+
+  const [mode, setMode] = useState<'stdio' | 'http'>(transport?.type === 'streamable-http' ? 'http' : 'stdio');
+  const [name, setName] = useState(server?.config.name ?? '');
 
   // stdio fields
-  const [command, setCommand] = useState('');
-  const [argsText, setArgsText] = useState('');
-  const [cwd, setCwd] = useState('');
-  const [envRows, setEnvRows] = useState<KeyValueRow[]>([]);
+  const [command, setCommand] = useState(transport?.type === 'stdio' ? transport.command : '');
+  const [argsText, setArgsText] = useState(transport?.type === 'stdio' ? transport.args.join('\n') : '');
+  const [cwd, setCwd] = useState(transport?.type === 'stdio' ? (transport.cwd ?? '') : '');
+  const [envRows, setEnvRows] = useState<KeyValueRow[]>(() => recordToRows(server?.config.env ?? {}));
   const [jsonText, setJsonText] = useState('');
 
   // http fields
-  const [url, setUrl] = useState('');
-  const [headerRows, setHeaderRows] = useState<KeyValueRow[]>([]);
+  const [url, setUrl] = useState(transport?.type === 'streamable-http' ? transport.url : '');
+  const [headerRows, setHeaderRows] = useState<KeyValueRow[]>(() =>
+    recordToRows(transport?.type === 'streamable-http' ? transport.headers : {}),
+  );
 
   const nameResult = serverNameSchema.safeParse(name);
   const nameError = name
@@ -115,23 +126,12 @@ export function AddServerDialog({
     }
   }, [mode, url]);
 
-  const reset = () => {
-    setName('');
-    setCommand('');
-    setArgsText('');
-    setCwd('');
-    setEnvRows([]);
-    setJsonText('');
-    setUrl('');
-    setHeaderRows([]);
-  };
-
   const applyJson = () => {
     try {
       const config = parseJsonConfig(jsonText);
       setCommand(config.command);
       setArgsText(config.args.join('\n'));
-      setEnvRows(Object.entries(config.env).map(([key, value]) => ({ id: nextRowId++, key, value })));
+      setEnvRows(recordToRows(config.env));
       if (config.name && !name) {
         const suggested = serverNameSchema.safeParse(config.name);
         if (suggested.success) {
@@ -144,72 +144,83 @@ export function AddServerDialog({
     }
   };
 
+  const pending = install.isPending || update.isPending;
   const canSubmit =
     nameResult.success &&
     !urlError &&
     (mode === 'stdio' ? command.trim().length > 0 : url.trim().length > 0) &&
-    !install.isPending;
+    !pending;
 
   const handleSubmit = (event: FormEvent) => {
     event.preventDefault();
     if (!nameResult.success) {
       return;
     }
-    let body: InstallRequest;
-    if (mode === 'stdio') {
-      if (!command.trim()) {
-        return;
-      }
-      const args = argsText
-        .split('\n')
-        .map((line) => line.trim())
-        .filter((line) => line.length > 0);
-      body = {
-        name: nameResult.data,
-        source: { type: 'remote' },
-        transport: { type: 'stdio', command: command.trim(), args, cwd: cwd.trim() || undefined },
-        env: rowsToRecord(envRows),
-        enabled: true,
-      };
-    } else {
-      if (!url.trim() || urlError) {
-        return;
-      }
-      body = {
-        name: nameResult.data,
-        source: { type: 'remote' },
-        transport: { type: 'streamable-http', url: url.trim(), headers: rowsToRecord(headerRows) },
-        env: {},
-        enabled: true,
-      };
+    const built = buildTransport();
+    if (!built) {
+      return;
     }
+
+    if (isEdit) {
+      // Name is the immutable route/dir key, so it is not part of the update.
+      // Only send env in stdio mode; a streamable-http server has no child env.
+      update.mutate(
+        { name: server.config.name, transport: built, ...(mode === 'stdio' ? { env: rowsToRecord(envRows) } : {}) },
+        {
+          onSuccess: () => {
+            toast.success(`Updated ${server.config.name}`);
+            onOpenChange(false);
+            onSaved?.(server.config.name);
+          },
+          onError: toastApiError,
+        },
+      );
+      return;
+    }
+
+    const body: InstallRequest = {
+      name: nameResult.data,
+      source: { type: 'remote' },
+      transport: built,
+      env: mode === 'stdio' ? rowsToRecord(envRows) : {},
+      enabled: true,
+    };
     install.mutate(body, {
       onSuccess: (status) => {
         toast.success(`Added ${status.config.name}`);
-        reset();
         onOpenChange(false);
-        onAdded?.(status.config.name);
+        onSaved?.(status.config.name);
       },
       onError: toastApiError,
     });
   };
 
+  const buildTransport = () => {
+    if (mode === 'stdio') {
+      if (!command.trim()) {
+        return undefined;
+      }
+      const args = argsText
+        .split('\n')
+        .map((line) => line.trim())
+        .filter((line) => line.length > 0);
+      return { type: 'stdio' as const, command: command.trim(), args, cwd: cwd.trim() || undefined };
+    }
+    if (!url.trim() || urlError) {
+      return undefined;
+    }
+    return { type: 'streamable-http' as const, url: url.trim(), headers: rowsToRecord(headerRows) };
+  };
+
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(next) => {
-        if (!next) {
-          reset();
-        }
-        onOpenChange(next);
-      }}
-    >
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Add a server</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${server.config.name}` : 'Add a server'}</DialogTitle>
           <DialogDescription>
-            Configure an MCP server manually — a local command to run, or an existing HTTP server to route through.
-            Nothing is downloaded from a registry.
+            {isEdit
+              ? 'Change how this server is run or proxied. Saving restarts it if the transport or environment changed.'
+              : 'Configure an MCP server manually — a local command to run, or an existing HTTP server to route through. Nothing is downloaded from a registry.'}
           </DialogDescription>
         </DialogHeader>
 
@@ -221,10 +232,12 @@ export function AddServerDialog({
               value={name}
               placeholder="my-server"
               aria-invalid={!!nameError}
+              disabled={isEdit}
               onChange={(event) => setName(event.target.value)}
             />
             <p className="text-xs text-muted-foreground">
-              Route segment for this server: /mcp/{nameResult.success ? nameResult.data : '…'}
+              {isEdit ? 'The name is fixed once a server exists.' : null} Route segment for this server: /mcp/
+              {nameResult.success ? nameResult.data : '…'}
             </p>
             {nameError && <p className="text-xs text-destructive">{nameError}</p>}
           </div>
@@ -240,27 +253,29 @@ export function AddServerDialog({
             </TabsList>
 
             <TabsContent value="stdio" className="flex flex-col gap-4 pt-2">
-              <div className="flex flex-col gap-2">
-                <Label htmlFor="add-json">Paste config (optional)</Label>
-                <Textarea
-                  id="add-json"
-                  value={jsonText}
-                  rows={3}
-                  className="font-mono text-xs"
-                  placeholder={'{ "command": "npx", "args": ["-y", "some-mcp-server"], "env": { "API_KEY": "…" } }'}
-                  onChange={(event) => setJsonText(event.target.value)}
-                />
-                <div className="flex justify-end">
-                  <Button type="button" variant="outline" size="sm" disabled={!jsonText.trim()} onClick={applyJson}>
-                    Apply config
-                  </Button>
+              {!isEdit && (
+                <div className="flex flex-col gap-2">
+                  <Label htmlFor="add-json">Paste config (optional)</Label>
+                  <Textarea
+                    id="add-json"
+                    value={jsonText}
+                    rows={3}
+                    className="font-mono text-xs"
+                    placeholder={'{ "command": "npx", "args": ["-y", "some-mcp-server"], "env": { "API_KEY": "…" } }'}
+                    onChange={(event) => setJsonText(event.target.value)}
+                  />
+                  <div className="flex justify-end">
+                    <Button type="button" variant="outline" size="sm" disabled={!jsonText.trim()} onClick={applyJson}>
+                      Apply config
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Accepts a bare <code className="font-mono">{'{ command, args, env }'}</code> object or a{' '}
+                    <code className="font-mono">claude_desktop_config.json</code>{' '}
+                    <code className="font-mono">mcpServers</code> entry.
+                  </p>
                 </div>
-                <p className="text-xs text-muted-foreground">
-                  Accepts a bare <code className="font-mono">{'{ command, args, env }'}</code> object or a{' '}
-                  <code className="font-mono">claude_desktop_config.json</code>{' '}
-                  <code className="font-mono">mcpServers</code> entry.
-                </p>
-              </div>
+              )}
 
               <div className="flex flex-col gap-2">
                 <Label htmlFor="add-command">Command</Label>
@@ -336,7 +351,7 @@ export function AddServerDialog({
               Cancel
             </Button>
             <Button type="submit" disabled={!canSubmit}>
-              {install.isPending ? 'Adding…' : 'Add server'}
+              {pending ? (isEdit ? 'Saving…' : 'Adding…') : isEdit ? 'Save changes' : 'Add server'}
             </Button>
           </DialogFooter>
         </form>

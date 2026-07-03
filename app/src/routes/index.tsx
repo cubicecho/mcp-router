@@ -58,7 +58,7 @@ function ServersPage() {
 
       {data && data.length > 0 && <ServerList servers={data} />}
 
-      <AddServerDialog open={addOpen} onOpenChange={setAddOpen} />
+      {addOpen && <AddServerDialog open onOpenChange={setAddOpen} />}
     </div>
   );
 }

@@ -1,7 +1,9 @@
 import type { ServerStatus } from '@mcp-router/shared';
 import { Link } from '@tanstack/react-router';
-import { Loader2Icon, PlugZapIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { Loader2Icon, PencilIcon, PlugZapIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { useState } from 'react';
 import { toast } from 'sonner';
+import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import {
   AlertDialog,
@@ -22,7 +24,7 @@ import { formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-function ServerRow({ server }: { server: ServerStatus }) {
+function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
   const update = useUpdateServer();
   const restart = useRestartServer();
   const remove = useDeleteServer();
@@ -79,6 +81,14 @@ function ServerRow({ server }: { server: ServerStatus }) {
           </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
+              <Button variant="ghost" size="icon-sm" aria-label={`Edit ${config.name}`} onClick={() => onEdit(server)}>
+                <PencilIcon />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Edit</TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon-sm"
@@ -132,24 +142,41 @@ function ServerRow({ server }: { server: ServerStatus }) {
 }
 
 export function ServerList({ servers }: { servers: ServerStatus[] }) {
+  const [editing, setEditing] = useState<ServerStatus | null>(null);
+
   return (
-    <Table>
-      <TableHeader>
-        <TableRow>
-          <TableHead>Name</TableHead>
-          <TableHead>State</TableHead>
-          <TableHead>Transport</TableHead>
-          <TableHead>Source</TableHead>
-          <TableHead>Tools</TableHead>
-          <TableHead>Enabled</TableHead>
-          <TableHead className="text-right">Actions</TableHead>
-        </TableRow>
-      </TableHeader>
-      <TableBody>
-        {servers.map((server) => (
-          <ServerRow key={server.config.name} server={server} />
-        ))}
-      </TableBody>
-    </Table>
+    <>
+      <Table>
+        <TableHeader>
+          <TableRow>
+            <TableHead>Name</TableHead>
+            <TableHead>State</TableHead>
+            <TableHead>Transport</TableHead>
+            <TableHead>Source</TableHead>
+            <TableHead>Tools</TableHead>
+            <TableHead>Enabled</TableHead>
+            <TableHead className="text-right">Actions</TableHead>
+          </TableRow>
+        </TableHeader>
+        <TableBody>
+          {servers.map((server) => (
+            <ServerRow key={server.config.name} server={server} onEdit={setEditing} />
+          ))}
+        </TableBody>
+      </Table>
+
+      {editing && (
+        <AddServerDialog
+          key={editing.config.name}
+          open
+          server={editing}
+          onOpenChange={(next) => {
+            if (!next) {
+              setEditing(null);
+            }
+          }}
+        />
+      )}
+    </>
   );
 }
