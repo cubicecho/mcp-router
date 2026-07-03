@@ -8,18 +8,19 @@ import { Input } from '@/components/ui/input';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useRegistries, useRegistrySearch } from '@/lib/queries';
 
 export const Route = createFileRoute('/browse')({
   component: BrowsePage,
 });
 
-function RegistrySearch({ onInstalled }: { onInstalled: (name: string) => void }) {
+export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) => void }) {
   const { data: registries, isPending: registriesPending, error: registriesError } = useRegistries();
   const [selectedRegistry, setSelectedRegistry] = useState<string>();
   const [searchInput, setSearchInput] = useState('');
-  const search = useDebouncedValue(searchInput.trim(), 300);
+  // Only committed on submit (Enter or the Search button) to avoid a registry
+  // hit on every keystroke.
+  const [search, setSearch] = useState('');
 
   const registry =
     selectedRegistry ?? registries?.find((r) => r.name === 'official')?.name ?? registries?.[0]?.name ?? '';
@@ -42,15 +43,26 @@ function RegistrySearch({ onInstalled }: { onInstalled: (name: string) => void }
             ))}
           </SelectContent>
         </Select>
-        <div className="relative min-w-64 flex-1">
-          <SearchIcon className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-          <Input
-            value={searchInput}
-            placeholder="Search servers…"
-            className="pl-8"
-            onChange={(event) => setSearchInput(event.target.value)}
-          />
-        </div>
+        <form
+          className="flex min-w-64 flex-1 gap-2"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSearch(searchInput.trim());
+          }}
+        >
+          <div className="relative flex-1">
+            <SearchIcon className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+            <Input
+              value={searchInput}
+              placeholder="Search servers…"
+              className="pl-8"
+              onChange={(event) => setSearchInput(event.target.value)}
+            />
+          </div>
+          <Button type="submit" disabled={!registry}>
+            Search
+          </Button>
+        </form>
       </div>
 
       {registriesError && (
