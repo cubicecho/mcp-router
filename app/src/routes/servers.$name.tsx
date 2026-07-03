@@ -135,23 +135,25 @@ function ServerDetailPage() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Environment variables</CardTitle>
-              <CardDescription>
-                Passed to the server process. Secret values are masked; changes take effect after a restart.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <EnvEditor
-                key={name}
-                env={server.config.env}
-                envMeta={server.config.envMeta}
-                onSave={handleSaveEnv}
-                saving={update.isPending}
-              />
-            </CardContent>
-          </Card>
+          {server.config.transport.type === 'stdio' && (
+            <Card>
+              <CardHeader>
+                <CardTitle>Environment variables</CardTitle>
+                <CardDescription>
+                  Passed to the server process. Secret values are masked; changes take effect after a restart.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <EnvEditor
+                  key={name}
+                  env={server.config.env}
+                  envMeta={server.config.envMeta}
+                  onSave={handleSaveEnv}
+                  saving={update.isPending}
+                />
+              </CardContent>
+            </Card>
+          )}
 
           <ToolsCard name={name} />
         </>
