@@ -1,0 +1,26 @@
+services:
+  mcp-router:
+    build: .
+    image: mcp-router
+    ports:
+      - '3000:3000'
+    volumes:
+      # Config files, installed server packages, and logs — hand-editable on
+      # the host; apply edits with POST /api/reload (or the Settings page).
+      - ./data:/data
+    environment:
+      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:?Set MCP_ROUTER_TOKEN in .env (see .env.example)}
+    restart: unless-stopped
+    healthcheck:
+      # 200 (auth off) and 401 (auth on) both mean the server is up.
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          'fetch("http://localhost:" + (process.env.PORT || 3000) + "/api/status").then((r) => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))',
+        ]
+      interval: 30s
+      timeout: 5s
+      start_period: 15s
+      retries: 3
