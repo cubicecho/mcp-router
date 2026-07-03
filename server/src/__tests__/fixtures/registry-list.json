@@ -1,0 +1,106 @@
+{
+  "servers": [
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "io.github.elis132/everything-mcp",
+        "description": "Lightning-fast Windows file search for AI agents via voidtools Everything's real-time NTFS index",
+        "title": "Everything File Search",
+        "repository": { "url": "https://github.com/elis132/everything-mcp", "source": "github" },
+        "version": "1.0.6",
+        "packages": [
+          {
+            "registryType": "pypi",
+            "identifier": "everything-mcp",
+            "version": "1.0.6",
+            "transport": { "type": "stdio" }
+          }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-07-02T22:05:28.124268Z",
+          "publishedAt": "2026-07-02T22:05:28.124268Z",
+          "updatedAt": "2026-07-02T22:05:28.124268Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "live.alpic.staging.everything-app-7f22928f/everything-app",
+        "description": "Still WiP",
+        "title": "(WiP) An everything app",
+        "version": "0.0.1",
+        "remotes": [
+          { "type": "streamable-http", "url": "https://everything-app-7f22928f.staging.alpic.live" },
+          { "type": "sse", "url": "https://everything-app-7f22928f.staging.alpic.live" }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-02-12T16:18:17.443636Z",
+          "publishedAt": "2026-02-12T16:18:17.443636Z",
+          "updatedAt": "2026-02-12T16:18:17.443636Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "live.alpic.staging.everything-app-ce82911c/everything-app",
+        "description": "Still WiP",
+        "title": "My everything app!",
+        "version": "0.0.2",
+        "remotes": [
+          { "type": "streamable-http", "url": "https://everything-app-ce82911c.staging.alpic.live" },
+          { "type": "sse", "url": "https://everything-app-ce82911c.staging.alpic.live" }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-02-11T09:30:59.703087Z",
+          "publishedAt": "2026-02-11T09:30:59.703087Z",
+          "updatedAt": "2026-02-11T09:30:59.703087Z",
+          "isLatest": true
+        }
+      }
+    },
+    {
+      "server": {
+        "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+        "name": "tech.skybridge.everything/Everything",
+        "description": "Example and testing ChatGPT and MCP App showcasing all the features of the Skybridge framework",
+        "title": "Skybridge Everything App",
+        "version": "0.0.2",
+        "websiteUrl": "https://www.skybridge.tech",
+        "icons": [
+          {
+            "src": "https://avatars.githubusercontent.com/u/206831205?s=200&v=4",
+            "mimeType": "image/png",
+            "sizes": ["200x200"]
+          }
+        ],
+        "remotes": [
+          { "type": "streamable-http", "url": "https://everything.skybridge.tech" },
+          { "type": "sse", "url": "https://everything.skybridge.tech" }
+        ]
+      },
+      "_meta": {
+        "io.modelcontextprotocol.registry/official": {
+          "status": "active",
+          "statusChangedAt": "2026-01-20T11:06:44.653295Z",
+          "publishedAt": "2026-01-20T11:06:44.653295Z",
+          "updatedAt": "2026-01-20T11:06:44.653295Z",
+          "isLatest": true
+        }
+      }
+    }
+  ],
+  "metadata": { "count": 4 }
+}
