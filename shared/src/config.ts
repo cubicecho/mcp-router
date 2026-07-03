@@ -78,6 +78,12 @@ export const serverSourceSchema = z.discriminatedUnion('type', [
     package: z.string(),
     version: z.string().optional(),
   }),
+  /** A PyPI package run via `uvx`, no registry involved. */
+  z.object({
+    type: z.literal('pypi'),
+    package: z.string(),
+    version: z.string().optional(),
+  }),
   /** A remote streamable-http/sse server we merely proxy to. Nothing installed. */
   z.object({
     type: z.literal('remote'),

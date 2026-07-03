@@ -38,9 +38,11 @@ mcp-router/
 - `settings.json` — port, authToken, authEnabled, default idleTimeoutMs
 - `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
 - `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
-  name, enabled, source (registry | npm | remote), transport (stdio command/args
-  | streamable-http url/headers), env (plaintext), envMeta (UI hints from the
-  registry), idleTimeoutMs
+  name, enabled, source (registry | npm | pypi | remote), transport (stdio
+  command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
+  from the registry), idleTimeoutMs. npm packages install into
+  `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
+  (uv resolves/caches on spawn, no install dir)
 
 ### Management REST API (`/api`, bearer auth)
 

@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { HttpError } from '../errors.ts';
 import type { ExecFileFn, InstallerDeps } from '../installer/installer.ts';
 import {
+  buildPypiTransport,
   buildServerConfig,
   deriveServerName,
   envFromRegistry,
@@ -78,6 +79,24 @@ describe('envFromRegistry', () => {
   });
 });
 
+describe('buildPypiTransport', () => {
+  it('runs the package via uvx and appends fixed args', () => {
+    expect(buildPypiTransport('mcp-server-fetch', undefined, ['--foo'])).toEqual({
+      type: 'stdio',
+      command: 'uvx',
+      args: ['mcp-server-fetch', '--foo'],
+    });
+  });
+
+  it('pins the version with uv @version shorthand', () => {
+    expect(buildPypiTransport('mcp-server-time', '1.4.0')).toEqual({
+      type: 'stdio',
+      command: 'uvx',
+      args: ['mcp-server-time@1.4.0'],
+    });
+  });
+});
+
 describe('selectFromEntry', () => {
   const entry: RegistryServerEntry = {
     server: {
@@ -94,7 +113,18 @@ describe('selectFromEntry', () => {
     expect(selectFromEntry(entry, undefined)).toEqual({ package: entry.server.packages?.[1] });
   });
 
-  it('falls back to the first remote when no npm package exists', () => {
+  it('falls back to a pypi package when no npm package exists', () => {
+    const pypiOnly: RegistryServerEntry = {
+      server: {
+        name: 'x',
+        packages: [{ registryType: 'pypi', identifier: 'thing-py' }],
+        remotes: entry.server.remotes,
+      },
+    };
+    expect(selectFromEntry(pypiOnly, undefined)).toEqual({ package: pypiOnly.server.packages?.[0] });
+  });
+
+  it('falls back to the first remote when no supported package exists', () => {
     const remoteOnly: RegistryServerEntry = {
       server: { name: 'x', remotes: entry.server.remotes },
     };
@@ -222,6 +252,51 @@ describe('buildServerConfig', () => {
     expect(config.transport.type === 'stdio' && config.transport.args.at(-1)).toBe('serve');
     expect(config.env).toEqual({ WIDGET_KEY: 'user-supplied' });
     expect(config.envMeta.WIDGET_KEY).toMatchObject({ isRequired: true, isSecret: true });
+  });
+
+  it('builds a pypi source into a uvx transport without shelling out to npm', async () => {
+    const config = await buildServerConfig(
+      { source: { type: 'pypi', package: 'mcp-server-fetch', version: '1.2.3' }, env: { KEY: 'v' }, enabled: true },
+      deps,
+    );
+    expect(execCalls).toEqual([]); // no npm install
+    expect(config.name).toBe('mcp-server-fetch');
+    expect(config.source).toEqual({ type: 'pypi', package: 'mcp-server-fetch', version: '1.2.3' });
+    expect(config.transport).toEqual({ type: 'stdio', command: 'uvx', args: ['mcp-server-fetch@1.2.3'] });
+    expect(config.env).toEqual({ KEY: 'v' });
+  });
+
+  it('builds a registry-sourced pypi config into a uvx transport and maps env metadata', async () => {
+    const entry: RegistryServerEntry = {
+      server: {
+        name: 'io.github.owner/pywidget',
+        title: 'PyWidget',
+        packages: [
+          {
+            registryType: 'pypi',
+            identifier: 'pywidget-mcp',
+            version: '3.1.0',
+            packageArguments: [{ name: 'mode', type: 'positional', value: 'serve' }],
+            environmentVariables: [{ name: 'PY_KEY', isRequired: true, isSecret: true }],
+          },
+        ],
+      },
+    };
+    deps.registryClient = { getServer: vi.fn().mockResolvedValue(entry) } as unknown as RegistryClient;
+
+    const config = await buildServerConfig(
+      {
+        source: { type: 'registry', registry: 'official', serverName: 'io.github.owner/pywidget' },
+        env: { PY_KEY: 'user-supplied' },
+        enabled: true,
+      },
+      deps,
+    );
+    expect(execCalls).toEqual([]);
+    expect(config.name).toBe('pywidget');
+    expect(config.transport).toEqual({ type: 'stdio', command: 'uvx', args: ['pywidget-mcp@3.1.0', 'serve'] });
+    expect(config.env).toEqual({ PY_KEY: 'user-supplied' });
+    expect(config.envMeta.PY_KEY).toMatchObject({ isRequired: true, isSecret: true });
   });
 
   it('builds a remote proxy config from a registry remote without installing anything', async () => {

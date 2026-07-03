@@ -30,6 +30,17 @@ FROM node:26-slim
 
 WORKDIR /app
 
+# uv/uvx for PyPI-based MCP servers: the router spawns Python servers as
+# `uvx <package>`, so the uv binary must be on PATH. uv fetches its own managed
+# Python on demand — no system Python needed. Copy the static binaries straight
+# from the official image (no curl/network at build time).
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Persist uv's package cache and downloaded interpreters on the /data volume so
+# they survive container restarts instead of re-downloading on every cold spawn.
+# manager.ts allowlists these vars so they reach the spawned uvx children.
+ENV UV_CACHE_DIR=/data/uv/cache
+ENV UV_PYTHON_INSTALL_DIR=/data/uv/python
+
 # Workspace manifests + production dependencies. `npm ci --omit=dev` also
 # creates the node_modules/@mcp-router/shared → ../../shared workspace symlink
 # that the server needs at runtime (see below).

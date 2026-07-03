@@ -6,7 +6,17 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { errorMessage, HttpError } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 
-const ENV_ALLOWLIST = ['PATH', 'HOME', 'NODE_ENV', 'LANG', 'TERM'] as const;
+const ENV_ALLOWLIST = [
+  'PATH',
+  'HOME',
+  'NODE_ENV',
+  'LANG',
+  'TERM',
+  // uv/uvx (pypi servers): let the router's cache/python-install locations
+  // reach the child so downloads persist across spawns instead of re-fetching.
+  'UV_CACHE_DIR',
+  'UV_PYTHON_INSTALL_DIR',
+] as const;
 const CRASH_BACKOFF_MS = 5_000;
 const STDERR_TAIL_CHARS = 4_000;
 

@@ -1,7 +1,7 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { SearchIcon } from 'lucide-react';
 import { useState } from 'react';
-import { NpmInstallCard } from '@/components/domain/browse/npm-install-card';
+import { PackageInstallCard } from '@/components/domain/browse/package-install-card';
 import { RegistryServerCard } from '@/components/domain/browse/server-card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -118,18 +118,24 @@ function BrowsePage() {
     <div className="flex flex-col gap-6">
       <div>
         <h1 className="text-2xl font-semibold">Browse</h1>
-        <p className="text-sm text-muted-foreground">Install MCP servers from a registry or straight from npm.</p>
+        <p className="text-sm text-muted-foreground">
+          Install MCP servers from a registry, or straight from npm or PyPI.
+        </p>
       </div>
       <Tabs defaultValue="registry">
         <TabsList>
           <TabsTrigger value="registry">From registry</TabsTrigger>
           <TabsTrigger value="npm">From npm</TabsTrigger>
+          <TabsTrigger value="pypi">From PyPI</TabsTrigger>
         </TabsList>
         <TabsContent value="registry" className="pt-4">
           <RegistrySearch onInstalled={handleInstalled} />
         </TabsContent>
         <TabsContent value="npm" className="pt-4">
-          <NpmInstallCard onInstalled={handleInstalled} />
+          <PackageInstallCard ecosystem="npm" onInstalled={handleInstalled} />
+        </TabsContent>
+        <TabsContent value="pypi" className="pt-4">
+          <PackageInstallCard ecosystem="pypi" onInstalled={handleInstalled} />
         </TabsContent>
       </Tabs>
     </div>

@@ -148,9 +148,10 @@ export function selectFromEntry(
     }
     return { package: pkg };
   }
-  const npmPackage = packages.find((p) => p.registryType === 'npm');
-  if (npmPackage) {
-    return { package: npmPackage };
+  const supportedPackage =
+    packages.find((p) => p.registryType === 'npm') ?? packages.find((p) => p.registryType === 'pypi');
+  if (supportedPackage) {
+    return { package: supportedPackage };
   }
   const remote = remotes[0];
   if (remote) {
@@ -190,6 +191,22 @@ export async function installNpmPackage(
   return { type: 'stdio', command: 'node', args: [binPath, ...extraArgs] };
 }
 
+/**
+ * Build a stdio transport that runs a PyPI package via `uvx` (uv resolves,
+ * caches, and executes on spawn — no install step or install dir needed). The
+ * package's console-script name is assumed to match the distribution name, per
+ * the MCP registry convention (`uvx <identifier>`); a pinned version uses uv's
+ * `<name>@<version>` shorthand.
+ */
+export function buildPypiTransport(
+  packageName: string,
+  version: string | undefined,
+  extraArgs: string[] = [],
+): ServerTransport {
+  const spec = version ? `${packageName}@${version}` : packageName;
+  return { type: 'stdio', command: 'uvx', args: [spec, ...extraArgs] };
+}
+
 /** Fixed headers from a registry remote's header inputs (only value-carrying entries). */
 export function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined): Record<string, string> {
   const result: Record<string, string> = {};
@@ -219,11 +236,18 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
     let envMeta: Record<string, EnvVarMeta> = {};
     if ('package' in selection) {
       const pkg = selection.package;
-      if (pkg.registryType !== 'npm') {
-        throw new HttpError(400, `Only npm packages are supported; "${source.serverName}" offers ${pkg.registryType}`);
-      }
       const version = source.version ?? pkg.version;
-      transport = await installNpmPackage(deps, name, pkg.identifier, version, fixedArgsFrom(pkg.packageArguments));
+      const args = fixedArgsFrom(pkg.packageArguments);
+      if (pkg.registryType === 'npm') {
+        transport = await installNpmPackage(deps, name, pkg.identifier, version, args);
+      } else if (pkg.registryType === 'pypi') {
+        transport = buildPypiTransport(pkg.identifier, version, args);
+      } else {
+        throw new HttpError(
+          400,
+          `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
+        );
+      }
       ({ env, envMeta } = envFromRegistry(pkg.environmentVariables));
     } else {
       const remote = selection.remote;
@@ -245,6 +269,17 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
   } else if (source.type === 'npm') {
     const name = request.name ?? deriveServerName(source.package);
     const transport = await installNpmPackage(deps, name, source.package, source.version);
+    config = {
+      name,
+      enabled: request.enabled,
+      source,
+      transport,
+      env: request.env,
+      envMeta: {},
+    };
+  } else if (source.type === 'pypi') {
+    const name = request.name ?? deriveServerName(source.package);
+    const transport = buildPypiTransport(source.package, source.version);
     config = {
       name,
       enabled: request.enabled,

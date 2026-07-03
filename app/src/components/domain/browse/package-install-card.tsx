@@ -18,7 +18,31 @@ interface EnvRow {
 
 let nextRowId = 0;
 
-export function NpmInstallCard({ onInstalled }: { onInstalled?: (name: string) => void }) {
+type Ecosystem = 'npm' | 'pypi';
+
+const COPY: Record<Ecosystem, { title: string; description: string; packagePlaceholder: string; runner: string }> = {
+  npm: {
+    title: 'Install from npm',
+    description: 'Install any npm package that provides an MCP server binary.',
+    packagePlaceholder: '@modelcontextprotocol/server-everything',
+    runner: 'node',
+  },
+  pypi: {
+    title: 'Install from PyPI',
+    description: 'Run any PyPI package that provides an MCP server, via uvx.',
+    packagePlaceholder: 'mcp-server-fetch',
+    runner: 'uvx',
+  },
+};
+
+export function PackageInstallCard({
+  ecosystem,
+  onInstalled,
+}: {
+  ecosystem: Ecosystem;
+  onInstalled?: (name: string) => void;
+}) {
+  const copy = COPY[ecosystem];
   const install = useInstallServer();
   const [pkg, setPkg] = useState('');
   const [version, setVersion] = useState('');
@@ -47,7 +71,7 @@ export function NpmInstallCard({ onInstalled }: { onInstalled?: (name: string) =
     }
     const body: InstallRequest = {
       name: nameResult.data,
-      source: { type: 'npm', package: pkg.trim(), version: version.trim() || undefined },
+      source: { type: ecosystem, package: pkg.trim(), version: version.trim() || undefined },
       env,
       enabled: true,
     };
@@ -64,37 +88,39 @@ export function NpmInstallCard({ onInstalled }: { onInstalled?: (name: string) =
     });
   };
 
+  const idPrefix = ecosystem;
+
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Install from npm</CardTitle>
-        <CardDescription>Install any npm package that provides an MCP server binary.</CardDescription>
+        <CardTitle>{copy.title}</CardTitle>
+        <CardDescription>{copy.description}</CardDescription>
       </CardHeader>
       <CardContent>
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid gap-4 sm:grid-cols-3">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="npm-package">Package</Label>
+              <Label htmlFor={`${idPrefix}-package`}>Package</Label>
               <Input
-                id="npm-package"
+                id={`${idPrefix}-package`}
                 value={pkg}
-                placeholder="@modelcontextprotocol/server-everything"
+                placeholder={copy.packagePlaceholder}
                 onChange={(event) => setPkg(event.target.value)}
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="npm-version">Version</Label>
+              <Label htmlFor={`${idPrefix}-version`}>Version</Label>
               <Input
-                id="npm-version"
+                id={`${idPrefix}-version`}
                 value={version}
                 placeholder="latest"
                 onChange={(event) => setVersion(event.target.value)}
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="npm-name">Local name</Label>
+              <Label htmlFor={`${idPrefix}-name`}>Local name</Label>
               <Input
-                id="npm-name"
+                id={`${idPrefix}-name`}
                 value={name}
                 placeholder={suggestLocalName(pkg) || 'my-server'}
                 aria-invalid={!!nameError}

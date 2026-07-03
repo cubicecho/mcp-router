@@ -7,6 +7,8 @@ export function formatSource(source: ServerSource): string {
       return `${source.registry}: ${source.serverName}${source.version ? `@${source.version}` : ''}`;
     case 'npm':
       return `npm: ${source.package}@${source.version ?? 'latest'}`;
+    case 'pypi':
+      return `pypi: ${source.package}@${source.version ?? 'latest'}`;
     case 'remote':
       return 'manual';
   }
