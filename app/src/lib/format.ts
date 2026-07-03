@@ -8,7 +8,7 @@ export function formatSource(source: ServerSource): string {
     case 'npm':
       return `npm: ${source.package}@${source.version ?? 'latest'}`;
     case 'remote':
-      return 'remote';
+      return 'manual';
   }
 }
 

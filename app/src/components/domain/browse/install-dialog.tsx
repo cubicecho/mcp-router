@@ -4,6 +4,7 @@ import {
   type RegistryServer,
   serverNameSchema,
 } from '@mcp-router/shared';
+import { PlusIcon, XIcon } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
@@ -58,6 +59,14 @@ function defaultSelector(server: RegistryServer): string | undefined {
   return undefined;
 }
 
+interface EnvRow {
+  id: number;
+  key: string;
+  value: string;
+}
+
+let nextRowId = 0;
+
 function defaultEnvValues(envVars: RegistryKeyValueInput[]): Record<string, string> {
   const values: Record<string, string> = {};
   for (const envVar of envVars) {
@@ -82,6 +91,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
   const [selector, setSelector] = useState(() => defaultSelector(server));
   const selected = options.find((option) => option.selector === selector);
   const [envValues, setEnvValues] = useState<Record<string, string>>(() => defaultEnvValues(selected?.envVars ?? []));
+  const [customRows, setCustomRows] = useState<EnvRow[]>([]);
 
   const nameResult = serverNameSchema.safeParse(name);
   const nameError = nameResult.success ? undefined : (nameResult.error.issues[0]?.message ?? 'Invalid name');
@@ -101,6 +111,11 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
     for (const [key, value] of Object.entries(envValues)) {
       if (value) {
         env[key] = value;
+      }
+    }
+    for (const row of customRows) {
+      if (row.key.trim() && row.value) {
+        env[row.key.trim()] = row.value;
       }
     }
     const body: InstallRequest = {
@@ -185,6 +200,53 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
               ))}
             </fieldset>
           )}
+
+          <div className="flex flex-col gap-2">
+            <Label>Additional environment variables</Label>
+            {customRows.map((row) => (
+              <div key={row.id} className="flex items-center gap-2">
+                <Input
+                  value={row.key}
+                  placeholder="KEY"
+                  aria-label="Variable name"
+                  className="w-2/5 font-mono"
+                  onChange={(event) =>
+                    setCustomRows((rows) => rows.map((r) => (r.id === row.id ? { ...r, key: event.target.value } : r)))
+                  }
+                />
+                <Input
+                  value={row.value}
+                  placeholder="value"
+                  aria-label={`Value for ${row.key || 'new variable'}`}
+                  className="flex-1 font-mono"
+                  onChange={(event) =>
+                    setCustomRows((rows) =>
+                      rows.map((r) => (r.id === row.id ? { ...r, value: event.target.value } : r)),
+                    )
+                  }
+                />
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={`Remove ${row.key || 'new variable'}`}
+                  onClick={() => setCustomRows((rows) => rows.filter((r) => r.id !== row.id))}
+                >
+                  <XIcon />
+                </Button>
+              </div>
+            ))}
+            <div>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                onClick={() => setCustomRows((rows) => [...rows, { id: nextRowId++, key: '', value: '' }])}
+              >
+                <PlusIcon /> Add env var
+              </Button>
+            </div>
+          </div>
 
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>

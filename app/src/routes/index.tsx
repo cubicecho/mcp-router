@@ -1,5 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { CompassIcon } from 'lucide-react';
+import { CompassIcon, PlusIcon } from 'lucide-react';
+import { useState } from 'react';
+import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent } from '@/components/ui/card';
@@ -12,12 +14,18 @@ export const Route = createFileRoute('/')({
 
 function ServersPage() {
   const { data, isPending, error } = useServers();
+  const [addOpen, setAddOpen] = useState(false);
 
   return (
     <div className="flex flex-col gap-6">
-      <div>
-        <h1 className="text-2xl font-semibold">Servers</h1>
-        <p className="text-sm text-muted-foreground">Installed MCP servers and their runtime state.</p>
+      <div className="flex items-start justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-semibold">Servers</h1>
+          <p className="text-sm text-muted-foreground">Installed MCP servers and their runtime state.</p>
+        </div>
+        <Button onClick={() => setAddOpen(true)}>
+          <PlusIcon /> Add server
+        </Button>
       </div>
 
       {isPending && (
@@ -34,16 +42,23 @@ function ServersPage() {
         <Card>
           <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
             <p className="text-sm text-muted-foreground">No servers installed yet.</p>
-            <Button asChild>
-              <Link to="/browse">
-                <CompassIcon /> Browse registries
-              </Link>
-            </Button>
+            <div className="flex gap-2">
+              <Button onClick={() => setAddOpen(true)}>
+                <PlusIcon /> Add server
+              </Button>
+              <Button variant="outline" asChild>
+                <Link to="/browse">
+                  <CompassIcon /> Browse registries
+                </Link>
+              </Button>
+            </div>
           </CardContent>
         </Card>
       )}
 
       {data && data.length > 0 && <ServerList servers={data} />}
+
+      <AddServerDialog open={addOpen} onOpenChange={setAddOpen} />
     </div>
   );
 }
