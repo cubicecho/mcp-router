@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
-import type { ServerConfig, ServerStatus, SettingsFile } from '@mcp-router/shared';
+import type { ActivityEntry, ServerConfig, ServerStatus, SettingsFile } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -19,6 +19,30 @@ const ENV_ALLOWLIST = [
 ] as const;
 const CRASH_BACKOFF_MS = 5_000;
 const STDERR_TAIL_CHARS = 4_000;
+/** Max activity entries kept per server (in-memory ring buffer). */
+const ACTIVITY_LIMIT = 200;
+/** Serialized params/result larger than this are truncated before storing. */
+const ACTIVITY_VALUE_CHARS = 8_000;
+
+/** Bound a recorded params/result so a single large payload can't pin memory. */
+function truncateValue(value: unknown): unknown {
+  if (value === undefined) {
+    return undefined;
+  }
+  let serialized: string;
+  try {
+    serialized = JSON.stringify(value);
+  } catch {
+    return '[unserializable]';
+  }
+  if (serialized === undefined) {
+    return undefined;
+  }
+  if (serialized.length <= ACTIVITY_VALUE_CHARS) {
+    return value;
+  }
+  return `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`;
+}
 
 interface ManagedServer {
   config: ServerConfig;
@@ -77,6 +101,9 @@ export function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
 export class GatewayManager {
   private readonly entries = new Map<string, ManagedServer>();
   private readonly getSettings: () => SettingsFile;
+  /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
+  private readonly activity = new Map<string, ActivityEntry[]>();
+  private activitySeq = 0;
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
@@ -90,6 +117,7 @@ export class GatewayManager {
       if (!next) {
         void this.stop(name);
         this.entries.delete(name);
+        this.activity.delete(name);
         continue;
       }
       if (needsRestart(entry.config, next)) {
@@ -148,6 +176,30 @@ export class GatewayManager {
     if (entry) {
       entry.toolCount = count;
     }
+  }
+
+  /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
+  recordActivity(name: string, entry: Omit<ActivityEntry, 'id'>): void {
+    const log = this.activity.get(name) ?? [];
+    log.push({
+      ...entry,
+      id: ++this.activitySeq,
+      params: truncateValue(entry.params),
+      result: truncateValue(entry.result),
+    });
+    if (log.length > ACTIVITY_LIMIT) {
+      log.splice(0, log.length - ACTIVITY_LIMIT);
+    }
+    this.activity.set(name, log);
+  }
+
+  /** Recorded activity for a server, newest first. */
+  getActivity(name: string): ActivityEntry[] {
+    return [...(this.activity.get(name) ?? [])].reverse();
+  }
+
+  clearActivity(name: string): void {
+    this.activity.delete(name);
   }
 
   /** Names of all enabled servers (for the aggregate endpoint). */

@@ -244,6 +244,7 @@ with `{ "error": "...", "detail": "..." }`.
 | `DELETE /api/servers/:name` | Stop, delete config, remove its install dir |
 | `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
 | `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
+| `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
 | `POST /api/reload` | Re-read all config from disk and reconcile running processes |
 
 MCP endpoints (streamable HTTP):

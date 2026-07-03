@@ -200,6 +200,19 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json({ tools: result.tools });
   });
 
+  router.get('/servers/:name/activity', (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    res.json({ entries: manager.getActivity(name) });
+  });
+
+  router.delete('/servers/:name/activity', (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    manager.clearActivity(name);
+    res.status(204).end();
+  });
+
   // --- reload ---
 
   router.post('/reload', async (_req, res) => {

@@ -7,6 +7,7 @@ export const queryKeys = {
   servers: ['servers'] as const,
   server: (name: string) => ['servers', name] as const,
   serverTools: (name: string) => ['servers', name, 'tools'] as const,
+  serverActivity: (name: string) => ['servers', name, 'activity'] as const,
   registries: ['registries'] as const,
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
   registryServerDetail: (registry: string, serverName: string) =>
@@ -45,6 +46,15 @@ export function useServerTools(name: string) {
     queryFn: () => api.getServerTools(name),
     retry: false,
     staleTime: 60_000,
+  });
+}
+
+/** Per-server proxied call log (in-memory on the server); polls while the tab is open. */
+export function useServerActivity(name: string) {
+  return useQuery({
+    queryKey: queryKeys.serverActivity(name),
+    queryFn: () => api.getServerActivity(name),
+    refetchInterval: 5_000,
   });
 }
 
@@ -115,6 +125,14 @@ export function useTestServerConnection() {
   return useMutation({
     mutationFn: (name: string) => api.getServerTools(name),
     onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+  });
+}
+
+export function useClearServerActivity() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.clearServerActivity(name),
+    onSuccess: (_data, name) => invalidate(queryKeys.serverActivity(name)),
   });
 }
 

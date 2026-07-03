@@ -2,12 +2,14 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { ArrowLeftIcon, CheckIcon, CopyIcon, RotateCwIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
+import { ActivityCard } from '@/components/domain/server/activity-card';
 import { EnvEditor } from '@/components/domain/server/env-editor';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { ToolsCard } from '@/components/domain/server/tools-card';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatSource } from '@/lib/format';
 import { useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
@@ -155,7 +157,18 @@ function ServerDetailPage() {
             </Card>
           )}
 
-          <ToolsCard name={name} />
+          <Tabs defaultValue="tools">
+            <TabsList>
+              <TabsTrigger value="tools">Tools</TabsTrigger>
+              <TabsTrigger value="activity">Activity</TabsTrigger>
+            </TabsList>
+            <TabsContent value="tools">
+              <ToolsCard name={name} />
+            </TabsContent>
+            <TabsContent value="activity">
+              <ActivityCard name={name} />
+            </TabsContent>
+          </Tabs>
         </>
       )}
     </div>

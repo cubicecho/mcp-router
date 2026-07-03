@@ -101,6 +101,41 @@ describe('REST API', () => {
     expect((await authed(request(app).get('/api/servers/hosted'))).status).toBe(404);
   });
 
+  it('serves and clears in-memory activity for a known server', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    const empty = await authed(request(app).get('/api/servers/hosted/activity'));
+    expect(empty.status).toBe(200);
+    expect(empty.body).toEqual({ entries: [] });
+
+    // Records surface newest-first via the manager (the proxy path is covered elsewhere).
+    manager.recordActivity('hosted', {
+      at: new Date().toISOString(),
+      via: 'direct',
+      method: 'tools/call',
+      target: 'echo',
+      ok: true,
+      durationMs: 3,
+      params: { name: 'echo' },
+      result: { ok: true },
+    });
+
+    const listed = await authed(request(app).get('/api/servers/hosted/activity'));
+    expect(listed.body.entries).toHaveLength(1);
+    expect(listed.body.entries[0]).toMatchObject({ method: 'tools/call', target: 'echo', ok: true });
+    expect(typeof listed.body.entries[0].id).toBe('number');
+
+    const cleared = await authed(request(app).delete('/api/servers/hosted/activity'));
+    expect(cleared.status).toBe(204);
+    expect((await authed(request(app).get('/api/servers/hosted/activity'))).body.entries).toEqual([]);
+
+    expect((await authed(request(app).get('/api/servers/nope/activity'))).status).toBe(404);
+  });
+
   it('404s for unknown servers and registries', async () => {
     expect((await authed(request(app).get('/api/servers/nope'))).status).toBe(404);
     expect((await authed(request(app).get('/api/registries/nope/servers'))).status).toBe(404);

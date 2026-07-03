@@ -1,4 +1,5 @@
 import type {
+  ActivityResponse,
   ApiError,
   CreateRegistryRequest,
   InstallRequest,
@@ -115,6 +116,14 @@ export interface ServerToolsResponse {
 
 export function getServerTools(name: string): Promise<ServerToolsResponse> {
   return request(`/api/servers/${encodeURIComponent(name)}/tools`);
+}
+
+export function getServerActivity(name: string): Promise<ActivityResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/activity`);
+}
+
+export function clearServerActivity(name: string): Promise<void> {
+  return request(`/api/servers/${encodeURIComponent(name)}/activity`, { method: 'DELETE' });
 }
 
 // --- registries ---

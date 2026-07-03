@@ -59,6 +59,7 @@ mcp-router/
 | `DELETE /api/servers/:name` | stop, delete config file, remove `data/servers/<name>` install dir |
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
 | `GET /api/servers/:name/tools` | connect (spawning if needed) and list downstream tools |
+| `GET /api/servers/:name/activity` / `DELETE` | in-memory log of proxied calls (`ActivityResponse`) for the Activity tab; DELETE clears it |
 | `POST /api/reload` | re-read all config from disk, reconcile running processes |
 
 Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas.

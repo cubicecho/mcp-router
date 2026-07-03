@@ -50,6 +50,38 @@ export const updateServerRequestSchema = z.object({
 });
 export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
 
+// --- GET /api/servers/:name/activity ---
+
+/** A single proxied MCP call (request + response/error) recorded in memory for debugging. */
+export const activityEntrySchema = z.object({
+  /** Monotonic per-process id; newest entries have the largest id. */
+  id: z.number(),
+  /** ISO timestamp of when the call completed. */
+  at: z.string(),
+  /** Which endpoint the call arrived on. */
+  via: z.enum(['direct', 'aggregate']),
+  /** JSON-RPC method, e.g. 'tools/call', 'tools/list', 'resources/read'. */
+  method: z.string(),
+  /** Human-friendly target of the call (tool name, resource uri, prompt name) when applicable. */
+  target: z.string().optional(),
+  /** Whether the downstream call succeeded. */
+  ok: z.boolean(),
+  /** Wall-clock duration of the downstream call in milliseconds. */
+  durationMs: z.number(),
+  /** Request params sent downstream (possibly truncated). */
+  params: z.unknown().optional(),
+  /** Response payload when `ok` (possibly truncated). */
+  result: z.unknown().optional(),
+  /** Error message when not `ok`. */
+  error: z.string().optional(),
+});
+export type ActivityEntry = z.infer<typeof activityEntrySchema>;
+
+export const activityResponseSchema = z.object({
+  entries: z.array(activityEntrySchema),
+});
+export type ActivityResponse = z.infer<typeof activityResponseSchema>;
+
 // --- POST /api/registries ---
 
 export const createRegistryRequestSchema = z.object({

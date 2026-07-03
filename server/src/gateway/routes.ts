@@ -37,6 +37,8 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
   const proxyDeps = {
     getClient: (name: string) => manager.getClient(name),
     recordToolCount: (name: string, count: number) => manager.recordToolCount(name, count),
+    recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
+      manager.recordActivity(name, entry),
   };
 
   router.all('/', async (req, res) => {
