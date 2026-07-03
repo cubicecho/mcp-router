@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "PORT=3001 node --env-file-if-exists=../.env --watch src/index.ts",
+    "dev": "DATA_DIR=../data PORT=3001 node --env-file-if-exists=../.env --watch src/index.ts",
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"
   },

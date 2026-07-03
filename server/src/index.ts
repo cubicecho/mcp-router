@@ -20,6 +20,14 @@ async function main(): Promise<void> {
   const port = Number(process.env.PORT ?? store.getSettings().port);
   const httpServer = app.listen(port, () => {
     console.log(`mcp-router listening on http://localhost:${port} (data dir: ${dataDir})`);
+    const settings = store.getSettings();
+    if (!settings.authEnabled) {
+      console.log('Auth: disabled (authEnabled: false in settings.json)');
+    } else if (process.env.MCP_ROUTER_TOKEN) {
+      console.log('Auth: bearer token from MCP_ROUTER_TOKEN env var (overrides settings.json)');
+    } else {
+      console.log(`Auth: bearer token from ${path.join(dataDir, 'config/settings.json')}:\n  ${settings.authToken}`);
+    }
   });
 
   let shuttingDown = false;
