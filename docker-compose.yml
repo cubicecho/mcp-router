@@ -9,7 +9,11 @@ services:
       # the host; apply edits with POST /api/reload (or the Settings page).
       - ./data:/data
     environment:
-      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:?Set MCP_ROUTER_TOKEN in .env (see .env.example)}
+      # Set a bearer token, OR set SECURE_LOCAL_NET=true to disable auth on a
+      # trusted local network. If neither is set, a token is generated into
+      # data/config/settings.json on first run and printed to the logs.
+      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
+      SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-}
     restart: unless-stopped
     healthcheck:
       # 200 (auth off) and 401 (auth on) both mean the server is up.

@@ -48,7 +48,7 @@ docker compose up        # run the container; ./data mounted at /data
 | **Flat JSON config** | `DATA_DIR/config/{settings,registries}.json` + `config/servers/<name>.json`; hand-editable, watched (chokidar) + `POST /api/reload`; secrets plaintext, files mode 0600 |
 | **Node ≥22.18 type stripping** | Server dev runs `.ts` directly (`node --watch`), no build step; `tsc` with `rewriteRelativeImportExtensions` emits `dist/` for prod — so **use `.ts` extensions in all relative imports** in `server/` and `shared/` |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes), minus GraphQL — plain REST with shared zod DTOs |
-| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into settings.json; guards `/api/*` and `/mcp*` |
+| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into settings.json; guards `/api/*` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
 
 ## Key Conventions
 

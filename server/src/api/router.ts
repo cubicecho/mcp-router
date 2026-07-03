@@ -1,6 +1,7 @@
 import type { RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
 import { createRegistryRequestSchema, installRequestSchema, updateServerRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
+import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
@@ -50,7 +51,7 @@ export function createApiRouter(deps: ApiDeps): Router {
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
       serverCount: store.getServers().length,
       runningCount: manager.runningCount(),
-      authEnabled: store.getSettings().authEnabled,
+      authEnabled: store.getSettings().authEnabled && !authDisabledByEnv(),
     };
     res.json(status);
   });

@@ -6,6 +6,7 @@ import path from 'node:path';
 import type { RegistriesFile, Registry, ServerConfig, SettingsFile } from '@mcp-router/shared';
 import { DEFAULT_REGISTRY, registriesFileSchema, serverConfigSchema, settingsFileSchema } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
+import { authDisabledByEnv } from '../auth.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 
 export interface ConfigState {
@@ -161,7 +162,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       settings = settingsFileSchema.parse({});
       dirty = true;
     }
-    if (settings.authEnabled && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
+    if (settings.authEnabled && !authDisabledByEnv() && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
       settings.authToken = randomBytes(32).toString('hex');
       dirty = true;
       console.log(`Generated auth token (persisted to ${file}):\n  ${settings.authToken}`);

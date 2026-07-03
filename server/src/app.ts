@@ -3,7 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { errorMiddleware } from './api/error-middleware.ts';
 import { createApiRouter } from './api/router.ts';
-import { createAuthMiddleware } from './auth.ts';
+import { authDisabledByEnv, createAuthMiddleware } from './auth.ts';
 import type { ConfigStore } from './config/store.ts';
 import type { GatewayManager } from './gateway/manager.ts';
 import { createMcpRouter } from './gateway/routes.ts';
@@ -28,7 +28,7 @@ export function buildApp(deps: AppDeps): express.Express {
   const auth = createAuthMiddleware(() => {
     const settings = store.getSettings();
     return {
-      enabled: settings.authEnabled,
+      enabled: settings.authEnabled && !authDisabledByEnv(),
       token: process.env.MCP_ROUTER_TOKEN ?? settings.authToken,
     };
   });

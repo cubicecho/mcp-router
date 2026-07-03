@@ -6,6 +6,18 @@ export interface AuthConfig {
   token: string | null;
 }
 
+const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
+
+/**
+ * `SECURE_LOCAL_NET=true` disables bearer auth entirely for both /api and /mcp
+ * — an escape hatch for running on a trusted local network without minting or
+ * passing tokens. Overrides `authEnabled` in settings.json.
+ */
+export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
+  const value = env.SECURE_LOCAL_NET;
+  return value !== undefined && TRUTHY_ENV.has(value.trim().toLowerCase());
+}
+
 /** Constant-time comparison that does not leak token length (compares sha256 digests). */
 export function tokensEqual(a: string, b: string): boolean {
   const digestA = createHash('sha256').update(a).digest();

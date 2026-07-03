@@ -1,5 +1,6 @@
 import path from 'node:path';
 import { buildApp } from './app.ts';
+import { authDisabledByEnv } from './auth.ts';
 import { ConfigStore } from './config/store.ts';
 import { GatewayManager } from './gateway/manager.ts';
 
@@ -21,7 +22,9 @@ async function main(): Promise<void> {
   const httpServer = app.listen(port, () => {
     console.log(`mcp-router listening on http://localhost:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
-    if (!settings.authEnabled) {
+    if (authDisabledByEnv()) {
+      console.log('Auth: disabled (SECURE_LOCAL_NET env var) — /api and /mcp are open on this network');
+    } else if (!settings.authEnabled) {
       console.log('Auth: disabled (authEnabled: false in settings.json)');
     } else if (process.env.MCP_ROUTER_TOKEN) {
       console.log('Auth: bearer token from MCP_ROUTER_TOKEN env var (overrides settings.json)');

@@ -68,6 +68,11 @@ If you start without `MCP_ROUTER_TOKEN`, a token is generated into
 `data/config/settings.json` on first run and logged once — check the startup
 output.
 
+On a trusted local network you can skip tokens entirely by setting
+`SECURE_LOCAL_NET=true` — this disables bearer auth for both `/api` and `/mcp`
+(no token is minted or required). Only do this when the router is not reachable
+from untrusted networks.
+
 ## Configuration
 
 All config lives as flat, hand-editable JSON under `DATA_DIR/config`
@@ -256,8 +261,11 @@ MCP endpoints (streamable HTTP):
   Docker bind mount — can read them. Protect the directory accordingly and
   keep backups equally private.
 - **One bearer token guards everything** (`/api/*` and `/mcp*`). Set it via
-  `MCP_ROUTER_TOKEN`; treat it like a password. Setting `authEnabled: false`
-  disables auth entirely — only do that on a trusted network.
+  `MCP_ROUTER_TOKEN`; treat it like a password. Setting `authEnabled: false` in
+  settings.json, or `SECURE_LOCAL_NET=true` in the environment, disables auth
+  entirely — only do that on a trusted network. The `SECURE_LOCAL_NET` env var
+  overrides settings and is handy for containers where editing settings.json is
+  awkward.
 - **Do not expose the router directly to the internet.** It speaks plain HTTP;
   the bearer token would travel in cleartext. Put it behind a TLS-terminating
   reverse proxy (Caddy, nginx, Traefik) if it must be reachable remotely, and

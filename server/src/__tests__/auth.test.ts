@@ -1,7 +1,7 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createAuthMiddleware, tokensEqual } from '../auth.ts';
+import { authDisabledByEnv, createAuthMiddleware, tokensEqual } from '../auth.ts';
 
 function appWith(auth: { enabled: boolean; token: string | null }) {
   const app = express();
@@ -58,5 +58,23 @@ describe('auth middleware', () => {
   it('compares tokens without throwing on length mismatch', () => {
     expect(tokensEqual('short', 'a-much-longer-token')).toBe(false);
     expect(tokensEqual('same', 'same')).toBe(true);
+  });
+});
+
+describe('authDisabledByEnv', () => {
+  it('is false when SECURE_LOCAL_NET is unset', () => {
+    expect(authDisabledByEnv({})).toBe(false);
+  });
+
+  it('treats common truthy values as disabling auth', () => {
+    for (const value of ['true', 'TRUE', '1', 'yes', 'on', ' true ']) {
+      expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(true);
+    }
+  });
+
+  it('leaves auth enabled for falsey or unrelated values', () => {
+    for (const value of ['false', '0', 'no', 'off', '']) {
+      expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(false);
+    }
   });
 });
