@@ -1,0 +1,43 @@
+{
+  "name": "mcp-router",
+  "version": "0.1.0",
+  "private": true,
+  "description": "MCP Router - install MCP servers from registries/npm and re-expose them over streamable HTTP",
+  "type": "module",
+  "engines": {
+    "node": ">=22.18"
+  },
+  "workspaces": [
+    "shared",
+    "server",
+    "app"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev:server\" \"npm run dev:app\"",
+    "dev:app": "npm run dev -w app",
+    "dev:server": "npm run dev -w server",
+    "build": "npm run build -w shared && npm run build -w server && npm run build -w app",
+    "build:app": "npm run build -w app",
+    "build:server": "npm run build -w server",
+    "build:docker": "docker build -t mcp-router .",
+    "start": "node server/dist/index.js",
+    "lint": "biome lint .",
+    "lint:fix": "biome lint --write .",
+    "format": "biome format --write .",
+    "format:check": "biome format .",
+    "check": "npm run check:biome && npm run check:types",
+    "check:biome": "biome check .",
+    "check:fix": "biome check --write .",
+    "check:types": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p app/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "clean": "rm -rf node_modules shared/dist server/dist app/dist"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "2.4.6",
+    "@types/node": "^22.13.0",
+    "concurrently": "^9.1.2",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}
