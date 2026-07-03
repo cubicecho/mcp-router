@@ -48,6 +48,11 @@ MCP_ROUTER_TOKEN=your-secret-token npm start
 The server listens on port 3000 (override with `PORT`) and serves the built
 web UI. State lives in `./data` (override with `DATA_DIR`).
 
+Both `npm start` and `npm run dev` also load a `.env` file from the repo root
+if one exists (`cp .env.example .env`), so you can keep `MCP_ROUTER_TOKEN`
+there instead of passing it inline. Variables already set in your shell take
+precedence over `.env`.
+
 For development:
 
 ```bash

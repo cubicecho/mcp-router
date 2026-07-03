@@ -20,7 +20,7 @@
     "build:app": "npm run build -w app",
     "build:server": "npm run build -w server",
     "build:docker": "docker build -t mcp-router .",
-    "start": "node server/dist/index.js",
+    "start": "node --env-file-if-exists=.env server/dist/index.js",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
