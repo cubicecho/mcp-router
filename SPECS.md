@@ -120,4 +120,4 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - [x] I1 `npm run check` (biome + tsc all packages) and `npm test` green
 - [x] I2 End-to-end smoke: install a real server from the official registry (e.g. `@modelcontextprotocol/server-everything`), set an env var in the UI, connect an MCP client to `/mcp/<name>` and `/mcp`, call a tool through both
 - [x] I3 Config reload smoke: hand-edit a server JSON, `POST /api/reload`, verify reconcile
-- [ ] I4 Docker smoke: `docker compose up`, repeat I2 against the container
+- [x] I4 Docker smoke: `docker compose up`, repeat I2 against the container
