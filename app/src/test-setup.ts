@@ -1,5 +1,18 @@
 import '@testing-library/jest-dom/vitest';
 
+// jsdom lacks ResizeObserver, which Radix popper-based primitives (Tooltip,
+// Select, …) touch when they open. Provide a no-op implementation.
+if (typeof globalThis.ResizeObserver === 'undefined') {
+  globalThis.ResizeObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  } as unknown as typeof ResizeObserver;
+}
+
+// jsdom's window.scrollTo throws "Not implemented"; some libraries call it.
+window.scrollTo = () => {};
+
 // Node >=22 exposes an experimental `localStorage` getter on globalThis that returns
 // undefined unless the process runs with --localstorage-file, and vitest's jsdom
 // environment does not override pre-existing globals. Shim a simple in-memory Storage.

@@ -1,6 +1,6 @@
 import type { ServerStatus } from '@mcp-router/shared';
 import { Link } from '@tanstack/react-router';
-import { RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { Loader2Icon, PlugZapIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import {
@@ -19,14 +19,24 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { formatSource } from '@/lib/format';
-import { useDeleteServer, useRestartServer, useUpdateServer } from '@/lib/queries';
+import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 function ServerRow({ server }: { server: ServerStatus }) {
   const update = useUpdateServer();
   const restart = useRestartServer();
   const remove = useDeleteServer();
+  const test = useTestServerConnection();
   const { config } = server;
+
+  const handleTest = () =>
+    test.mutate(config.name, {
+      onSuccess: (result) => {
+        const count = result.tools.length;
+        toast.success(`${config.name} connected — ${count} tool${count === 1 ? '' : 's'}`);
+      },
+      onError: toastApiError,
+    });
 
   return (
     <TableRow>
@@ -53,6 +63,20 @@ function ServerRow({ server }: { server: ServerStatus }) {
       </TableCell>
       <TableCell className="text-right">
         <div className="flex justify-end gap-1">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Test connection to ${config.name}`}
+                disabled={test.isPending}
+                onClick={handleTest}
+              >
+                {test.isPending ? <Loader2Icon className="animate-spin" /> : <PlugZapIcon />}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Test connection</TooltipContent>
+          </Tooltip>
           <Tooltip>
             <TooltipTrigger asChild>
               <Button

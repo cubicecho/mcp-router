@@ -109,6 +109,15 @@ export function useRestartServer() {
   });
 }
 
+/** Health check: connect (spawning if needed) and list tools; refreshes state + tool count. */
+export function useTestServerConnection() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.getServerTools(name),
+    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+  });
+}
+
 export function useCreateRegistry() {
   const invalidate = useInvalidate();
   return useMutation({
