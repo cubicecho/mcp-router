@@ -35,6 +35,11 @@ Open http://localhost:3000, enter your token, and install servers from the
 Browse page. All state (config, installed server packages, logs) lives in
 `./data`, bind-mounted to `/data` in the container.
 
+Prebuilt images are published on every release to Docker Hub and GHCR, tagged
+`latest` and the semver version — swap `build: .` for
+`image: <dockerhub-user>/mcp-router:latest` in `docker-compose.yml` to skip
+building locally.
+
 ## Quickstart B: bare Node
 
 Requires Node >= 22.18.

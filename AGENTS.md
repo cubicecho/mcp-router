@@ -108,6 +108,18 @@ components. Invalidate the relevant query keys after every mutation.
 - `git pull --no-rebase` (merge, not rebase)
 - Do not add `Co-Authored-By` trailers to commit messages
 - Run `npm run check` and `npm test` before every commit
+- Use **Conventional Commits** (`feat: …`, `fix: …`, `chore: …`, breaking
+  changes via `!` or `BREAKING CHANGE:`) — semantic-release derives versions
+  and Docker image tags from commit messages on `main`
+
+## CI / Release
+
+- `.github/workflows/ci.yml` — check + test + build on every push/PR to `main`
+- `.github/workflows/release.yml` — after CI succeeds on `main`,
+  semantic-release cuts a GitHub release and pushes the Docker image to
+  `ghcr.io/<repo>` and Docker Hub (`$DOCKERHUB_USERNAME/mcp-router`), tagged
+  `latest` + the semver. Requires repo secrets `DOCKERHUB_USERNAME` and
+  `DOCKERHUB_TOKEN`.
 
 ## Finding code
 
