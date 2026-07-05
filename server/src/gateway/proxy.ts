@@ -195,17 +195,17 @@ export interface AggregateDeps extends ProxyDeps {
 export function createAggregateServer(deps: AggregateDeps): Server {
   const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, PROXY_CAPABILITIES);
 
-  const collect = async <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
+  // Aggregate list ops fan out to every server on each client (re)connect and
+  // list_changed, so they are deliberately NOT recorded to activity: doing so
+  // would flood each server's bounded log with routine, params-less list noise
+  // and evict the routed tool/resource/prompt calls the Activity tab exists to
+  // show. Only the routed aggregate ops below (which target one server) record.
+  const collect = async <T>(fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
     const names = deps.serverNames();
     const results = await Promise.all(
       names.map(async (name) => {
-        // Each server's contribution is recorded under its own activity log, so
-        // aggregate list calls (and per-server connect/list failures) are visible
-        // there too — not just aggregate tools/call.
         try {
-          return await track(deps, name, { via: 'aggregate', method }, () =>
-            deps.getClient(name).then((client) => fn(client, name)),
-          );
+          return await fn(await deps.getClient(name), name);
         } catch (err) {
           if (!lacksCapability(err)) {
             console.warn(`Skipping server "${name}" in aggregate: ${errorMessage(err)}`);
@@ -226,7 +226,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await collect('tools/list', async (client, name) => {
+    const tools = await collect(async (client, name) => {
       const result = await client.listTools();
       deps.recordToolCount(name, result.tools.length);
       return result.tools.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
@@ -250,7 +250,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = await collect('resources/list', async (client, name) => {
+    const resources = await collect(async (client, name) => {
       const result = await client.listResources();
       return result.resources.map((resource) => ({
         ...resource,
@@ -274,7 +274,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   });
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    const prompts = await collect('prompts/list', async (client, name) => {
+    const prompts = await collect(async (client, name) => {
       const result = await client.listPrompts();
       return result.prompts.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });

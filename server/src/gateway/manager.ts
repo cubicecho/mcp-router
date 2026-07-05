@@ -27,28 +27,32 @@ const ACTIVITY_TRIM_BATCH = 64;
 const ACTIVITY_VALUE_CHARS = 8_000;
 
 /**
- * Snapshot a recorded params/result into a bounded, detached string.
+ * Snapshot a recorded params/result into a bounded, detached value.
  *
- * Serializes exactly once (the read path then re-serializes a plain string, not
- * a live object graph) and never retains a reference to the caller's value, so a
- * large or later-mutated payload can neither pin memory nor alias into the log.
+ * Never retains a reference to the caller's value: a small payload is returned
+ * as a fresh structural clone (so it can't pin memory or alias later mutations
+ * into the log, yet keeps its shape — the schema's `unknown` stays truthful and
+ * the UI can pretty-print it), and an over-large one collapses to a truncation
+ * marker string. Serialization is compact so the size budget isn't spent on
+ * indentation.
  */
-function snapshotValue(value: unknown): string | undefined {
+function snapshotValue(value: unknown): unknown {
   if (value === undefined) {
     return undefined;
   }
   let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(value, null, 2);
+    serialized = JSON.stringify(value);
   } catch {
     return '[unserializable]';
   }
   if (serialized === undefined) {
     return undefined; // functions / symbols serialize to nothing
   }
-  return serialized.length > ACTIVITY_VALUE_CHARS
-    ? `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`
-    : serialized;
+  if (serialized.length > ACTIVITY_VALUE_CHARS) {
+    return `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`;
+  }
+  return JSON.parse(serialized);
 }
 
 interface ManagedServer {
@@ -188,8 +192,10 @@ export class GatewayManager {
   /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
   recordActivity(name: string, entry: Omit<ActivityEntry, 'id'>): void {
     // Only log for a currently-managed server: an in-flight call that completes
-    // after the server was removed (reconcile) or its log cleared must not
-    // resurrect a stray map entry that then leaks forever.
+    // after the server was removed (reconcile drops it from both maps) must not
+    // resurrect a stray activity entry that then leaks forever. A call that
+    // completes right after a Clear legitimately re-populates the log — the
+    // server still exists, so that is new activity, not a leak.
     if (!this.entries.has(name)) {
       return;
     }

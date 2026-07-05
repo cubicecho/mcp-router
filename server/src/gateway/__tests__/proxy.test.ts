@@ -138,7 +138,34 @@ describe('proxy activity recording', () => {
 });
 
 describe('aggregate activity recording', () => {
-  it('records an aggregate tools/list under each contributing server', async () => {
+  it('records a routed tools/call under the owning server and honors isError', async () => {
+    const { activity, record } = collector();
+    const fakeClient = {
+      callTool: async () => ({ content: [{ type: 'text', text: 'nope' }], isError: true }),
+    };
+    const deps: AggregateDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async () => fakeClient as any,
+      recordToolCount: () => {},
+      recordActivity: record,
+      serverNames: () => ['alpha'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    await client.callTool({ name: 'alpha__echo', arguments: {} });
+    await close();
+
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({
+      name: 'alpha',
+      method: 'tools/call',
+      target: 'echo',
+      via: 'aggregate',
+      ok: false,
+    });
+  });
+
+  it('does not record routine aggregate list fan-outs', async () => {
     const { activity, record } = collector();
     const fakeClient = {
       listTools: async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }),
@@ -156,8 +183,6 @@ describe('aggregate activity recording', () => {
     await close();
 
     expect(result.tools.map((t) => t.name).sort()).toEqual(['alpha__echo', 'beta__echo']);
-    expect(activity).toHaveLength(2);
-    expect(activity.map((a) => a.name).sort()).toEqual(['alpha', 'beta']);
-    expect(activity.every((a) => a.method === 'tools/list' && a.via === 'aggregate' && a.ok)).toBe(true);
+    expect(activity).toEqual([]);
   });
 });
