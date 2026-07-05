@@ -21,27 +21,34 @@ const CRASH_BACKOFF_MS = 5_000;
 const STDERR_TAIL_CHARS = 4_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
 const ACTIVITY_LIMIT = 200;
+/** Extra slack kept before trimming, so the O(n) shift amortizes to O(1) per record. */
+const ACTIVITY_TRIM_BATCH = 64;
 /** Serialized params/result larger than this are truncated before storing. */
 const ACTIVITY_VALUE_CHARS = 8_000;
 
-/** Bound a recorded params/result so a single large payload can't pin memory. */
-function truncateValue(value: unknown): unknown {
+/**
+ * Snapshot a recorded params/result into a bounded, detached string.
+ *
+ * Serializes exactly once (the read path then re-serializes a plain string, not
+ * a live object graph) and never retains a reference to the caller's value, so a
+ * large or later-mutated payload can neither pin memory nor alias into the log.
+ */
+function snapshotValue(value: unknown): string | undefined {
   if (value === undefined) {
     return undefined;
   }
-  let serialized: string;
+  let serialized: string | undefined;
   try {
-    serialized = JSON.stringify(value);
+    serialized = JSON.stringify(value, null, 2);
   } catch {
     return '[unserializable]';
   }
   if (serialized === undefined) {
-    return undefined;
+    return undefined; // functions / symbols serialize to nothing
   }
-  if (serialized.length <= ACTIVITY_VALUE_CHARS) {
-    return value;
-  }
-  return `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`;
+  return serialized.length > ACTIVITY_VALUE_CHARS
+    ? `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`
+    : serialized;
 }
 
 interface ManagedServer {
@@ -180,22 +187,29 @@ export class GatewayManager {
 
   /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
   recordActivity(name: string, entry: Omit<ActivityEntry, 'id'>): void {
+    // Only log for a currently-managed server: an in-flight call that completes
+    // after the server was removed (reconcile) or its log cleared must not
+    // resurrect a stray map entry that then leaks forever.
+    if (!this.entries.has(name)) {
+      return;
+    }
     const log = this.activity.get(name) ?? [];
     log.push({
       ...entry,
       id: ++this.activitySeq,
-      params: truncateValue(entry.params),
-      result: truncateValue(entry.result),
+      params: snapshotValue(entry.params),
+      result: snapshotValue(entry.result),
     });
-    if (log.length > ACTIVITY_LIMIT) {
+    // Trim in batches rather than on every push, so the O(n) shift amortizes away.
+    if (log.length > ACTIVITY_LIMIT + ACTIVITY_TRIM_BATCH) {
       log.splice(0, log.length - ACTIVITY_LIMIT);
     }
     this.activity.set(name, log);
   }
 
-  /** Recorded activity for a server, newest first. */
+  /** Recorded activity for a server, newest first (at most ACTIVITY_LIMIT). */
   getActivity(name: string): ActivityEntry[] {
-    return [...(this.activity.get(name) ?? [])].reverse();
+    return (this.activity.get(name) ?? []).slice(-ACTIVITY_LIMIT).reverse();
   }
 
   clearActivity(name: string): void {
