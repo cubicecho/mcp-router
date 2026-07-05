@@ -39,51 +39,62 @@ function toMcpError(err: unknown): McpError {
   return new McpError(ErrorCode.InternalError, errorMessage(err));
 }
 
+/** A tool call that resolves with `isError: true` is a downstream failure, not a success. */
+function toolCallFailed(result: unknown): boolean {
+  return Boolean((result as CallToolResult | undefined)?.isError);
+}
+
 export interface ProxyDeps {
   getClient: (name: string) => Promise<Client>;
   recordToolCount: (name: string, count: number) => void;
   recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
 }
 
+interface TrackContext {
+  via: ActivityEntry['via'];
+  method: string;
+  target?: string;
+  params?: unknown;
+  /**
+   * Classify a resolved result as a failure. `tools/call` resolves (does not
+   * throw) for tool-level errors, flagging them via `isError` on the result —
+   * so success/failure can't be inferred from throw-vs-return alone.
+   */
+  isFailure?: (result: unknown) => boolean;
+}
+
 /**
  * Run a downstream call, recording its params + result/error and timing to the
- * server's activity log. Records both outcomes; always re-raises on failure.
+ * server's activity log. Records both outcomes, converts a raw downstream
+ * failure into a proper MCP error, and always re-raises.
  */
-async function track<T>(
-  deps: ProxyDeps,
-  name: string,
-  via: ActivityEntry['via'],
-  method: string,
-  target: string | undefined,
-  params: unknown,
-  run: () => Promise<T>,
-): Promise<T> {
+async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: () => Promise<T>): Promise<T> {
   const startedAt = Date.now();
   try {
     const result = await run();
     deps.recordActivity(name, {
       at: new Date().toISOString(),
-      via,
-      method,
-      target,
-      ok: true,
+      via: ctx.via,
+      method: ctx.method,
+      target: ctx.target,
+      ok: !ctx.isFailure?.(result),
       durationMs: Date.now() - startedAt,
-      params,
+      params: ctx.params,
       result,
     });
     return result;
   } catch (err) {
     deps.recordActivity(name, {
       at: new Date().toISOString(),
-      via,
-      method,
-      target,
+      via: ctx.via,
+      method: ctx.method,
+      target: ctx.target,
       ok: false,
       durationMs: Date.now() - startedAt,
-      params,
+      params: ctx.params,
       error: errorMessage(err),
     });
-    throw err;
+    throw toMcpError(err);
   }
 }
 
@@ -93,7 +104,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
   const client = () => deps.getClient(name);
 
   server.setRequestHandler(ListToolsRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'tools/list', undefined, req.params, async () => {
+    track(deps, name, { via: 'direct', method: 'tools/list', params: req.params }, async () => {
       try {
         const result = await (await client()).listTools(req.params);
         deps.recordToolCount(name, result.tools.length);
@@ -102,78 +113,69 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
         if (lacksCapability(err)) {
           return { tools: [] };
         }
-        throw toMcpError(err);
+        throw err; // track() converts to an MCP error
       }
     }),
   );
 
   server.setRequestHandler(CallToolRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'tools/call', req.params.name, req.params, async () => {
-      try {
-        return (await (await client()).callTool(req.params)) as CallToolResult;
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    }),
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params, isFailure: toolCallFailed },
+      async () => (await (await client()).callTool(req.params)) as CallToolResult,
+    ),
   );
 
   server.setRequestHandler(ListResourcesRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'resources/list', undefined, req.params, async () => {
+    track(deps, name, { via: 'direct', method: 'resources/list', params: req.params }, async () => {
       try {
         return await (await client()).listResources(req.params);
       } catch (err) {
         if (lacksCapability(err)) {
           return { resources: [] };
         }
-        throw toMcpError(err);
+        throw err;
       }
     }),
   );
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'resources/templates/list', undefined, req.params, async () => {
+    track(deps, name, { via: 'direct', method: 'resources/templates/list', params: req.params }, async () => {
       try {
         return await (await client()).listResourceTemplates(req.params);
       } catch (err) {
         if (lacksCapability(err)) {
           return { resourceTemplates: [] };
         }
-        throw toMcpError(err);
+        throw err;
       }
     }),
   );
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'resources/read', req.params.uri, req.params, async () => {
-      try {
-        return await (await client()).readResource(req.params);
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    }),
+    track(deps, name, { via: 'direct', method: 'resources/read', target: req.params.uri, params: req.params }, () =>
+      client().then((c) => c.readResource(req.params)),
+    ),
   );
 
   server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'prompts/list', undefined, req.params, async () => {
+    track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params }, async () => {
       try {
         return await (await client()).listPrompts(req.params);
       } catch (err) {
         if (lacksCapability(err)) {
           return { prompts: [] };
         }
-        throw toMcpError(err);
+        throw err;
       }
     }),
   );
 
   server.setRequestHandler(GetPromptRequestSchema, async (req) =>
-    track(deps, name, 'direct', 'prompts/get', req.params.name, req.params, async () => {
-      try {
-        return await (await client()).getPrompt(req.params);
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    }),
+    track(deps, name, { via: 'direct', method: 'prompts/get', target: req.params.name, params: req.params }, () =>
+      client().then((c) => c.getPrompt(req.params)),
+    ),
   );
 
   return server;
@@ -193,12 +195,17 @@ export interface AggregateDeps extends ProxyDeps {
 export function createAggregateServer(deps: AggregateDeps): Server {
   const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, PROXY_CAPABILITIES);
 
-  const collect = async <T>(fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
+  const collect = async <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
     const names = deps.serverNames();
     const results = await Promise.all(
       names.map(async (name) => {
+        // Each server's contribution is recorded under its own activity log, so
+        // aggregate list calls (and per-server connect/list failures) are visible
+        // there too — not just aggregate tools/call.
         try {
-          return await fn(await deps.getClient(name), name);
+          return await track(deps, name, { via: 'aggregate', method }, () =>
+            deps.getClient(name).then((client) => fn(client, name)),
+          );
         } catch (err) {
           if (!lacksCapability(err)) {
             console.warn(`Skipping server "${name}" in aggregate: ${errorMessage(err)}`);
@@ -219,7 +226,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await collect(async (client, name) => {
+    const tools = await collect('tools/list', async (client, name) => {
       const result = await client.listTools();
       deps.recordToolCount(name, result.tools.length);
       return result.tools.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
@@ -227,21 +234,23 @@ export function createAggregateServer(deps: AggregateDeps): Server {
     return { tools };
   });
 
+  // Routing runs before track(): a name that resolves to no known server is a
+  // caller argument error with no server to attribute it to (the same shape as
+  // hitting /mcp/<unknown>, which also 404s unrecorded). Once resolved, every
+  // outcome — including downstream failures — is recorded under that server.
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { serverName, name } = route(req.params.name, 'tool');
     const params = { ...req.params, name };
-    return track(deps, serverName, 'aggregate', 'tools/call', name, params, async () => {
-      try {
-        const client = await deps.getClient(serverName);
-        return (await client.callTool(params)) as CallToolResult;
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    });
+    return track(
+      deps,
+      serverName,
+      { via: 'aggregate', method: 'tools/call', target: name, params, isFailure: toolCallFailed },
+      async () => (await (await deps.getClient(serverName)).callTool(params)) as CallToolResult,
+    );
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = await collect(async (client, name) => {
+    const resources = await collect('resources/list', async (client, name) => {
       const result = await client.listResources();
       return result.resources.map((resource) => ({
         ...resource,
@@ -259,18 +268,13 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
     const { serverName, name: uri } = route(req.params.uri, 'resource');
     const params = { ...req.params, uri };
-    return track(deps, serverName, 'aggregate', 'resources/read', uri, params, async () => {
-      try {
-        const client = await deps.getClient(serverName);
-        return await client.readResource(params);
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    });
+    return track(deps, serverName, { via: 'aggregate', method: 'resources/read', target: uri, params }, () =>
+      deps.getClient(serverName).then((client) => client.readResource(params)),
+    );
   });
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    const prompts = await collect(async (client, name) => {
+    const prompts = await collect('prompts/list', async (client, name) => {
       const result = await client.listPrompts();
       return result.prompts.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
@@ -280,14 +284,9 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   server.setRequestHandler(GetPromptRequestSchema, async (req) => {
     const { serverName, name } = route(req.params.name, 'prompt');
     const params = { ...req.params, name };
-    return track(deps, serverName, 'aggregate', 'prompts/get', name, params, async () => {
-      try {
-        const client = await deps.getClient(serverName);
-        return await client.getPrompt(params);
-      } catch (err) {
-        throw toMcpError(err);
-      }
-    });
+    return track(deps, serverName, { via: 'aggregate', method: 'prompts/get', target: name, params }, () =>
+      deps.getClient(serverName).then((client) => client.getPrompt(params)),
+    );
   });
 
   return server;

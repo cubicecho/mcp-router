@@ -3,13 +3,23 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
-import { createProxyServer, type ProxyDeps } from '../proxy.ts';
+import { type AggregateDeps, createAggregateServer, createProxyServer, type ProxyDeps } from '../proxy.ts';
 
 type RecordedActivity = ActivityEntry & { name: string };
 
 /** Link a fresh proxy Server (over the given deps) to a real in-memory MCP Client. */
 async function connectProxy(deps: ProxyDeps) {
   const server = createProxyServer('demo', deps);
+  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
+  const client = new Client({ name: 'test', version: '1.0.0' });
+  await server.connect(serverTransport);
+  await client.connect(clientTransport);
+  return { client, close: () => Promise.all([client.close(), server.close()]) };
+}
+
+/** Link a fresh aggregate Server (over the given deps) to a real in-memory MCP Client. */
+async function connectAggregate(deps: AggregateDeps) {
+  const server = createAggregateServer(deps);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test', version: '1.0.0' });
   await server.connect(serverTransport);
@@ -82,6 +92,26 @@ describe('proxy activity recording', () => {
     expect(activity[0]?.error).toContain('downstream boom');
   });
 
+  it('records a tool call that resolves with isError as a failure', async () => {
+    const { activity, record } = collector();
+    const fakeClient = {
+      callTool: async () => ({ content: [{ type: 'text', text: 'boom' }], isError: true }),
+    };
+    const deps: ProxyDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async () => fakeClient as any,
+      recordToolCount: () => {},
+      recordActivity: record,
+    };
+    const { client, close } = await connectProxy(deps);
+
+    await client.callTool({ name: 'echo', arguments: {} });
+    await close();
+
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ method: 'tools/call', target: 'echo', ok: false });
+  });
+
   it('records a capability-less list as a successful empty result', async () => {
     const { activity, record } = collector();
     const fakeClient = {
@@ -104,5 +134,30 @@ describe('proxy activity recording', () => {
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({ method: 'tools/list', ok: true });
     expect(activity[0]?.result).toEqual({ tools: [] });
+  });
+});
+
+describe('aggregate activity recording', () => {
+  it('records an aggregate tools/list under each contributing server', async () => {
+    const { activity, record } = collector();
+    const fakeClient = {
+      listTools: async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }),
+    };
+    const deps: AggregateDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async () => fakeClient as any,
+      recordToolCount: () => {},
+      recordActivity: record,
+      serverNames: () => ['alpha', 'beta'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.listTools();
+    await close();
+
+    expect(result.tools.map((t) => t.name).sort()).toEqual(['alpha__echo', 'beta__echo']);
+    expect(activity).toHaveLength(2);
+    expect(activity.map((a) => a.name).sort()).toEqual(['alpha', 'beta']);
+    expect(activity.every((a) => a.method === 'tools/list' && a.via === 'aggregate' && a.ok)).toBe(true);
   });
 });
