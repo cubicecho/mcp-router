@@ -1,5 +1,10 @@
-import type { ActivityResponse, RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
-import { createRegistryRequestSchema, installRequestSchema, updateServerRequestSchema } from '@mcp-router/shared';
+import type { RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
+import {
+  activityResponseSchema,
+  createRegistryRequestSchema,
+  installRequestSchema,
+  updateServerRequestSchema,
+} from '@mcp-router/shared';
 import { Router } from 'express';
 import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
@@ -203,8 +208,7 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.get('/servers/:name/activity', (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const body: ActivityResponse = { entries: manager.getActivity(name) };
-    res.json(body);
+    res.json(activityResponseSchema.parse({ entries: manager.getActivity(name) }));
   });
 
   router.delete('/servers/:name/activity', (req, res) => {
