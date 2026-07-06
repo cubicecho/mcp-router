@@ -5,14 +5,16 @@ import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import { formatRelativeTime } from '@/lib/format';
 import { useClearServerActivity, useServerActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
-function formatTime(iso: string): string {
+function formatAbsoluteTime(iso: string): string {
   const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleTimeString();
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
 function stringify(value: unknown): string {
@@ -51,7 +53,9 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
           {entry.via === 'aggregate' && <Badge variant="outline">aggregate</Badge>}
           <span className="text-xs text-muted-foreground tabular-nums">{entry.durationMs}ms</span>
-          <span className="text-xs text-muted-foreground tabular-nums">{formatTime(entry.at)}</span>
+          <span className="text-xs text-muted-foreground tabular-nums" title={formatAbsoluteTime(entry.at)}>
+            {formatRelativeTime(entry.at)}
+          </span>
         </span>
       </button>
       {open && hasDetail && (
@@ -83,8 +87,14 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
 export function ActivityCard({ name }: { name: string }) {
   const { data, isPending, error, refetch, isRefetching } = useServerActivity(name);
   const clear = useClearServerActivity();
+  const [outcome, setOutcome] = useState<'all' | 'ok' | 'error'>('all');
+  const [method, setMethod] = useState('all');
 
   const entries = data?.entries ?? [];
+  const methods = [...new Set(entries.map((entry) => entry.method))].sort();
+  const filtered = entries.filter(
+    (entry) => (outcome === 'all' || (outcome === 'ok') === entry.ok) && (method === 'all' || entry.method === method),
+  );
 
   const handleClear = () => {
     clear.mutate(name, {
@@ -131,11 +141,42 @@ export function ActivityCard({ name }: { name: string }) {
           </p>
         )}
         {entries.length > 0 && (
-          <ul className="flex flex-col divide-y">
-            {entries.map((entry) => (
-              <ActivityRow key={entry.id} entry={entry} />
-            ))}
-          </ul>
+          <>
+            <div className="mb-3 flex flex-wrap gap-2">
+              <Select value={outcome} onValueChange={(value) => setOutcome(value as typeof outcome)}>
+                <SelectTrigger size="sm" className="w-28" aria-label="Filter by outcome">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All</SelectItem>
+                  <SelectItem value="ok">OK</SelectItem>
+                  <SelectItem value="error">Errors</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={method} onValueChange={setMethod}>
+                <SelectTrigger size="sm" className="w-52" aria-label="Filter by method">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All methods</SelectItem>
+                  {methods.map((value) => (
+                    <SelectItem key={value} value={value}>
+                      {value}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            {filtered.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No entries match the current filters.</p>
+            ) : (
+              <ul className="flex flex-col divide-y">
+                {filtered.map((entry) => (
+                  <ActivityRow key={entry.id} entry={entry} />
+                ))}
+              </ul>
+            )}
+          </>
         )}
       </CardContent>
     </Card>
