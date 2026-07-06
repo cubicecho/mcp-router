@@ -67,6 +67,13 @@ interface TrackContext {
   method: string;
   target?: string;
   params?: unknown;
+  /**
+   * Skip recording successes. List ops arrive on every client (re)connect and
+   * list_changed, so recording their routine successes would flood the bounded
+   * per-server log and evict the targeted tool/resource/prompt calls the
+   * Activity tab exists to show. Failures always record.
+   */
+  failuresOnly?: boolean;
 }
 
 /**
@@ -82,6 +89,9 @@ async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: (
     // via `isError` on the result — so success/failure can't be inferred from
     // throw-vs-return alone. Derived here, once, so no call site can forget it.
     const failed = ctx.method === 'tools/call' && toolCallFailed(result);
+    if (ctx.failuresOnly && !failed) {
+      return result;
+    }
     deps.recordActivity(name, {
       at: new Date().toISOString(),
       via: ctx.via,
@@ -115,7 +125,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
   const client = () => deps.getClient(name);
 
   server.setRequestHandler(ListToolsRequestSchema, async (req) =>
-    track(deps, name, { via: 'direct', method: 'tools/list', params: req.params }, async () => {
+    track(deps, name, { via: 'direct', method: 'tools/list', params: req.params, failuresOnly: true }, async () => {
       try {
         const result = await (await client()).listTools(req.params);
         deps.recordToolCount(name, result.tools.length);
@@ -139,7 +149,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
   );
 
   server.setRequestHandler(ListResourcesRequestSchema, async (req) =>
-    track(deps, name, { via: 'direct', method: 'resources/list', params: req.params }, async () => {
+    track(deps, name, { via: 'direct', method: 'resources/list', params: req.params, failuresOnly: true }, async () => {
       try {
         return await (await client()).listResources(req.params);
       } catch (err) {
@@ -152,16 +162,21 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
   );
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) =>
-    track(deps, name, { via: 'direct', method: 'resources/templates/list', params: req.params }, async () => {
-      try {
-        return await (await client()).listResourceTemplates(req.params);
-      } catch (err) {
-        if (lacksCapability(err)) {
-          return { resourceTemplates: [] };
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'resources/templates/list', params: req.params, failuresOnly: true },
+      async () => {
+        try {
+          return await (await client()).listResourceTemplates(req.params);
+        } catch (err) {
+          if (lacksCapability(err)) {
+            return { resourceTemplates: [] };
+          }
+          throw err;
         }
-        throw err;
-      }
-    }),
+      },
+    ),
   );
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
@@ -171,7 +186,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
   );
 
   server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
-    track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params }, async () => {
+    track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params, failuresOnly: true }, async () => {
       try {
         return await (await client()).listPrompts(req.params);
       } catch (err) {
@@ -207,19 +222,30 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, PROXY_CAPABILITIES);
 
   // Aggregate list ops fan out to every server on each client (re)connect and
-  // list_changed, so they are deliberately NOT recorded to activity: doing so
-  // would flood each server's bounded log with routine, params-less list noise
-  // and evict the routed tool/resource/prompt calls the Activity tab exists to
-  // show. Only the routed aggregate ops below (which target one server) record.
-  const collect = async <T>(fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
+  // list_changed; like the direct list handlers, routine successes are NOT
+  // recorded to activity (they would flood each server's bounded log and evict
+  // the targeted calls the Activity tab exists to show), but a server that
+  // errors during the fan-out is — that failure is exactly the "why doesn't my
+  // server show up in /mcp" case the tab is for. Capability-less servers are
+  // skipped silently, as on the direct path.
+  const collect = async <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
     const names = deps.serverNames();
     const results = await Promise.all(
       names.map(async (name) => {
+        const startedAt = Date.now();
         try {
           return await fn(await deps.getClient(name), name);
         } catch (err) {
           if (!lacksCapability(err)) {
             console.warn(`Skipping server "${name}" in aggregate: ${errorMessage(err)}`);
+            deps.recordActivity(name, {
+              at: new Date().toISOString(),
+              via: 'aggregate',
+              method,
+              ok: false,
+              durationMs: Date.now() - startedAt,
+              error: errorMessage(err),
+            });
           }
           return [];
         }
@@ -237,7 +263,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await collect(async (client, name) => {
+    const tools = await collect('tools/list', async (client, name) => {
       const result = await client.listTools();
       deps.recordToolCount(name, result.tools.length);
       return result.tools.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
@@ -261,7 +287,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   });
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = await collect(async (client, name) => {
+    const resources = await collect('resources/list', async (client, name) => {
       const result = await client.listResources();
       return result.resources.map((resource) => ({
         ...resource,
@@ -285,7 +311,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   });
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    const prompts = await collect(async (client, name) => {
+    const prompts = await collect('prompts/list', async (client, name) => {
       const result = await client.listPrompts();
       return result.prompts.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });

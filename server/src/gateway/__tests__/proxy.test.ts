@@ -36,7 +36,7 @@ function collector() {
 }
 
 describe('proxy activity recording', () => {
-  it('records successful list and call operations', async () => {
+  it('records successful calls but not routine list successes', async () => {
     const { activity, record } = collector();
     const fakeClient = {
       listTools: async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }),
@@ -56,17 +56,39 @@ describe('proxy activity recording', () => {
     await client.callTool({ name: 'echo', arguments: { msg: 'hi' } });
     await close();
 
-    expect(activity).toHaveLength(2);
-    expect(activity[0]).toMatchObject({ name: 'demo', method: 'tools/list', via: 'direct', ok: true });
-    expect(activity[1]).toMatchObject({
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({
       name: 'demo',
       method: 'tools/call',
       target: 'echo',
       via: 'direct',
       ok: true,
     });
-    expect(activity[1]?.result).toMatchObject({ content: [{ type: 'text', text: 'echo:hi' }] });
-    expect(typeof activity[1]?.durationMs).toBe('number');
+    expect(activity[0]?.result).toMatchObject({ content: [{ type: 'text', text: 'echo:hi' }] });
+    expect(typeof activity[0]?.durationMs).toBe('number');
+  });
+
+  it('records a failed direct list', async () => {
+    const { activity, record } = collector();
+    const fakeClient = {
+      listTools: async () => {
+        throw new Error('connection reset');
+      },
+    };
+    const deps: ProxyDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async () => fakeClient as any,
+      recordToolCount: () => {},
+      recordActivity: record,
+    };
+    const { client, close } = await connectProxy(deps);
+
+    await expect(client.listTools()).rejects.toThrow();
+    await close();
+
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ method: 'tools/list', ok: false });
+    expect(activity[0]?.error).toContain('connection reset');
   });
 
   it('records a failed tool call with its error message', async () => {
@@ -115,7 +137,7 @@ describe('proxy activity recording', () => {
     expect(activity[0]?.error).toContain('boom');
   });
 
-  it('records a capability-less list as a successful empty result', async () => {
+  it('serves a capability-less list as an empty result without recording it', async () => {
     const { activity, record } = collector();
     const fakeClient = {
       listTools: async () => {
@@ -134,9 +156,7 @@ describe('proxy activity recording', () => {
     await close();
 
     expect(result.tools).toEqual([]);
-    expect(activity).toHaveLength(1);
-    expect(activity[0]).toMatchObject({ method: 'tools/list', ok: true });
-    expect(activity[0]?.result).toEqual({ tools: [] });
+    expect(activity).toEqual([]);
   });
 });
 
@@ -188,5 +208,33 @@ describe('aggregate activity recording', () => {
 
     expect(result.tools.map((t) => t.name).sort()).toEqual(['alpha__echo', 'beta__echo']);
     expect(activity).toEqual([]);
+  });
+
+  it('records a server that errors during the aggregate list fan-out, and still serves the rest', async () => {
+    const { activity, record } = collector();
+    const goodClient = {
+      listTools: async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }),
+    };
+    const badClient = {
+      listTools: async () => {
+        throw new Error('connect ECONNREFUSED');
+      },
+    };
+    const deps: AggregateDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async (name: string) => (name === 'bad' ? badClient : goodClient) as any,
+      recordToolCount: () => {},
+      recordActivity: record,
+      serverNames: () => ['bad', 'good'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.listTools();
+    await close();
+
+    expect(result.tools.map((t) => t.name)).toEqual(['good__echo']);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ name: 'bad', method: 'tools/list', via: 'aggregate', ok: false });
+    expect(activity[0]?.error).toContain('ECONNREFUSED');
   });
 });
