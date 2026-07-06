@@ -40,7 +40,7 @@ function toMcpError(err: unknown): McpError {
 }
 
 /** A tool call that resolves with `isError: true` is a downstream failure, not a success. */
-function toolCallFailed(result: unknown): boolean {
+export function toolCallFailed(result: unknown): boolean {
   return Boolean((result as CallToolResult | undefined)?.isError);
 }
 
@@ -70,7 +70,7 @@ async function allPages<T>(
 }
 
 /** Best-effort error message for a tool call that resolved with `isError: true`. */
-function toolErrorText(result: unknown): string {
+export function toolErrorText(result: unknown): string {
   const content = (result as CallToolResult).content;
   const text = Array.isArray(content)
     ? content

@@ -136,6 +136,20 @@ describe('REST API', () => {
     expect((await authed(request(app).get('/api/servers/nope/activity'))).status).toBe(404);
   });
 
+  it('validates tool-call requests before connecting', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    expect((await authed(request(app).post('/api/servers/nope/tools/call')).send({ name: 't' })).status).toBe(404);
+
+    const bad = await authed(request(app).post('/api/servers/hosted/tools/call')).send({});
+    expect(bad.status).toBe(400);
+    expect(bad.body.error).toBe('Validation failed');
+  });
+
   it('404s for unknown servers and registries', async () => {
     expect((await authed(request(app).get('/api/servers/nope'))).status).toBe(404);
     expect((await authed(request(app).get('/api/registries/nope/servers'))).status).toBe(404);

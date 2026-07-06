@@ -9,6 +9,8 @@ import type {
   RegistryServerEntry,
   RouterStatus,
   ServerStatus,
+  ToolCallRequest,
+  ToolCallResponse,
   UpdateServerRequest,
 } from '@mcp-router/shared';
 import { getToken, requireAuth } from './auth';
@@ -108,6 +110,7 @@ export function restartServer(name: string): Promise<ServerStatus> {
 export interface ServerTool {
   name: string;
   description?: string;
+  inputSchema?: unknown;
 }
 
 export interface ServerToolsResponse {
@@ -116,6 +119,10 @@ export interface ServerToolsResponse {
 
 export function getServerTools(name: string): Promise<ServerToolsResponse> {
   return request(`/api/servers/${encodeURIComponent(name)}/tools`);
+}
+
+export function callServerTool(name: string, body: ToolCallRequest): Promise<ToolCallResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/tools/call`, { method: 'POST', body });
 }
 
 export function getServerActivity(name: string): Promise<ActivityResponse> {

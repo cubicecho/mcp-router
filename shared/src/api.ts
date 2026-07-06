@@ -58,8 +58,8 @@ export const activityEntrySchema = z.object({
   id: z.number(),
   /** ISO timestamp of when the call completed. */
   at: z.string(),
-  /** Which endpoint the call arrived on. */
-  via: z.enum(['direct', 'aggregate']),
+  /** Which endpoint the call arrived on ('ui' = run from the web UI's tool runner). */
+  via: z.enum(['direct', 'aggregate', 'ui']),
   /** JSON-RPC method, e.g. 'tools/call', 'tools/list', 'resources/read'. */
   method: z.string(),
   /** Human-friendly target of the call (tool name, resource uri, prompt name) when applicable. */
@@ -81,6 +81,25 @@ export const activityResponseSchema = z.object({
   entries: z.array(activityEntrySchema),
 });
 export type ActivityResponse = z.infer<typeof activityResponseSchema>;
+
+// --- POST /api/servers/:name/tools/call ---
+
+/** Run one tool of a downstream server from the UI. */
+export const toolCallRequestSchema = z.object({
+  name: z.string().min(1),
+  arguments: z.record(z.unknown()).default({}),
+});
+export type ToolCallRequest = z.infer<typeof toolCallRequestSchema>;
+
+/** MCP CallToolResult, loosely typed — content shape is tool-defined. */
+export const toolCallResponseSchema = z
+  .object({
+    content: z.array(z.unknown()).optional(),
+    structuredContent: z.unknown().optional(),
+    isError: z.boolean().optional(),
+  })
+  .passthrough();
+export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
 // --- POST /api/registries ---
 

@@ -130,6 +130,15 @@ export function useTestServerConnection() {
   });
 }
 
+/** Run one tool from the UI; the call also lands in the server's activity log. */
+export function useCallServerTool(name: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.callServerTool>[1]) => api.callServerTool(name, body),
+    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+  });
+}
+
 export function useClearServerActivity() {
   const invalidate = useInvalidate();
   return useMutation({

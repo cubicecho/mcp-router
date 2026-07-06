@@ -3,13 +3,15 @@ import {
   activityResponseSchema,
   createRegistryRequestSchema,
   installRequestSchema,
+  toolCallRequestSchema,
   updateServerRequestSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
 import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
-import { HttpError } from '../errors.ts';
+import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
+import { toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
 import type { RegistryClient } from '../registry/client.ts';
 import { SERVER_VERSION } from '../version.ts';
@@ -203,6 +205,53 @@ export function createApiRouter(deps: ApiDeps): Router {
     const result = await client.listTools();
     manager.recordToolCount(name, result.tools.length);
     res.json({ tools: result.tools });
+  });
+
+  // Run one tool from the UI. Recorded to the activity log like proxied calls,
+  // under via 'ui'.
+  router.post('/servers/:name/tools/call', async (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    const body = toolCallRequestSchema.parse(req.body);
+    let client: Awaited<ReturnType<GatewayManager['getClient']>>;
+    try {
+      client = await manager.getClient(name);
+    } catch (cause) {
+      if (cause instanceof HttpError && cause.status === 404) {
+        throw cause;
+      }
+      const detail = cause instanceof HttpError ? (cause.detail ?? cause.message) : String(cause);
+      throw new HttpError(502, `Failed to connect to server "${name}"`, detail, { cause });
+    }
+    const startedAt = Date.now();
+    try {
+      const result = await client.callTool({ name: body.name, arguments: body.arguments });
+      const failed = toolCallFailed(result);
+      manager.recordActivity(name, {
+        at: new Date().toISOString(),
+        via: 'ui',
+        method: 'tools/call',
+        target: body.name,
+        ok: !failed,
+        durationMs: Date.now() - startedAt,
+        params: body,
+        result,
+        error: failed ? toolErrorText(result) : undefined,
+      });
+      res.json(result);
+    } catch (cause) {
+      manager.recordActivity(name, {
+        at: new Date().toISOString(),
+        via: 'ui',
+        method: 'tools/call',
+        target: body.name,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        params: body,
+        error: errorMessage(cause),
+      });
+      throw new HttpError(502, `Tool "${body.name}" failed`, errorMessage(cause), { cause });
+    }
   });
 
   router.get('/servers/:name/activity', (req, res) => {

@@ -51,7 +51,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         {entry.target && <span className="truncate font-mono text-xs text-muted-foreground">{entry.target}</span>}
         <span className="ml-auto flex shrink-0 items-center gap-2">
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
-          {entry.via === 'aggregate' && <Badge variant="outline">aggregate</Badge>}
+          {entry.via !== 'direct' && <Badge variant="outline">{entry.via}</Badge>}
           <span className="text-xs text-muted-foreground tabular-nums">{entry.durationMs}ms</span>
           <span className="text-xs text-muted-foreground tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
