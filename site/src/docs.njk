@@ -15,6 +15,7 @@ permalink: /docs/
           <a href="#settings">settings.json</a>
           <a href="#registries">registries.json</a>
           <a href="#servers">servers/&lt;name&gt;.json</a>
+          <a href="#projects">projects/&lt;slug&gt;.json</a>
           <a href="#api">REST API</a>
           <a href="#mcp">MCP endpoints</a>
           <a href="#security">Security notes</a>
@@ -77,6 +78,30 @@ permalink: /docs/
           <code>"source": { "type": "remote" }</code> with a <code>streamable-http</code> transport to proxy a
           remote server without installing anything.</p>
 
+        <h3 id="projects">projects/&lt;slug&gt;.json</h3>
+        <p>A <strong>project</strong> is a custom aggregate: it exposes a chosen subset of servers at its own
+          <code>/mcp/p/&lt;slug&gt;</code> endpoint. The <code>slug</code> is derived from the name (and doubles as
+          the filename); each member may override the base server's <code>env</code>, <code>args</code>, or
+          <code>headers</code> for this project only. Each member runs as an isolated downstream instance, so a
+          project can run a server that's globally disabled — and its overrides never touch the base server.</p>
+        <pre class="code"><code>{
+  "name": "Coding assistant",
+  "slug": "coding-assistant",
+  "enabled": true,               <span class="cmt">// false = the /mcp/p/&lt;slug&gt; endpoint 404s</span>
+  "description": "GitHub + local files for a code client.",
+  "members": {
+    "github": { "enabled": true },
+    "filesystem": {
+      "enabled": true,
+      "args": ["/data/servers/filesystem", "/srv/repo"],  <span class="cmt">// replaces the base args</span>
+      "env": { "READ_ONLY": "1" }                          <span class="cmt">// merged over base env</span>
+    }
+  }
+}</code></pre>
+        <p>The effective enabled state of a member is <code>project.enabled &amp;&amp; member.enabled</code> — the base
+          server's own <code>enabled</code> flag is ignored inside a project. Members referencing a server that
+          doesn't exist are skipped.</p>
+
         <h2 id="api">REST API</h2>
         <p>Management API under <code>/api</code>, bearer auth, JSON in/out. Errors are non-2xx with
           <code>{ "error": "...", "detail": "..." }</code>.</p>
@@ -94,6 +119,10 @@ permalink: /docs/
               <tr><td><code>DELETE /api/servers/:name</code></td><td>Stop, delete config, remove install dir</td></tr>
               <tr><td><code>POST /api/servers/:name/restart</code></td><td>Kill and respawn (after env edits)</td></tr>
               <tr><td><code>GET /api/servers/:name/tools</code></td><td>Connect and list downstream tools</td></tr>
+              <tr><td><code>GET /api/projects</code></td><td>All projects with their endpoint paths</td></tr>
+              <tr><td><code>POST /api/projects</code></td><td>Create a project (slug auto-derived from the name)</td></tr>
+              <tr><td><code>PATCH /api/projects/:slug</code></td><td>Update members / overrides / enabled (renaming re-slugs)</td></tr>
+              <tr><td><code>DELETE /api/projects/:slug</code></td><td>Remove a project (servers untouched)</td></tr>
               <tr><td><code>POST /api/reload</code></td><td>Re-read config and reconcile processes</td></tr>
             </tbody>
           </table>
@@ -106,6 +135,7 @@ permalink: /docs/
             <tbody>
               <tr><td><code>POST/GET/DELETE /mcp/&lt;name&gt;</code></td><td>Proxy 1:1 to that server</td></tr>
               <tr><td><code>POST/GET/DELETE /mcp</code></td><td>Aggregate of all enabled servers, <code>&lt;server&gt;__</code> prefix</td></tr>
+              <tr><td><code>POST/GET/DELETE /mcp/p/&lt;slug&gt;</code></td><td>A project's custom aggregate — same <code>&lt;server&gt;__</code> prefix</td></tr>
             </tbody>
           </table>
         </div>

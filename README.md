@@ -10,6 +10,9 @@ over streamable HTTP:
 - **One aggregate endpoint** — `http://host:3000/mcp` merges all enabled
   servers, with tool names namespaced as `<server>__<tool>` (resources and
   prompts likewise); calls are routed back to the owning server
+- **Projects (custom aggregates)** — group a chosen subset of servers at their
+  own `http://host:3000/mcp/p/<slug>` endpoint, with optional per-project
+  `env`/`args`/`headers` overrides; give each client exactly the tools it needs
 
 Point one MCP client at the router instead of configuring N servers in every
 client. Manage everything through the built-in React web UI, or hand-edit the
@@ -185,6 +188,37 @@ A remote server that is merely proxied (nothing installed):
 }
 ```
 
+### `projects/<slug>.json` — one file per project (custom aggregate)
+
+A **project** exposes a chosen subset of servers as its own aggregate at
+`/mcp/p/<slug>`. The `slug` doubles as the filename and is derived from the
+name; each member may override the base server's `env`, `args`, or `headers`
+for that project only. Each member runs as an isolated downstream instance, so
+a project can run a server that's globally disabled, and its overrides never
+touch the base server.
+
+```jsonc
+{
+  "name": "Coding assistant",
+  "slug": "coding-assistant",               // matches the filename; auto-derived
+  "enabled": true,                          // false → /mcp/p/<slug> returns 404
+  "description": "GitHub + local files for a code client.",  // optional
+  "members": {
+    "github": { "enabled": true },
+    "filesystem": {
+      "enabled": true,
+      "args": ["/data/servers/filesystem", "/srv/repo"],  // replaces base args
+      "env": { "READ_ONLY": "1" }                          // merged over base env
+    }
+  }
+}
+```
+
+A member's effective enabled state is `project.enabled && member.enabled` — the
+base server's own `enabled` flag is ignored inside a project. Members that
+reference a server which no longer exists are skipped. Manage projects from the
+**Projects** page in the web UI, or hand-edit these files and reload.
+
 ## Connecting MCP clients
 
 All MCP endpoints speak streamable HTTP and require the bearer token (unless
@@ -205,6 +239,13 @@ claude mcp add --transport http github http://localhost:3000/mcp/github \
   --header "Authorization: Bearer <token>"
 ```
 
+Or a project — a custom aggregate of just the servers that client should see:
+
+```bash
+claude mcp add --transport http coding http://localhost:3000/mcp/p/coding-assistant \
+  --header "Authorization: Bearer <token>"
+```
+
 **Other clients** — any client that supports streamable HTTP works; the usual
 JSON config shape:
 
@@ -222,7 +263,8 @@ JSON config shape:
 }
 ```
 
-Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server.
+Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server,
+or `http://localhost:3000/mcp/p/<slug>` for a project's custom aggregate.
 
 ## API reference
 
@@ -245,6 +287,11 @@ with `{ "error": "...", "detail": "..." }`.
 | `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
 | `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
 | `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
+| `GET /api/projects` | All projects with their endpoint paths |
+| `POST /api/projects` | Create a project (slug auto-derived from the name) |
+| `GET /api/projects/:slug` | Single project |
+| `PATCH /api/projects/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
+| `DELETE /api/projects/:slug` | Remove a project (underlying servers untouched) |
 | `POST /api/reload` | Re-read all config from disk and reconcile running processes |
 
 MCP endpoints (streamable HTTP):
@@ -253,6 +300,7 @@ MCP endpoints (streamable HTTP):
 | --- | --- |
 | `POST/GET/DELETE /mcp/<name>` | Proxy 1:1 to that server (tools, resources, prompts) |
 | `POST/GET/DELETE /mcp` | Aggregate of all enabled servers, `<server>__` name prefix |
+| `POST/GET/DELETE /mcp/p/<slug>` | A project's custom aggregate — same `<server>__` prefix, over its members only |
 
 ## Security notes
 

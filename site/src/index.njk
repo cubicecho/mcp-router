@@ -49,6 +49,13 @@ title: false
           merges every enabled server with <code>&lt;server&gt;__&lt;tool&gt;</code> namespacing.</p>
       </div>
       <div class="feature">
+        <div class="feature-icon">🗂️</div>
+        <h3>Custom aggregates</h3>
+        <p>Group a chosen subset of servers into a <strong>project</strong> at its own
+          <code>/mcp/p/&lt;slug&gt;</code> URL — with optional per-project env, args, and header overrides. Each
+          client gets exactly the tools it needs.</p>
+      </div>
+      <div class="feature">
         <div class="feature-icon">💤</div>
         <h3>Lazy &amp; warm</h3>
         <p>stdio servers spawn on first request, stay warm, and shut down after an idle timeout (default 5
@@ -155,6 +162,16 @@ title: false
           or a remote URL — nothing downloaded from a registry.</figcaption>
       </figure>
     </div>
+
+    <figure class="shot shot-wide">
+      <div class="browser">
+        <div class="browser-bar"><span></span><span></span><span></span><em>/projects</em></div>
+        <img class="zoomable" src="{{ '/assets/screenshots/projects.png' | url }}" alt="Projects page — custom aggregates, each exposing a chosen subset of servers at its own /mcp/p/<slug> URL" loading="lazy" width="1440" height="620" />
+      </div>
+      <figcaption><strong>Projects: aggregates you shape.</strong> Bundle a chosen subset of servers into a
+        custom aggregate at its own <code>/mcp/p/&lt;slug&gt;</code> URL — with per-project env, args, and header
+        overrides, independent of each server's global state. Give every client exactly the tools it should see.</figcaption>
+    </figure>
   </div>
 </section>
 
@@ -188,6 +205,10 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
 
     <p>Or expose a single server, un-namespaced:</p>
     <pre class="code"><code>claude mcp add --transport http github http://localhost:3000/mcp/github \
+  --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+
+    <p>Or a <strong>project</strong> — a custom aggregate of just the servers that client should see:</p>
+    <pre class="code"><code>claude mcp add --transport http coding http://localhost:3000/mcp/p/coding-assistant \
   --header "Authorization: Bearer &lt;token&gt;"</code></pre>
 
     <p>Any client that speaks streamable HTTP works with the usual JSON config:</p>

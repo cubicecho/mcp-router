@@ -2,14 +2,16 @@
 
 An MCP gateway/router: install MCP servers from registries or npm, run them
 locally (stdio) or point at remote ones (streamable HTTP), and re-expose every
-one of them over streamable HTTP — per-server routes plus one aggregate
-endpoint. Managed through a React web UI and hand-editable flat config files.
+one of them over streamable HTTP — per-server routes, one merged aggregate, and
+per-**project** custom aggregates. Managed through a React web UI and
+hand-editable flat config files.
 
 ## Decisions (locked)
 
 | Question | Decision |
 | --- | --- |
-| Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) |
+| Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-project custom aggregates `/mcp/p/<slug>` |
+| Projects | Custom aggregates: a named subset of servers at `/mcp/p/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers` overrides; each member runs as an isolated downstream instance (key `p:<slug>:<server>`), so a project scope is fully independent of a server's global enabled state; effective enabled = `project.enabled && member.enabled` |
 | Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
 | Secrets | Plaintext values in the JSON config files, written with mode 0600 |
@@ -24,7 +26,7 @@ endpoint. Managed through a React web UI and hand-editable flat config files.
 ```
 mcp-router/
 ├── shared/          # zod schemas + types (DONE — the contract, see shared/src/)
-│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json schemas
+│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json / projects/<slug>.json schemas
 │   ├── registry.ts  #   MCP registry API response schemas
 │   └── api.ts       #   REST DTOs (/api/*)
 ├── server/          # Express + MCP SDK backend        [Track A]
@@ -43,6 +45,11 @@ mcp-router/
   from the registry), idleTimeoutMs. npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
   (uv resolves/caches on spawn, no install dir)
+- `projects/<slug>.json` — one file per project (`projectConfigSchema`): name,
+  slug (matches the filename), enabled, description, `members` — a map of server
+  name → `{ enabled, env?, args?, headers? }`. Overrides merge over the base
+  server config (`env`/`headers` shallow-merged, `args` replaced) for that
+  project's instance only; members whose server no longer exists are skipped
 
 ### Management REST API (`/api`, bearer auth)
 
@@ -60,6 +67,11 @@ mcp-router/
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
 | `GET /api/servers/:name/tools` | connect (spawning if needed) and list downstream tools |
 | `GET /api/servers/:name/activity` / `DELETE` | in-memory log of proxied calls (`ActivityResponse`) for the Activity tab; DELETE clears it |
+| `GET /api/projects` | `ProjectStatus[]` (config + derived endpoint `path`) |
+| `POST /api/projects` | create (`CreateProjectRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
+| `GET /api/projects/:slug` | single `ProjectStatus` |
+| `PATCH /api/projects/:slug` | `UpdateProjectRequest` (name, enabled, description, members); a name change re-derives the slug and moves the file/endpoint |
+| `DELETE /api/projects/:slug` | delete the project file (underlying servers untouched) |
 | `POST /api/reload` | re-read all config from disk, reconcile running processes |
 
 Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas.
@@ -71,7 +83,11 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tool names
   prefixed `<server>__`; resources/prompts likewise namespaced; `tools/call`
   strips the prefix and routes to the owning downstream client
-- Disabled servers 404. Auth failures 401 before any MCP handling.
+- `POST/GET/DELETE /mcp/p/<slug>` — a project's custom aggregate: same
+  `<server>__` namespacing, but only over that project's enabled members, each
+  served by its own isolated (override-applied) downstream instance
+- Disabled servers 404. Disabled or unknown projects 404. Auth failures 401
+  before any MCP handling.
 
 ---
 
@@ -117,6 +133,28 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - [x] C1 `Dockerfile`: multi-stage — `npm ci` + build shared/server/app → slim `node:22` runtime with `server/dist`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `VOLUME /data`, `EXPOSE 3000`; needs npm available at runtime (installer shells out to it)
 - [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/api/status`
 - [x] C3 `README.md`: what it is, quickstart (docker compose + bare node), config file reference with examples, API + MCP endpoint reference, how to point Claude/other clients at `/mcp` and `/mcp/<name>`, security notes (plaintext secrets, bearer token)
+
+### Phase 3 — Projects (custom aggregates)
+
+- [x] P1 Shared contract: `projectMemberSchema` / `projectConfigSchema` +
+  `slugify()` in `shared/src/config.ts`; `projectStatusSchema` (adds `path`),
+  `createProjectRequestSchema`, `updateProjectRequestSchema` in `shared/src/api.ts`
+- [x] P2 Config store: load/validate/write `projects/<slug>.json` (keyed by
+  slug, warn on slug/filename mismatch); `getProjects`/`getProject`/`saveProject`/
+  `deleteProject`; projects included in the reload snapshot
+- [x] P3 Gateway manager: instances keyed by explicit key (base = name,
+  project = `p:<slug>:<server>`); `resolveMemberConfig` merges overrides;
+  `reconcile(configs, projects)` builds project instances; `getClientForProject`;
+  base-only views (`statusAll`/`enabledNames`/`runningCount`) exclude project keys
+- [x] P4 Project MCP endpoint `/mcp/p/:slug` (reuses `createAggregateServer` with
+  project-scoped `getClient`/`serverNames`); 404 on disabled/unknown project
+- [x] P5 REST API: `/api/projects` CRUD (auto-slug, collision + member-exists
+  validation, rename-re-slugs); every `reconcile` call now passes projects
+- [x] P6 Web UI: Projects nav item + `/projects` list route (URL + copy, server
+  count, enabled badge, edit/delete); `ProjectDialog` (name→slug preview, member
+  toggles, per-member override editors, ConnectCard in edit mode)
+- [x] P7 Tests: manager project-instance behavior (overrides, isolation from
+  global disable, drop-on-remove); API auto-slug/validation/rename/gating
 
 ### Phase 2 — Integration (after tracks merge)
 
