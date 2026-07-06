@@ -1,8 +1,10 @@
 import { Link } from '@tanstack/react-router';
-import { CompassIcon, LibraryIcon, RouteIcon, ServerIcon, SettingsIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { CompassIcon, LibraryIcon, MoonIcon, RouteIcon, ServerIcon, SettingsIcon, SunIcon } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
+import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
 import { useRouterStatus } from '@/lib/queries';
+import { isDark, setDark } from '@/lib/theme';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Servers', icon: ServerIcon },
@@ -10,6 +12,26 @@ const NAV_ITEMS = [
   { to: '/registries', label: 'Registries', icon: LibraryIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ] as const;
+
+function ThemeToggle() {
+  const [dark, setDarkState] = useState(isDark);
+
+  const toggle = () => {
+    setDark(!dark);
+    setDarkState(!dark);
+  };
+
+  return (
+    <Button
+      variant="ghost"
+      size="icon-sm"
+      aria-label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
+      onClick={toggle}
+    >
+      {dark ? <SunIcon /> : <MoonIcon />}
+    </Button>
+  );
+}
 
 function HeaderStatus() {
   const { data, isPending } = useRouterStatus();
@@ -52,6 +74,9 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
+        <div className="mt-auto flex items-center justify-end px-4 py-3">
+          <ThemeToggle />
+        </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex h-14 items-center justify-end border-b px-6">
