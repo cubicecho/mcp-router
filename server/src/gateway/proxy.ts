@@ -157,6 +157,8 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
         return result;
       } catch (err) {
         if (lacksCapability(err)) {
+          // Definitive "has no tools" — clear any count from a previous incarnation.
+          deps.recordToolCount(name, 0);
           return { tools: [] };
         }
         throw err; // track() converts to an MCP error
@@ -289,12 +291,21 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await collect('tools/list', async (client, name) => {
-      const all = await allPages(async (cursor) => {
-        const result = await client.listTools(cursor === undefined ? undefined : { cursor });
-        return { items: result.tools, nextCursor: result.nextCursor };
-      });
-      deps.recordToolCount(name, all.length);
-      return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
+      try {
+        const all = await allPages(async (cursor) => {
+          const result = await client.listTools(cursor === undefined ? undefined : { cursor });
+          return { items: result.tools, nextCursor: result.nextCursor };
+        });
+        deps.recordToolCount(name, all.length);
+        return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
+      } catch (err) {
+        if (lacksCapability(err)) {
+          // Definitive "has no tools" — clear any count from a previous incarnation.
+          deps.recordToolCount(name, 0);
+          return [];
+        }
+        throw err; // collect() skips the server and records the failure
+      }
     });
     return { tools };
   });

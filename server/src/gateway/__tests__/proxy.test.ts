@@ -156,8 +156,9 @@ describe('proxy activity recording', () => {
     expect(activity[0]?.error).toContain('boom');
   });
 
-  it('serves a capability-less list as an empty result without recording it', async () => {
+  it('serves a capability-less list as an empty result, resetting the tool count, without recording it', async () => {
     const { activity, record } = collector();
+    const toolCounts: Record<string, number> = {};
     const fakeClient = {
       listTools: async () => {
         throw new McpError(ErrorCode.MethodNotFound, 'no tools here');
@@ -166,7 +167,9 @@ describe('proxy activity recording', () => {
     const deps: ProxyDeps = {
       // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
       getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
+      recordToolCount: (name, count) => {
+        toolCounts[name] = count;
+      },
       recordActivity: record,
     };
     const { client, close } = await connectProxy(deps);
@@ -175,6 +178,7 @@ describe('proxy activity recording', () => {
     await close();
 
     expect(result.tools).toEqual([]);
+    expect(toolCounts.demo).toBe(0);
     expect(activity).toEqual([]);
   });
 });
