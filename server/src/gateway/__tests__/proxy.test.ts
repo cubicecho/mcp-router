@@ -105,11 +105,14 @@ describe('proxy activity recording', () => {
     };
     const { client, close } = await connectProxy(deps);
 
-    await client.callTool({ name: 'echo', arguments: {} });
+    const result = await client.callTool({ name: 'echo', arguments: {} });
     await close();
 
+    // The isError result must still reach the client unmodified.
+    expect(result).toMatchObject({ isError: true, content: [{ type: 'text', text: 'boom' }] });
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({ method: 'tools/call', target: 'echo', ok: false });
+    expect(activity[0]?.error).toContain('boom');
   });
 
   it('records a capability-less list as a successful empty result', async () => {
@@ -163,6 +166,7 @@ describe('aggregate activity recording', () => {
       via: 'aggregate',
       ok: false,
     });
+    expect(activity[0]?.error).toContain('nope');
   });
 
   it('does not record routine aggregate list fan-outs', async () => {

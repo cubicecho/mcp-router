@@ -44,6 +44,18 @@ function toolCallFailed(result: unknown): boolean {
   return Boolean((result as CallToolResult | undefined)?.isError);
 }
 
+/** Best-effort error message for a tool call that resolved with `isError: true`. */
+function toolErrorText(result: unknown): string {
+  const content = (result as CallToolResult).content;
+  const text = Array.isArray(content)
+    ? content
+        .filter((item) => item.type === 'text')
+        .map((item) => item.text)
+        .join('\n')
+    : '';
+  return text || 'Tool reported an error (isError: true)';
+}
+
 export interface ProxyDeps {
   getClient: (name: string) => Promise<Client>;
   recordToolCount: (name: string, count: number) => void;
@@ -55,12 +67,6 @@ interface TrackContext {
   method: string;
   target?: string;
   params?: unknown;
-  /**
-   * Classify a resolved result as a failure. `tools/call` resolves (does not
-   * throw) for tool-level errors, flagging them via `isError` on the result —
-   * so success/failure can't be inferred from throw-vs-return alone.
-   */
-  isFailure?: (result: unknown) => boolean;
 }
 
 /**
@@ -72,15 +78,20 @@ async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: (
   const startedAt = Date.now();
   try {
     const result = await run();
+    // tools/call resolves (does not throw) for tool-level errors, flagging them
+    // via `isError` on the result — so success/failure can't be inferred from
+    // throw-vs-return alone. Derived here, once, so no call site can forget it.
+    const failed = ctx.method === 'tools/call' && toolCallFailed(result);
     deps.recordActivity(name, {
       at: new Date().toISOString(),
       via: ctx.via,
       method: ctx.method,
       target: ctx.target,
-      ok: !ctx.isFailure?.(result),
+      ok: !failed,
       durationMs: Date.now() - startedAt,
       params: ctx.params,
       result,
+      error: failed ? toolErrorText(result) : undefined,
     });
     return result;
   } catch (err) {
@@ -122,7 +133,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
     track(
       deps,
       name,
-      { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params, isFailure: toolCallFailed },
+      { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params },
       async () => (await (await client()).callTool(req.params)) as CallToolResult,
     ),
   );
@@ -244,7 +255,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
     return track(
       deps,
       serverName,
-      { via: 'aggregate', method: 'tools/call', target: name, params, isFailure: toolCallFailed },
+      { via: 'aggregate', method: 'tools/call', target: name, params },
       async () => (await (await deps.getClient(serverName)).callTool(params)) as CallToolResult,
     );
   });
