@@ -38,10 +38,17 @@ Open http://localhost:3000, enter your token, and install servers from the
 Browse page. All state (config, installed server packages, logs) lives in
 `./data`, bind-mounted to `/data` in the container.
 
-Prebuilt images are published on every release to Docker Hub and GHCR, tagged
-`latest` and the semver version — swap `build: .` for
-`image: <dockerhub-user>/mcp-router:latest` in `docker-compose.yml` to skip
-building locally.
+Prebuilt images are published on every release to
+[Docker Hub (`vantreeseba/mcp-router`)](https://hub.docker.com/r/vantreeseba/mcp-router)
+and GHCR, tagged `latest` and the semver version — swap `build: .` for
+`image: vantreeseba/mcp-router:latest` in `docker-compose.yml` to skip building
+locally. Or run the image directly, without cloning the repo:
+
+```bash
+docker run -d -p 3000:3000 -v ./data:/data \
+  -e MCP_ROUTER_TOKEN=your-secret-token \
+  vantreeseba/mcp-router:latest
+```
 
 ## Quickstart B: bare Node
 

@@ -3,5 +3,6 @@
   "tagline": "One endpoint for every MCP server.",
   "description": "An MCP gateway: install Model Context Protocol servers from registries or npm, run them locally or proxy remote ones, and re-expose every one over streamable HTTP — per-server routes plus a merged aggregate endpoint. Managed through a React web UI or hand-editable JSON.",
   "repo": "https://github.com/cubicecho/mcp-router",
+  "dockerHub": "https://hub.docker.com/r/vantreeseba/mcp-router",
   "url": "https://cubicecho.github.io/mcp-router"
 }

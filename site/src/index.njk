@@ -186,6 +186,14 @@ docker compose up -d</code></pre>
     <p>Open <code>http://localhost:3000</code>, enter your token, and install servers from the Browse page. All
       state lives in <code>./data</code>, bind-mounted to <code>/data</code> in the container.</p>
 
+    <h3>Prebuilt image <span class="pill">no clone</span></h3>
+    <p>Every release is published to
+      <a href="https://hub.docker.com/r/vantreeseba/mcp-router">Docker Hub (<code>vantreeseba/mcp-router</code>)</a>
+      and GHCR, tagged <code>latest</code> and the semver version. Run it straight from the registry:</p>
+    <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
+  -e MCP_ROUTER_TOKEN=your-secret-token \
+  vantreeseba/mcp-router:latest</code></pre>
+
     <h3>Bare Node <span class="pill">Node ≥ 22.18</span></h3>
     <pre class="code"><code>npm install
 npm run build
