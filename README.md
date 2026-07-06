@@ -275,7 +275,7 @@ MCP endpoints (streamable HTTP):
   configure — installing a server means running its code with access to those
   secrets. Install packages you trust.
 - **The Activity tab keeps recent request/response bodies in memory.** For
-  debugging, the router retains the newest ~200 proxied calls per server —
+  debugging, the router retains the newest 200 proxied calls per server —
   including tool arguments and results, which may contain sensitive data — in
   process memory (bounded, never written to disk, cleared when the server is
   removed or the process exits, and clearable from the UI). Anyone with the

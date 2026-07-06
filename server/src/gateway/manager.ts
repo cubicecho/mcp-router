@@ -21,8 +21,6 @@ const CRASH_BACKOFF_MS = 5_000;
 const STDERR_TAIL_CHARS = 4_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
 const ACTIVITY_LIMIT = 200;
-/** Extra slack kept before trimming, so the O(n) shift amortizes to O(1) per record. */
-const ACTIVITY_TRIM_BATCH = 64;
 /** Serialized params/result (and error/target strings) larger than this are truncated before storing. */
 const ACTIVITY_VALUE_CHARS = 8_000;
 
@@ -221,8 +219,7 @@ export class GatewayManager {
       params: snapshotValue(entry.params),
       result: snapshotValue(entry.result),
     });
-    // Trim in batches rather than on every push, so the O(n) shift amortizes away.
-    if (log.length > ACTIVITY_LIMIT + ACTIVITY_TRIM_BATCH) {
+    if (log.length > ACTIVITY_LIMIT) {
       log.splice(0, log.length - ACTIVITY_LIMIT);
     }
     this.activity.set(name, log);
@@ -230,7 +227,7 @@ export class GatewayManager {
 
   /** Recorded activity for a server, newest first (at most ACTIVITY_LIMIT). */
   getActivity(name: string): ActivityEntry[] {
-    return (this.activity.get(name) ?? []).slice(-ACTIVITY_LIMIT).reverse();
+    return [...(this.activity.get(name) ?? [])].reverse();
   }
 
   clearActivity(name: string): void {
