@@ -1,6 +1,6 @@
 import type { ServerStatus } from '@mcp-router/shared';
-import { Link } from '@tanstack/react-router';
-import { Loader2Icon, PencilIcon, PlugZapIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { Link, useNavigate } from '@tanstack/react-router';
+import { Loader2Icon, PencilIcon, PlugZapIcon, RotateCwIcon, SearchIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
@@ -17,6 +17,7 @@ import {
   AlertDialogTrigger,
 } from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -25,6 +26,7 @@ import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateSe
 import { toastApiError } from '@/lib/toast';
 
 function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
+  const navigate = useNavigate();
   const update = useUpdateServer();
   const restart = useRestartServer();
   const remove = useDeleteServer();
@@ -40,8 +42,16 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       onError: toastApiError,
     });
 
+  // The whole row navigates, except clicks on the row's own controls.
+  const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>) => {
+    if ((event.target as HTMLElement).closest('button, a, [role="switch"]')) {
+      return;
+    }
+    navigate({ to: '/servers/$name', params: { name: config.name } });
+  };
+
   return (
-    <TableRow>
+    <TableRow className="cursor-pointer" onClick={handleRowClick}>
       <TableCell>
         <Link to="/servers/$name" params={{ name: config.name }} className="font-medium hover:underline">
           {config.displayName ?? config.name}
@@ -57,13 +67,30 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       >
         {formatSource(config.source)}
       </TableCell>
-      <TableCell className="hidden tabular-nums sm:table-cell">{server.toolCount ?? '—'}</TableCell>
+      <TableCell className="hidden tabular-nums sm:table-cell">
+        {server.toolCount ?? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="text-muted-foreground">—</span>
+            </TooltipTrigger>
+            <TooltipContent>Known after the first connection — try Test connection.</TooltipContent>
+          </Tooltip>
+        )}
+      </TableCell>
       <TableCell>
         <Switch
           checked={config.enabled}
           disabled={update.isPending}
           aria-label={`Enable ${config.name}`}
-          onCheckedChange={(enabled) => update.mutate({ name: config.name, enabled }, { onError: toastApiError })}
+          onCheckedChange={(enabled) =>
+            update.mutate(
+              { name: config.name, enabled },
+              {
+                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${config.name}`),
+                onError: toastApiError,
+              },
+            )
+          }
         />
       </TableCell>
       <TableCell className="text-right">
@@ -146,9 +173,31 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
 
 export function ServerList({ servers }: { servers: ServerStatus[] }) {
   const [editing, setEditing] = useState<ServerStatus | null>(null);
+  const [filter, setFilter] = useState('');
+
+  const query = filter.trim().toLowerCase();
+  const visible = query
+    ? servers.filter((server) =>
+        [server.config.name, server.config.displayName ?? '', formatSource(server.config.source)].some((value) =>
+          value.toLowerCase().includes(query),
+        ),
+      )
+    : servers;
 
   return (
-    <>
+    <div className="flex flex-col gap-3">
+      {servers.length > 5 && (
+        <div className="relative max-w-xs">
+          <SearchIcon className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
+          <Input
+            value={filter}
+            placeholder="Filter servers…"
+            className="pl-8"
+            aria-label="Filter servers"
+            onChange={(event) => setFilter(event.target.value)}
+          />
+        </div>
+      )}
       <Table>
         <TableHeader>
           <TableRow>
@@ -162,11 +211,15 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
           </TableRow>
         </TableHeader>
         <TableBody>
-          {servers.map((server) => (
+          {visible.map((server) => (
             <ServerRow key={server.config.name} server={server} onEdit={setEditing} />
           ))}
         </TableBody>
       </Table>
+
+      {query && visible.length === 0 && (
+        <p className="py-4 text-center text-sm text-muted-foreground">No servers match “{filter.trim()}”.</p>
+      )}
 
       {editing && (
         <AddServerDialog
@@ -180,6 +233,6 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
           }}
         />
       )}
-    </>
+    </div>
   );
 }

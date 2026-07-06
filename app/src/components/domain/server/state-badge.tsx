@@ -1,4 +1,5 @@
 import type { ServerRuntimeState } from '@mcp-router/shared';
+import { Loader2Icon } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 
@@ -10,7 +11,12 @@ const STATE_STYLES: Record<ServerRuntimeState, string> = {
 };
 
 export function ServerStateBadge({ state, lastError }: { state: ServerRuntimeState; lastError?: string }) {
-  const badge = <Badge className={STATE_STYLES[state]}>{state}</Badge>;
+  const badge = (
+    <Badge className={STATE_STYLES[state]}>
+      {state === 'starting' && <Loader2Icon className="animate-spin" aria-hidden />}
+      {state}
+    </Badge>
+  );
 
   if (state === 'error' && lastError) {
     return (
