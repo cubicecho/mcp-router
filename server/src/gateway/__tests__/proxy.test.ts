@@ -1,6 +1,7 @@
 import type { ActivityEntry } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../../errors.ts';
@@ -8,9 +9,8 @@ import { type AggregateDeps, createAggregateServer, createProxyServer, type Prox
 
 type RecordedActivity = ActivityEntry & { name: string };
 
-/** Link a fresh proxy Server (over the given deps) to a real in-memory MCP Client. */
-async function connectProxy(deps: ProxyDeps) {
-  const server = createProxyServer('demo', deps);
+/** Link the given gateway Server to a real in-memory MCP Client. */
+async function connect(server: Server) {
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   const client = new Client({ name: 'test', version: '1.0.0' });
   await server.connect(serverTransport);
@@ -18,15 +18,8 @@ async function connectProxy(deps: ProxyDeps) {
   return { client, close: () => Promise.all([client.close(), server.close()]) };
 }
 
-/** Link a fresh aggregate Server (over the given deps) to a real in-memory MCP Client. */
-async function connectAggregate(deps: AggregateDeps) {
-  const server = createAggregateServer(deps);
-  const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-  const client = new Client({ name: 'test', version: '1.0.0' });
-  await server.connect(serverTransport);
-  await client.connect(clientTransport);
-  return { client, close: () => Promise.all([client.close(), server.close()]) };
-}
+const connectProxy = (deps: ProxyDeps) => connect(createProxyServer('demo', deps));
+const connectAggregate = (deps: AggregateDeps) => connect(createAggregateServer(deps));
 
 function collector() {
   const activity: RecordedActivity[] = [];
@@ -34,6 +27,16 @@ function collector() {
     activity.push({ ...entry, id: activity.length + 1, name });
   };
   return { activity, record };
+}
+
+/** Minimal ProxyDeps over a stubbed downstream client; override pieces per test. */
+function stubDeps(fakeClient: unknown, overrides: Partial<ProxyDeps> = {}): ProxyDeps {
+  return {
+    getClient: async () => fakeClient as Client,
+    recordToolCount: () => {},
+    recordActivity: () => {},
+    ...overrides,
+  };
 }
 
 describe('proxy activity recording', () => {
@@ -45,13 +48,7 @@ describe('proxy activity recording', () => {
         content: [{ type: 'text', text: `echo:${params.arguments?.msg}` }],
       }),
     };
-    const deps: ProxyDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
-    };
-    const { client, close } = await connectProxy(deps);
+    const { client, close } = await connectProxy(stubDeps(fakeClient, { recordActivity: record }));
 
     await client.listTools();
     await client.callTool({ name: 'echo', arguments: { msg: 'hi' } });
@@ -71,13 +68,12 @@ describe('proxy activity recording', () => {
 
   it('surfaces HttpError detail (e.g. a stderr tail) in the recorded error', async () => {
     const { activity, record } = collector();
-    const deps: ProxyDeps = {
+    const deps = stubDeps(null, {
+      recordActivity: record,
       getClient: async () => {
         throw new HttpError(502, 'Failed to connect to server "demo"', 'Traceback: ModuleNotFoundError: mcp');
       },
-      recordToolCount: () => {},
-      recordActivity: record,
-    };
+    });
     const { client, close } = await connectProxy(deps);
 
     await expect(client.callTool({ name: 'echo' })).rejects.toThrow(/ModuleNotFoundError/);
@@ -94,13 +90,7 @@ describe('proxy activity recording', () => {
         throw new Error('connection reset');
       },
     };
-    const deps: ProxyDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
-    };
-    const { client, close } = await connectProxy(deps);
+    const { client, close } = await connectProxy(stubDeps(fakeClient, { recordActivity: record }));
 
     await expect(client.listTools()).rejects.toThrow();
     await close();
@@ -117,13 +107,7 @@ describe('proxy activity recording', () => {
         throw new Error('downstream boom');
       },
     };
-    const deps: ProxyDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
-    };
-    const { client, close } = await connectProxy(deps);
+    const { client, close } = await connectProxy(stubDeps(fakeClient, { recordActivity: record }));
 
     await expect(client.callTool({ name: 'broken' })).rejects.toThrow();
     await close();
@@ -138,13 +122,7 @@ describe('proxy activity recording', () => {
     const fakeClient = {
       callTool: async () => ({ content: [{ type: 'text', text: 'boom' }], isError: true }),
     };
-    const deps: ProxyDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
-    };
-    const { client, close } = await connectProxy(deps);
+    const { client, close } = await connectProxy(stubDeps(fakeClient, { recordActivity: record }));
 
     const result = await client.callTool({ name: 'echo', arguments: {} });
     await close();
@@ -164,14 +142,12 @@ describe('proxy activity recording', () => {
         throw new McpError(ErrorCode.MethodNotFound, 'no tools here');
       },
     };
-    const deps: ProxyDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
+    const deps = stubDeps(fakeClient, {
+      recordActivity: record,
       recordToolCount: (name, count) => {
         toolCounts[name] = count;
       },
-      recordActivity: record,
-    };
+    });
     const { client, close } = await connectProxy(deps);
 
     const result = await client.listTools();
@@ -189,13 +165,7 @@ describe('aggregate activity recording', () => {
     const fakeClient = {
       callTool: async () => ({ content: [{ type: 'text', text: 'nope' }], isError: true }),
     };
-    const deps: AggregateDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
-      serverNames: () => ['alpha'],
-    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient, { recordActivity: record }), serverNames: () => ['alpha'] };
     const { client, close } = await connectAggregate(deps);
 
     await client.callTool({ name: 'alpha__echo', arguments: {} });
@@ -218,10 +188,7 @@ describe('aggregate activity recording', () => {
       listTools: async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }),
     };
     const deps: AggregateDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: () => {},
-      recordActivity: record,
+      ...stubDeps(fakeClient, { recordActivity: record }),
       serverNames: () => ['alpha', 'beta'],
     };
     const { client, close } = await connectAggregate(deps);
@@ -243,12 +210,12 @@ describe('aggregate activity recording', () => {
           : { tools: [{ name: 'one', inputSchema: { type: 'object' } }], nextCursor: 'page2' },
     };
     const deps: AggregateDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async () => fakeClient as any,
-      recordToolCount: (name, count) => {
-        toolCounts[name] = count;
-      },
-      recordActivity: record,
+      ...stubDeps(fakeClient, {
+        recordActivity: record,
+        recordToolCount: (name, count) => {
+          toolCounts[name] = count;
+        },
+      }),
       serverNames: () => ['alpha'],
     };
     const { client, close } = await connectAggregate(deps);
@@ -272,10 +239,10 @@ describe('aggregate activity recording', () => {
       },
     };
     const deps: AggregateDeps = {
-      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
-      getClient: async (name: string) => (name === 'bad' ? badClient : goodClient) as any,
-      recordToolCount: () => {},
-      recordActivity: record,
+      ...stubDeps(null, {
+        recordActivity: record,
+        getClient: async (name) => (name === 'bad' ? badClient : goodClient) as Client,
+      }),
       serverNames: () => ['bad', 'good'],
     };
     const { client, close } = await connectAggregate(deps);
