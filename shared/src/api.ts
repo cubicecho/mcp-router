@@ -117,7 +117,17 @@ export interface RouterStatus {
   serverCount: number;
   runningCount: number;
   authEnabled: boolean;
+  /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
+  idleTimeoutMs: number;
 }
+
+// --- PATCH /api/settings ---
+
+/** The subset of settings.json editable from the UI. */
+export const updateSettingsRequestSchema = z.object({
+  idleTimeoutMs: z.number().int().positive().optional(),
+});
+export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 
 /** Standard error envelope for non-2xx responses. */
 export interface ApiError {

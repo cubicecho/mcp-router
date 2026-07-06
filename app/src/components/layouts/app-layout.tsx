@@ -1,8 +1,19 @@
 import { Link } from '@tanstack/react-router';
-import { CompassIcon, LibraryIcon, MoonIcon, RouteIcon, ServerIcon, SettingsIcon, SunIcon } from 'lucide-react';
+import {
+  CompassIcon,
+  LibraryIcon,
+  LockIcon,
+  MoonIcon,
+  RouteIcon,
+  ServerIcon,
+  SettingsIcon,
+  SunIcon,
+} from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { clearToken, requireAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
 import { isDark, setDark } from '@/lib/theme';
 
@@ -30,6 +41,31 @@ function ThemeToggle() {
     >
       {dark ? <SunIcon /> : <MoonIcon />}
     </Button>
+  );
+}
+
+/** Clears the stored bearer token and brings the token gate back — for shared machines. */
+function LockButton() {
+  const { data } = useRouterStatus();
+
+  if (!data?.authEnabled) {
+    return null;
+  }
+
+  const lock = () => {
+    clearToken();
+    requireAuth();
+  };
+
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button variant="ghost" size="icon-sm" aria-label="Lock (forget the stored token)" onClick={lock}>
+          <LockIcon />
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent>Lock — forget the stored token</TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -65,6 +101,7 @@ function MobileNav() {
           <Icon className="size-4" />
         </Link>
       ))}
+      <LockButton />
       <ThemeToggle />
     </nav>
   );
@@ -95,7 +132,8 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto flex items-center justify-end px-4 py-3">
+        <div className="mt-auto flex items-center justify-end gap-1 px-4 py-3">
+          <LockButton />
           <ThemeToggle />
         </div>
       </aside>

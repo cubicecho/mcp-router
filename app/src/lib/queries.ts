@@ -163,6 +163,14 @@ export function useDeleteRegistry() {
   });
 }
 
+export function useUpdateSettings() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.updateSettings>[0]) => api.updateSettings(body),
+    onSuccess: () => invalidate(queryKeys.status),
+  });
+}
+
 export function useReloadConfig() {
   const queryClient = useQueryClient();
   return useMutation({

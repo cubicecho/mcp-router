@@ -1,12 +1,13 @@
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Input } from '@/components/ui/input';
 import { Skeleton } from '@/components/ui/skeleton';
-import { useReloadConfig, useRouterStatus } from '@/lib/queries';
+import { useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 export const Route = createFileRoute('/settings')({
@@ -20,6 +21,43 @@ function formatUptime(seconds: number): string {
     return `${hours}h ${minutes}m`;
   }
   return `${minutes}m ${Math.floor(seconds % 60)}s`;
+}
+
+/** Inline editor for the default idle timeout, entered in minutes. */
+function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
+  const update = useUpdateSettings();
+  const [text, setText] = useState(() => String(currentMs / 60_000));
+
+  const minutes = Number(text);
+  const valid = Number.isFinite(minutes) && minutes > 0;
+  const changed = valid && Math.round(minutes * 60_000) !== currentMs;
+
+  const save = () => {
+    update.mutate(
+      { idleTimeoutMs: Math.round(minutes * 60_000) },
+      {
+        onSuccess: () => toast.success('Idle timeout saved', { description: 'Applies from each server’s next use.' }),
+        onError: toastApiError,
+      },
+    );
+  };
+
+  return (
+    <span className="flex items-center gap-2">
+      <Input
+        value={text}
+        inputMode="decimal"
+        aria-label="Idle timeout in minutes"
+        aria-invalid={!valid}
+        className="h-8 w-20 tabular-nums"
+        onChange={(event) => setText(event.target.value)}
+      />
+      <span className="text-muted-foreground">minutes</span>
+      <Button size="sm" variant="outline" disabled={!changed || update.isPending} onClick={save}>
+        Save
+      </Button>
+    </span>
+  );
 }
 
 function Row({ label, children }: { label: string; children: ReactNode }) {
@@ -64,6 +102,9 @@ function SettingsPage() {
               <Row label="Port">{port}</Row>
               <Row label="Servers">
                 {status.runningCount}/{status.serverCount} running
+              </Row>
+              <Row label="Idle timeout">
+                <IdleTimeoutEditor key={status.idleTimeoutMs} currentMs={status.idleTimeoutMs} />
               </Row>
               <Row label="Auth">
                 {status.authEnabled ? (

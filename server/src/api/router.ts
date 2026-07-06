@@ -5,6 +5,7 @@ import {
   installRequestSchema,
   toolCallRequestSchema,
   updateServerRequestSchema,
+  updateSettingsRequestSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
 import { authDisabledByEnv } from '../auth.ts';
@@ -59,8 +60,17 @@ export function createApiRouter(deps: ApiDeps): Router {
       serverCount: store.getServers().length,
       runningCount: manager.runningCount(),
       authEnabled: store.getSettings().authEnabled && !authDisabledByEnv(),
+      idleTimeoutMs: store.getSettings().idleTimeoutMs,
     };
     res.json(status);
+  });
+
+  // --- settings ---
+
+  router.patch('/settings', async (req, res) => {
+    const patch = updateSettingsRequestSchema.parse(req.body);
+    const next = await store.updateSettings(patch);
+    res.json({ idleTimeoutMs: next.idleTimeoutMs });
   });
 
   // --- registries ---

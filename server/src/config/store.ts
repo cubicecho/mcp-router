@@ -109,6 +109,14 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     return this.servers.get(name);
   }
 
+  /** Merge a partial settings update, persist settings.json, and apply it in memory. */
+  async updateSettings(patch: Partial<SettingsFile>): Promise<SettingsFile> {
+    const next = settingsFileSchema.parse({ ...this.settings, ...patch });
+    await this.writeJsonAtomic(path.join(this.configDir, 'settings.json'), next);
+    this.settings = next;
+    return next;
+  }
+
   async addRegistry(registry: Registry): Promise<void> {
     if (this.getRegistry(registry.name)) {
       throw new HttpError(409, `Registry "${registry.name}" already exists`);

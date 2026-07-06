@@ -150,6 +150,24 @@ describe('REST API', () => {
     expect(bad.body.error).toBe('Validation failed');
   });
 
+  it('updates the idle timeout via PATCH /api/settings and persists it', async () => {
+    const before = await authed(request(app).get('/api/status'));
+    expect(before.body.idleTimeoutMs).toBe(5 * 60 * 1000);
+
+    const bad = await authed(request(app).patch('/api/settings')).send({ idleTimeoutMs: -1 });
+    expect(bad.status).toBe(400);
+
+    const patched = await authed(request(app).patch('/api/settings')).send({ idleTimeoutMs: 120_000 });
+    expect(patched.status).toBe(200);
+    expect(patched.body).toEqual({ idleTimeoutMs: 120_000 });
+    expect(store.getSettings().idleTimeoutMs).toBe(120_000);
+    // The token must survive a settings merge.
+    expect(store.getSettings().authToken).toBe(token);
+
+    const after = await authed(request(app).get('/api/status'));
+    expect(after.body.idleTimeoutMs).toBe(120_000);
+  });
+
   it('404s for unknown servers and registries', async () => {
     expect((await authed(request(app).get('/api/servers/nope'))).status).toBe(404);
     expect((await authed(request(app).get('/api/registries/nope/servers'))).status).toBe(404);

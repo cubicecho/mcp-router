@@ -12,6 +12,7 @@ import type {
   ToolCallRequest,
   ToolCallResponse,
   UpdateServerRequest,
+  UpdateSettingsRequest,
 } from '@mcp-router/shared';
 import { getToken, requireAuth } from './auth';
 
@@ -184,6 +185,10 @@ export async function getRegistryServerDetail(registry: string, serverName: stri
 }
 
 // --- config ---
+
+export function updateSettings(body: UpdateSettingsRequest): Promise<{ idleTimeoutMs: number }> {
+  return request('/api/settings', { method: 'PATCH', body });
+}
 
 export function reloadConfig(): Promise<unknown> {
   return request('/api/reload', { method: 'POST' });
