@@ -1,6 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { CompassIcon, PlusIcon } from 'lucide-react';
 import { useState } from 'react';
+import { ConnectCard } from '@/components/domain/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
 import { Button } from '@/components/ui/button';
@@ -56,7 +57,16 @@ function ServersPage() {
         </Card>
       )}
 
-      {data && data.length > 0 && <ServerList servers={data} />}
+      {data && data.length > 0 && (
+        <>
+          <ServerList servers={data} />
+          <ConnectCard
+            endpoint={`${window.location.origin}/mcp`}
+            label="mcp-router"
+            description="Point an MCP client at the aggregate endpoint to get every enabled server's tools, namespaced as <server>__<tool>."
+          />
+        </>
+      )}
 
       {addOpen && <AddServerDialog open onOpenChange={setAddOpen} />}
     </div>

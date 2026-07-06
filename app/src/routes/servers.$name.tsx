@@ -2,6 +2,7 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
+import { ConnectCard } from '@/components/domain/connect-card';
 import { ActivityCard } from '@/components/domain/server/activity-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
@@ -237,12 +238,20 @@ function ServerDetailPage() {
             <TabsList>
               <TabsTrigger value="tools">Tools</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
+              <TabsTrigger value="connect">Connect</TabsTrigger>
             </TabsList>
             <TabsContent value="tools">
               <ToolsCard name={name} />
             </TabsContent>
             <TabsContent value="activity">
               <ActivityCard name={name} />
+            </TabsContent>
+            <TabsContent value="connect">
+              <ConnectCard
+                endpoint={endpointUrl}
+                label={name}
+                description={`Point an MCP client directly at ${name} (tools keep their original names).`}
+              />
             </TabsContent>
           </Tabs>
 
