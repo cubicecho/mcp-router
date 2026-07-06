@@ -49,10 +49,31 @@ function HeaderStatus() {
   );
 }
 
+function MobileNav() {
+  return (
+    <nav className="flex items-center gap-1 md:hidden" aria-label="Main">
+      <RouteIcon className="mr-1 size-5" aria-hidden />
+      {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+        <Link
+          key={to}
+          to={to}
+          aria-label={label}
+          activeOptions={{ exact: to === '/' }}
+          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+          activeProps={{ className: 'rounded-md p-2 bg-accent text-accent-foreground' }}
+        >
+          <Icon className="size-4" />
+        </Link>
+      ))}
+      <ThemeToggle />
+    </nav>
+  );
+}
+
 export function AppLayout({ children }: { children: ReactNode }) {
   return (
     <div className="flex min-h-screen">
-      <aside className="flex w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground">
+      <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
         <div className="flex items-center gap-2 px-4 py-4 font-semibold">
           <RouteIcon className="size-5" />
           MCP Router
@@ -79,10 +100,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-end border-b px-6">
+        <header className="flex h-14 items-center justify-between gap-2 border-b px-4 md:justify-end md:px-6">
+          <MobileNav />
           <HeaderStatus />
         </header>
-        <main className="flex-1 overflow-auto p-6">{children}</main>
+        <main className="flex-1 overflow-auto p-4 md:p-6">{children}</main>
       </div>
     </div>
   );

@@ -50,11 +50,14 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       <TableCell>
         <ServerStateBadge state={server.state} lastError={server.lastError} />
       </TableCell>
-      <TableCell className="text-muted-foreground">{config.transport.type}</TableCell>
-      <TableCell className="max-w-64 truncate text-muted-foreground" title={formatSource(config.source)}>
+      <TableCell className="hidden text-muted-foreground md:table-cell">{config.transport.type}</TableCell>
+      <TableCell
+        className="hidden max-w-64 truncate text-muted-foreground lg:table-cell"
+        title={formatSource(config.source)}
+      >
         {formatSource(config.source)}
       </TableCell>
-      <TableCell className="tabular-nums">{server.toolCount ?? '—'}</TableCell>
+      <TableCell className="hidden tabular-nums sm:table-cell">{server.toolCount ?? '—'}</TableCell>
       <TableCell>
         <Switch
           checked={config.enabled}
@@ -151,9 +154,9 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
           <TableRow>
             <TableHead>Name</TableHead>
             <TableHead>State</TableHead>
-            <TableHead>Transport</TableHead>
-            <TableHead>Source</TableHead>
-            <TableHead>Tools</TableHead>
+            <TableHead className="hidden md:table-cell">Transport</TableHead>
+            <TableHead className="hidden lg:table-cell">Source</TableHead>
+            <TableHead className="hidden sm:table-cell">Tools</TableHead>
             <TableHead>Enabled</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>
