@@ -60,4 +60,30 @@ describe('GatewayManager activity log', () => {
     expect(typeof stored).toBe('string');
     expect(stored).toContain('[truncated');
   });
+
+  it('bounds over-large error and target strings too', () => {
+    const manager = newManager(['a']);
+    manager.recordActivity('a', {
+      ...baseEntry,
+      ok: false,
+      target: `data:application/octet-stream;base64,${'A'.repeat(20_000)}`,
+      error: `downstream failed: ${'x'.repeat(20_000)}`,
+    });
+    const entry = manager.getActivity('a')[0];
+    expect(entry?.error?.length).toBeLessThan(9_000);
+    expect(entry?.error).toContain('[truncated');
+    expect(entry?.target?.length).toBeLessThan(9_000);
+    expect(entry?.target).toContain('[truncated');
+  });
+
+  it('never truncates in the middle of a surrogate pair', () => {
+    const manager = newManager(['a']);
+    // Serialized form is `{"big":"…"}` — the 8-char prefix puts the emoji's high
+    // surrogate exactly at the truncation index.
+    manager.recordActivity('a', { ...baseEntry, result: { big: `${'x'.repeat(7_991)}😀${'y'.repeat(100)}` } });
+    const stored = manager.getActivity('a')[0]?.result;
+    expect(typeof stored).toBe('string');
+    // No high surrogate left without its low half.
+    expect(stored).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
 });

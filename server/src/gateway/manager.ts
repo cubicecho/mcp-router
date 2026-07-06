@@ -23,8 +23,19 @@ const STDERR_TAIL_CHARS = 4_000;
 const ACTIVITY_LIMIT = 200;
 /** Extra slack kept before trimming, so the O(n) shift amortizes to O(1) per record. */
 const ACTIVITY_TRIM_BATCH = 64;
-/** Serialized params/result larger than this are truncated before storing. */
+/** Serialized params/result (and error/target strings) larger than this are truncated before storing. */
 const ACTIVITY_VALUE_CHARS = 8_000;
+
+/** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
+function truncateString(value: string, max: number): string {
+  if (value.length <= max) {
+    return value;
+  }
+  // A high surrogate at the cut point would leave an unpaired half; cut before it.
+  const last = value.charCodeAt(max - 1);
+  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  return `${value.slice(0, end)}… [truncated, ${value.length} chars]`;
+}
 
 /**
  * Snapshot a recorded params/result into a bounded, detached value.
@@ -50,7 +61,7 @@ function snapshotValue(value: unknown): unknown {
     return undefined; // functions / symbols serialize to nothing
   }
   if (serialized.length > ACTIVITY_VALUE_CHARS) {
-    return `${serialized.slice(0, ACTIVITY_VALUE_CHARS)}… [truncated, ${serialized.length} chars]`;
+    return truncateString(serialized, ACTIVITY_VALUE_CHARS);
   }
   return JSON.parse(serialized);
 }
@@ -203,6 +214,10 @@ export class GatewayManager {
     log.push({
       ...entry,
       id: ++this.activitySeq,
+      // Bound every payload-bearing field, not just params/result: error messages
+      // and targets (e.g. data: URIs) can embed arbitrarily large payloads too.
+      target: entry.target === undefined ? undefined : truncateString(entry.target, ACTIVITY_VALUE_CHARS),
+      error: entry.error === undefined ? undefined : truncateString(entry.error, ACTIVITY_VALUE_CHARS),
       params: snapshotValue(entry.params),
       result: snapshotValue(entry.result),
     });
