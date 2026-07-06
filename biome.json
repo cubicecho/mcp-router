@@ -61,6 +61,7 @@
       "!**/dist",
       "!**/node_modules",
       "!**/data",
+      "!site",
       "!**/*.gen.ts"
     ]
   },
