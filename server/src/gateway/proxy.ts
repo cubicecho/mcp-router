@@ -44,6 +44,31 @@ function toolCallFailed(result: unknown): boolean {
   return Boolean((result as CallToolResult | undefined)?.isError);
 }
 
+/** Defensive cap for draining paginated lists, against a downstream that never stops returning cursors. */
+const MAX_LIST_PAGES = 100;
+
+/**
+ * Drain a paginated downstream list. The aggregate endpoint can't forward a
+ * single client cursor to N servers, so it must collect every page itself —
+ * returning only page 1 (and its count) would silently hide tools/resources/
+ * prompts of any downstream that paginates.
+ */
+async function allPages<T>(
+  fetchPage: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor?: string }>,
+): Promise<T[]> {
+  const items: T[] = [];
+  let cursor: string | undefined;
+  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+    const result = await fetchPage(cursor);
+    items.push(...result.items);
+    cursor = result.nextCursor;
+    if (!cursor) {
+      break;
+    }
+  }
+  return items;
+}
+
 /** Best-effort error message for a tool call that resolved with `isError: true`. */
 function toolErrorText(result: unknown): string {
   const content = (result as CallToolResult).content;
@@ -264,9 +289,12 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await collect('tools/list', async (client, name) => {
-      const result = await client.listTools();
-      deps.recordToolCount(name, result.tools.length);
-      return result.tools.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
+      const all = await allPages(async (cursor) => {
+        const result = await client.listTools(cursor === undefined ? undefined : { cursor });
+        return { items: result.tools, nextCursor: result.nextCursor };
+      });
+      deps.recordToolCount(name, all.length);
+      return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
     });
     return { tools };
   });
@@ -288,8 +316,11 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const resources = await collect('resources/list', async (client, name) => {
-      const result = await client.listResources();
-      return result.resources.map((resource) => ({
+      const all = await allPages(async (cursor) => {
+        const result = await client.listResources(cursor === undefined ? undefined : { cursor });
+        return { items: result.resources, nextCursor: result.nextCursor };
+      });
+      return all.map((resource) => ({
         ...resource,
         uri: namespaceName(name, resource.uri),
         name: namespaceName(name, resource.name),
@@ -312,8 +343,11 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     const prompts = await collect('prompts/list', async (client, name) => {
-      const result = await client.listPrompts();
-      return result.prompts.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
+      const all = await allPages(async (cursor) => {
+        const result = await client.listPrompts(cursor === undefined ? undefined : { cursor });
+        return { items: result.prompts, nextCursor: result.nextCursor };
+      });
+      return all.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
     return { prompts };
   });

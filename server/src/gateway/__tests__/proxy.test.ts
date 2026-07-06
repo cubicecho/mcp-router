@@ -229,6 +229,34 @@ describe('aggregate activity recording', () => {
     expect(activity).toEqual([]);
   });
 
+  it('drains every page of a paginating downstream list', async () => {
+    const { activity, record } = collector();
+    const toolCounts: Record<string, number> = {};
+    const fakeClient = {
+      listTools: async (params?: { cursor?: string }) =>
+        params?.cursor === 'page2'
+          ? { tools: [{ name: 'two', inputSchema: { type: 'object' } }] }
+          : { tools: [{ name: 'one', inputSchema: { type: 'object' } }], nextCursor: 'page2' },
+    };
+    const deps: AggregateDeps = {
+      // biome-ignore lint/suspicious/noExplicitAny: minimal downstream stub
+      getClient: async () => fakeClient as any,
+      recordToolCount: (name, count) => {
+        toolCounts[name] = count;
+      },
+      recordActivity: record,
+      serverNames: () => ['alpha'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.listTools();
+    await close();
+
+    expect(result.tools.map((t) => t.name)).toEqual(['alpha__one', 'alpha__two']);
+    expect(toolCounts.alpha).toBe(2);
+    expect(activity).toEqual([]);
+  });
+
   it('records a server that errors during the aggregate list fan-out, and still serves the rest', async () => {
     const { activity, record } = collector();
     const goodClient = {
