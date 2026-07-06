@@ -48,7 +48,7 @@ describe('AddServerDialog', () => {
     const config = JSON.stringify({
       mcpServers: { filesystem: { command: 'npx', args: ['-y', 'server-filesystem'], env: { ROOT: '/tmp' } } },
     });
-    fireEvent.change(screen.getByLabelText('Paste config (optional)'), { target: { value: config } });
+    fireEvent.change(screen.getByLabelText('Paste a config'), { target: { value: config } });
     fireEvent.click(screen.getByRole('button', { name: 'Apply config' }));
 
     await waitFor(() => expect((screen.getByLabelText('Command') as HTMLInputElement).value).toBe('npx'));
@@ -57,6 +57,38 @@ describe('AddServerDialog', () => {
       '-y\nserver-filesystem',
     );
     expect((screen.getByDisplayValue('ROOT') as HTMLInputElement).value).toBe('ROOT');
+  });
+
+  it('applies a named single-server entry (no mcpServers wrapper)', async () => {
+    renderDialog();
+
+    const config = JSON.stringify({
+      sequentialthinking: { command: 'npx', args: ['-y', '@modelcontextprotocol/server-sequential-thinking'] },
+    });
+    fireEvent.change(screen.getByLabelText('Paste a config'), { target: { value: config } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply config' }));
+
+    await waitFor(() => expect((screen.getByLabelText('Command') as HTMLInputElement).value).toBe('npx'));
+    expect((screen.getByLabelText('Local name') as HTMLInputElement).value).toBe('sequentialthinking');
+    expect((screen.getByLabelText('Arguments (one per line)') as HTMLTextAreaElement).value).toBe(
+      '-y\n@modelcontextprotocol/server-sequential-thinking',
+    );
+  });
+
+  it('applies a bare config and tolerates a trailing comma', async () => {
+    renderDialog();
+
+    // Bare `{ command, args }` with a trailing comma (a common copy-paste artifact).
+    const config = '{\n  "command": "npx",\n  "args": ["-y", "server-sequential-thinking"],\n}';
+    fireEvent.change(screen.getByLabelText('Paste a config'), { target: { value: config } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply config' }));
+
+    await waitFor(() => expect((screen.getByLabelText('Command') as HTMLInputElement).value).toBe('npx'));
+    // No name key in a bare config, so the name field is left empty for the user.
+    expect((screen.getByLabelText('Local name') as HTMLInputElement).value).toBe('');
+    expect((screen.getByLabelText('Arguments (one per line)') as HTMLTextAreaElement).value).toBe(
+      '-y\nserver-sequential-thinking',
+    );
   });
 
   it('submits an HTTP server as a remote source with a streamable-http transport', async () => {
