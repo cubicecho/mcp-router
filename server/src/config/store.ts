@@ -3,8 +3,14 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { RegistriesFile, Registry, ServerConfig, SettingsFile } from '@mcp-router/shared';
-import { DEFAULT_REGISTRY, registriesFileSchema, serverConfigSchema, settingsFileSchema } from '@mcp-router/shared';
+import type { ProjectConfig, RegistriesFile, Registry, ServerConfig, SettingsFile } from '@mcp-router/shared';
+import {
+  DEFAULT_REGISTRY,
+  projectConfigSchema,
+  registriesFileSchema,
+  serverConfigSchema,
+  settingsFileSchema,
+} from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
 import { authDisabledByEnv } from '../auth.ts';
 import { errorMessage, HttpError } from '../errors.ts';
@@ -13,6 +19,7 @@ export interface ConfigState {
   settings: SettingsFile;
   registries: Registry[];
   servers: ServerConfig[];
+  projects: ProjectConfig[];
 }
 
 const WATCH_DEBOUNCE_MS = 300;
@@ -27,10 +34,12 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   readonly dataDir: string;
   readonly configDir: string;
   readonly serversDir: string;
+  readonly projectsDir: string;
 
   private settings: SettingsFile = settingsFileSchema.parse({});
   private registries: Registry[] = [];
   private servers = new Map<string, ServerConfig>();
+  private projects = new Map<string, ProjectConfig>();
   private watcher: FSWatcher | null = null;
   private watchDebounce: NodeJS.Timeout | null = null;
 
@@ -39,11 +48,13 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     this.dataDir = dataDir;
     this.configDir = path.join(dataDir, 'config');
     this.serversDir = path.join(this.configDir, 'servers');
+    this.projectsDir = path.join(this.configDir, 'projects');
   }
 
   /** Create directories, seed defaults on first run and load everything. */
   async init(): Promise<void> {
     await mkdir(this.serversDir, { recursive: true });
+    await mkdir(this.projectsDir, { recursive: true });
     await this.loadAll();
   }
 
@@ -86,7 +97,12 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   }
 
   snapshot(): ConfigState {
-    return { settings: this.settings, registries: this.registries, servers: this.getServers() };
+    return {
+      settings: this.settings,
+      registries: this.registries,
+      servers: this.getServers(),
+      projects: this.getProjects(),
+    };
   }
 
   getSettings(): SettingsFile {
@@ -145,6 +161,26 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     await rm(this.serverFile(name), { force: true });
   }
 
+  getProjects(): ProjectConfig[] {
+    return [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  getProject(slug: string): ProjectConfig | undefined {
+    return this.projects.get(slug);
+  }
+
+  async saveProject(config: ProjectConfig): Promise<ProjectConfig> {
+    const parsed = projectConfigSchema.parse(config);
+    this.projects.set(parsed.slug, parsed);
+    await this.writeJsonAtomic(this.projectFile(parsed.slug), parsed);
+    return parsed;
+  }
+
+  async deleteProject(slug: string): Promise<void> {
+    this.projects.delete(slug);
+    await rm(this.projectFile(slug), { force: true });
+  }
+
   private async writeRegistries(): Promise<void> {
     const file: RegistriesFile = { registries: this.registries };
     await this.writeJsonAtomic(path.join(this.configDir, 'registries.json'), file);
@@ -154,10 +190,15 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     return path.join(this.serversDir, `${name}.json`);
   }
 
+  private projectFile(slug: string): string {
+    return path.join(this.projectsDir, `${slug}.json`);
+  }
+
   private async loadAll(): Promise<void> {
     this.settings = await this.loadSettings();
     this.registries = await this.loadRegistries();
     this.servers = await this.loadServers();
+    this.projects = await this.loadProjects();
   }
 
   private async loadSettings(): Promise<SettingsFile> {
@@ -217,6 +258,29 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       }
     }
     return servers;
+  }
+
+  private async loadProjects(): Promise<Map<string, ProjectConfig>> {
+    const projects = new Map<string, ProjectConfig>();
+    const files = (await readdir(this.projectsDir)).filter((f) => f.endsWith('.json'));
+    for (const file of files.sort()) {
+      const fullPath = path.join(this.projectsDir, file);
+      try {
+        const config = this.parseFile(
+          fullPath,
+          await readFile(fullPath, 'utf8'),
+          projectConfigSchema.parse.bind(projectConfigSchema),
+        );
+        if (`${config.slug}.json` !== file) {
+          console.warn(`Project config ${fullPath} has slug "${config.slug}" that does not match its filename`);
+        }
+        projects.set(config.slug, config);
+      } catch (err) {
+        // A single broken (hand-edited) project file must not take the router down; report and skip it.
+        console.error(`Ignoring invalid project config ${fullPath}: ${errorMessage(err)}`);
+      }
+    }
+    return projects;
   }
 
   private parseFile<T>(file: string, raw: string, parse: (value: unknown) => T): T {

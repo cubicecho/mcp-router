@@ -1,9 +1,14 @@
-import type { RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
+import type { ProjectConfig, ProjectStatus, RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
 import {
   activityResponseSchema,
+  createProjectRequestSchema,
   createRegistryRequestSchema,
   installRequestSchema,
+  projectConfigSchema,
+  serverNameSchema,
+  slugify,
   toolCallRequestSchema,
+  updateProjectRequestSchema,
   updateServerRequestSchema,
   updateSettingsRequestSchema,
 } from '@mcp-router/shared';
@@ -134,7 +139,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
-    manager.reconcile(store.getServers());
+    manager.reconcile(store.getServers(), store.getProjects());
     res.status(201).json(requireStatus(config.name));
   });
 
@@ -173,7 +178,7 @@ export function createApiRouter(deps: ApiDeps): Router {
       }
     }
     await store.saveServer(next);
-    manager.reconcile(store.getServers());
+    manager.reconcile(store.getServers(), store.getProjects());
     res.json(requireStatus(name));
   });
 
@@ -184,7 +189,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     }
     await manager.stop(name);
     await store.deleteServer(name);
-    manager.reconcile(store.getServers());
+    manager.reconcile(store.getServers(), store.getProjects());
     await uninstall(dataDir, name);
     res.status(204).end();
   });
@@ -277,11 +282,102 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.status(204).end();
   });
 
+  // --- projects ---
+
+  const projectPath = (slug: string): string => `/mcp/p/${slug}`;
+  const toProjectStatus = (project: ProjectConfig): ProjectStatus => ({ ...project, path: projectPath(project.slug) });
+
+  const requireProject = (slug: string): ProjectConfig => {
+    const project = store.getProject(slug);
+    if (!project) {
+      throw new HttpError(404, `Unknown project "${slug}"`);
+    }
+    return project;
+  };
+
+  /** Every member must reference a server that currently exists. */
+  const assertMembersExist = (members: Record<string, unknown> | undefined): void => {
+    for (const name of Object.keys(members ?? {})) {
+      if (!store.getServer(name)) {
+        throw new HttpError(400, `Unknown server "${name}" in project members`);
+      }
+    }
+  };
+
+  const requireValidSlug = (slug: string): string => {
+    const parsed = serverNameSchema.safeParse(slug);
+    if (!parsed.success) {
+      throw new HttpError(400, `Invalid project slug "${slug}"`, 'derive a name that yields a valid URL slug');
+    }
+    return parsed.data;
+  };
+
+  router.get('/projects', (_req, res) => {
+    res.json(store.getProjects().map(toProjectStatus));
+  });
+
+  router.post('/projects', async (req, res) => {
+    const request = createProjectRequestSchema.parse(req.body);
+    const slug = requireValidSlug(request.slug ?? slugify(request.name));
+    if (store.getProject(slug)) {
+      throw new HttpError(409, `Project "${slug}" already exists`);
+    }
+    assertMembersExist(request.members);
+    const config = projectConfigSchema.parse({
+      name: request.name,
+      slug,
+      enabled: request.enabled ?? true,
+      description: request.description,
+      members: request.members ?? {},
+    });
+    await store.saveProject(config);
+    manager.reconcile(store.getServers(), store.getProjects());
+    res.status(201).json(toProjectStatus(config));
+  });
+
+  router.get('/projects/:slug', (req, res) => {
+    res.json(toProjectStatus(requireProject(req.params.slug)));
+  });
+
+  router.patch('/projects/:slug', async (req, res) => {
+    const existing = requireProject(req.params.slug);
+    const update = updateProjectRequestSchema.parse(req.body);
+    assertMembersExist(update.members);
+    // Auto-slug: renaming re-derives the slug (and thus the URL). Keep the old
+    // slug when the name is unchanged so member-only edits never move the URL.
+    const name = update.name ?? existing.name;
+    const slug = update.name !== undefined ? requireValidSlug(slugify(name)) : existing.slug;
+    if (slug !== existing.slug && store.getProject(slug)) {
+      throw new HttpError(409, `Project "${slug}" already exists`);
+    }
+    const next = projectConfigSchema.parse({
+      ...existing,
+      name,
+      slug,
+      enabled: update.enabled ?? existing.enabled,
+      description: update.description !== undefined ? update.description : existing.description,
+      members: update.members ?? existing.members,
+    });
+    await store.saveProject(next);
+    if (slug !== existing.slug) {
+      await store.deleteProject(existing.slug);
+    }
+    manager.reconcile(store.getServers(), store.getProjects());
+    res.json(toProjectStatus(next));
+  });
+
+  router.delete('/projects/:slug', async (req, res) => {
+    requireProject(req.params.slug);
+    await store.deleteProject(req.params.slug);
+    manager.reconcile(store.getServers(), store.getProjects());
+    res.status(204).end();
+  });
+
   // --- reload ---
 
   router.post('/reload', async (_req, res) => {
     const state = await store.reload();
-    manager.reconcile(state.servers);
+    manager.reconcile(state.servers, state.projects);
     res.json({ reloaded: true, serverCount: state.servers.length });
   });
 

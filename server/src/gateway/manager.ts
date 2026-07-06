@@ -1,5 +1,12 @@
 import { isDeepStrictEqual } from 'node:util';
-import type { ActivityEntry, ServerConfig, ServerStatus, SettingsFile } from '@mcp-router/shared';
+import type {
+  ActivityEntry,
+  ProjectConfig,
+  ProjectMember,
+  ServerConfig,
+  ServerStatus,
+  SettingsFile,
+} from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
@@ -65,6 +72,8 @@ function snapshotValue(value: unknown): unknown {
 }
 
 interface ManagedServer {
+  /** Map key: the server name for base instances, `p:<slug>:<server>` for project-scoped ones. */
+  key: string;
   config: ServerConfig;
   client: Client | null;
   connecting: Promise<Client> | null;
@@ -79,8 +88,9 @@ interface ManagedServer {
   stopping: boolean;
 }
 
-function newEntry(config: ServerConfig): ManagedServer {
+function newEntry(key: string, config: ServerConfig): ManagedServer {
   return {
+    key,
     config,
     client: null,
     connecting: null,
@@ -89,6 +99,38 @@ function newEntry(config: ServerConfig): ManagedServer {
     stderrTail: '',
     lastCrashAt: 0,
     stopping: false,
+  };
+}
+
+/** Map key for a server instance scoped to a project. Contains ':' so it never collides with a base server name. */
+export function projectInstanceKey(slug: string, serverName: string): string {
+  return `p:${slug}:${serverName}`;
+}
+
+/** True for a project-scoped instance key (base keys are plain server names, which cannot contain ':'). */
+function isProjectKey(key: string): boolean {
+  return key.includes(':');
+}
+
+/**
+ * Effective downstream config for a server as used by a project: the base
+ * server config with per-project overrides applied. `env`/`headers` merge over
+ * the base (project wins); `args` replaces the base stdio args. The config keeps
+ * the base server's `name` so aggregate tool namespacing is unaffected; its
+ * `enabled` reflects both the project and the member being on.
+ */
+export function resolveMemberConfig(base: ServerConfig, member: ProjectMember, project: ProjectConfig): ServerConfig {
+  let transport = base.transport;
+  if (transport.type === 'stdio' && member.args) {
+    transport = { ...transport, args: member.args };
+  } else if (transport.type === 'streamable-http' && member.headers) {
+    transport = { ...transport, headers: { ...transport.headers, ...member.headers } };
+  }
+  return {
+    ...base,
+    enabled: project.enabled && (member.enabled ?? true),
+    transport,
+    env: member.env ? { ...base.env, ...member.env } : base.env,
   };
 }
 
@@ -129,33 +171,53 @@ export class GatewayManager {
     this.getSettings = getSettings;
   }
 
-  /** Sync managed entries with the given configs: drop removed, restart changed/disabled, add new. */
-  reconcile(configs: ServerConfig[]): void {
+  /**
+   * Sync managed entries with the given server + project configs: drop removed,
+   * restart changed/disabled, add new. Base servers are keyed by name; each
+   * project member that references an existing server gets its own isolated
+   * downstream instance keyed `p:<slug>:<server>` with per-project overrides
+   * applied, so a project can run a server independently of its global state.
+   */
+  reconcile(configs: ServerConfig[], projects: ProjectConfig[] = []): void {
     const byName = new Map(configs.map((c) => [c.name, c]));
-    for (const [name, entry] of this.entries) {
-      const next = byName.get(name);
+    const desired = new Map<string, ServerConfig>(byName);
+    for (const project of projects) {
+      for (const [serverName, member] of Object.entries(project.members)) {
+        const base = byName.get(serverName);
+        if (!base) {
+          continue; // member references a server that no longer exists
+        }
+        desired.set(projectInstanceKey(project.slug, serverName), resolveMemberConfig(base, member, project));
+      }
+    }
+    for (const [key, entry] of this.entries) {
+      const next = desired.get(key);
       if (!next) {
-        void this.stop(name);
-        this.entries.delete(name);
-        this.activity.delete(name);
+        void this.stop(key);
+        this.entries.delete(key);
+        this.activity.delete(key);
         continue;
       }
       if (needsRestart(entry.config, next)) {
-        void this.stop(name);
+        void this.stop(key);
         entry.toolCount = undefined;
       } else if (!next.enabled && entry.config.enabled) {
-        void this.stop(name);
+        void this.stop(key);
       }
       entry.config = next;
     }
-    for (const [name, config] of byName) {
-      if (!this.entries.has(name)) {
-        this.entries.set(name, newEntry(config));
+    for (const [key, config] of desired) {
+      if (!this.entries.has(key)) {
+        this.entries.set(key, newEntry(key, config));
       }
     }
   }
 
-  /** Connect (spawning if needed) and return the downstream client. Resets the idle timer. */
+  /**
+   * Connect (spawning if needed) and return the downstream client for the given
+   * instance key. Resets the idle timer. For base servers the key is the server
+   * name; for project-scoped instances use {@link getClientForProject}.
+   */
   async getClient(name: string): Promise<Client> {
     const entry = this.entries.get(name);
     if (!entry) {
@@ -178,17 +240,26 @@ export class GatewayManager {
     return connecting;
   }
 
+  /** Connect (spawning if needed) and return the project-scoped client for a server. */
+  getClientForProject(slug: string, serverName: string): Promise<Client> {
+    return this.getClient(projectInstanceKey(slug, serverName));
+  }
+
   status(name: string): ServerStatus | undefined {
     const entry = this.entries.get(name);
     return entry ? toStatus(entry) : undefined;
   }
 
   statusAll(): ServerStatus[] {
-    return [...this.entries.values()].map(toStatus).sort((a, b) => a.config.name.localeCompare(b.config.name));
+    // Only base servers are exposed as "servers"; project-scoped instances are an internal detail.
+    return [...this.entries.values()]
+      .filter((e) => !isProjectKey(e.key))
+      .map(toStatus)
+      .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
   runningCount(): number {
-    return [...this.entries.values()].filter((e) => e.state === 'running').length;
+    return [...this.entries.values()].filter((e) => !isProjectKey(e.key) && e.state === 'running').length;
   }
 
   recordToolCount(name: string, count: number): void {
@@ -234,10 +305,10 @@ export class GatewayManager {
     this.activity.delete(name);
   }
 
-  /** Names of all enabled servers (for the aggregate endpoint). */
+  /** Names of all enabled base servers (for the global aggregate endpoint). */
   enabledNames(): string[] {
     return [...this.entries.values()]
-      .filter((e) => e.config.enabled)
+      .filter((e) => !isProjectKey(e.key) && e.config.enabled)
       .map((e) => e.config.name)
       .sort();
   }
@@ -348,7 +419,7 @@ export class GatewayManager {
     const timeoutMs = entry.config.idleTimeoutMs ?? this.getSettings().idleTimeoutMs;
     entry.idleTimer = setTimeout(() => {
       entry.idleTimer = null;
-      this.stop(entry.config.name).catch((err: unknown) => {
+      this.stop(entry.key).catch((err: unknown) => {
         console.warn(`Idle shutdown of "${entry.config.name}" failed: ${errorMessage(err)}`);
       });
     }, timeoutMs);

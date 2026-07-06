@@ -1,5 +1,12 @@
 import { z } from 'zod';
-import { serverConfigSchema, serverNameSchema, serverSourceSchema, serverTransportSchema } from './config.ts';
+import {
+  projectConfigSchema,
+  projectMemberSchema,
+  serverConfigSchema,
+  serverNameSchema,
+  serverSourceSchema,
+  serverTransportSchema,
+} from './config.ts';
 
 /**
  * DTOs for the management REST API (/api/*).
@@ -108,6 +115,35 @@ export const createRegistryRequestSchema = z.object({
   url: z.string().url(),
 });
 export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
+
+// --- /api/projects ---
+
+/** A project as returned by the API: its stored config plus the derived endpoint path. */
+export const projectStatusSchema = projectConfigSchema.extend({
+  /** Endpoint path of the project aggregate, e.g. "/mcp/p/my-project". */
+  path: z.string(),
+});
+export type ProjectStatus = z.infer<typeof projectStatusSchema>;
+
+export const createProjectRequestSchema = z.object({
+  name: z.string().min(1).max(100),
+  /** Slug for the URL; derived from `name` when omitted. */
+  slug: serverNameSchema.optional(),
+  enabled: z.boolean().optional(),
+  description: z.string().optional(),
+  /** Members keyed by base server name; only listed servers are in the project. */
+  members: z.record(projectMemberSchema).optional(),
+});
+export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
+
+export const updateProjectRequestSchema = z.object({
+  name: z.string().min(1).max(100).optional(),
+  enabled: z.boolean().optional(),
+  description: z.string().optional(),
+  /** Full replacement of the members map when provided. */
+  members: z.record(projectMemberSchema).optional(),
+});
+export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
 
 // --- GET /api/status ---
 

@@ -1,4 +1,10 @@
-import type { CreateRegistryRequest, InstallRequest, UpdateServerRequest } from '@mcp-router/shared';
+import type {
+  CreateProjectRequest,
+  CreateRegistryRequest,
+  InstallRequest,
+  UpdateProjectRequest,
+  UpdateServerRequest,
+} from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from './api';
 
@@ -12,6 +18,8 @@ export const queryKeys = {
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
   registryServerDetail: (registry: string, serverName: string) =>
     ['registries', registry, 'servers', serverName] as const,
+  projects: ['projects'] as const,
+  project: (slug: string) => ['projects', slug] as const,
 };
 
 // --- queries ---
@@ -75,6 +83,13 @@ export function useRegistrySearch(registry: string, search: string) {
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (lastPage) => lastPage.metadata?.nextCursor,
     enabled: registry.length > 0,
+  });
+}
+
+export function useProjects() {
+  return useQuery({
+    queryKey: queryKeys.projects,
+    queryFn: api.listProjects,
   });
 }
 
@@ -160,6 +175,30 @@ export function useDeleteRegistry() {
   return useMutation({
     mutationFn: (name: string) => api.deleteRegistry(name),
     onSuccess: () => invalidate(queryKeys.registries),
+  });
+}
+
+export function useCreateProject() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: CreateProjectRequest) => api.createProject(body),
+    onSuccess: () => invalidate(queryKeys.projects),
+  });
+}
+
+export function useUpdateProject() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ slug, ...body }: UpdateProjectRequest & { slug: string }) => api.updateProject(slug, body),
+    onSuccess: () => invalidate(queryKeys.projects),
+  });
+}
+
+export function useDeleteProject() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (slug: string) => api.deleteProject(slug),
+    onSuccess: () => invalidate(queryKeys.projects),
   });
 }
 

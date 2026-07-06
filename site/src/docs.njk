@@ -1,0 +1,162 @@
+---
+layout: base.njk
+title: Docs
+description: MCP Router documentation — configuration files, REST API, MCP endpoints, and security notes.
+permalink: /docs/
+---
+
+<section class="section docs">
+  <div class="wrap wrap-docs">
+    <div class="docs-layout">
+      <aside class="toc">
+        <p class="toc-title">On this page</p>
+        <nav>
+          <a href="#config">Configuration files</a>
+          <a href="#settings">settings.json</a>
+          <a href="#registries">registries.json</a>
+          <a href="#servers">servers/&lt;name&gt;.json</a>
+          <a href="#projects">projects/&lt;slug&gt;.json</a>
+          <a href="#api">REST API</a>
+          <a href="#mcp">MCP endpoints</a>
+          <a href="#security">Security notes</a>
+        </nav>
+        <p class="toc-foot"><a href="{{ site.repo }}/blob/main/README.md">Full README ↗</a></p>
+      </aside>
+
+      <article class="docs-body">
+        <h1>Documentation</h1>
+        <p class="lede">
+          A condensed reference. For the complete guide — Docker details, remote-server proxying, and the
+          extended API — see the <a href="{{ site.repo }}/blob/main/README.md">README on GitHub</a>.
+        </p>
+
+        <h2 id="config">Configuration files</h2>
+        <p>All config lives as flat, hand-editable JSON under <code>DATA_DIR/config</code>
+          (<code>./data/config</code> locally, <code>/data/config</code> in Docker). Files are written with mode
+          <code>0600</code>; unknown keys are preserved across round-trips. After hand-editing, wait for the file
+          watcher or apply the change explicitly:</p>
+        <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
+  http://localhost:3000/api/reload</code></pre>
+
+        <h3 id="settings">settings.json</h3>
+        <pre class="code"><code>{
+  "port": 3000,                 <span class="cmt">// PORT env wins over this</span>
+  "authToken": "a-long-secret", <span class="cmt">// MCP_ROUTER_TOKEN env wins</span>
+  "authEnabled": true,          <span class="cmt">// false = unauthenticated (trusted nets only)</span>
+  "idleTimeoutMs": 300000       <span class="cmt">// default stdio idle shutdown</span>
+}</code></pre>
+
+        <h3 id="registries">registries.json</h3>
+        <pre class="code"><code>{
+  "registries": [
+    { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
+  ]
+}</code></pre>
+        <p>Any MCP-registry-API-compatible service (<code>GET {url}/v0/servers</code>) works. The official
+          registry is seeded on first run.</p>
+
+        <h3 id="servers">servers/&lt;name&gt;.json</h3>
+        <p>One file per installed server. The name doubles as the route segment (<code>/mcp/&lt;name&gt;</code>)
+          and the install directory (<code>data/servers/&lt;name&gt;</code>). Names must match
+          <code>^[a-z0-9][a-z0-9._-]*$</code> (max 64 chars). A local stdio server installed from a registry:</p>
+        <pre class="code"><code>{
+  "name": "github",
+  "enabled": true,
+  "source": {
+    "type": "registry",
+    "registry": "official",
+    "serverName": "io.github.github/github-mcp-server"
+  },
+  "transport": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["/data/servers/github/node_modules/.bin/github-mcp-server"]
+  },
+  "env": { "GITHUB_TOKEN": "ghp_..." }
+}</code></pre>
+        <p>Use <code>"source": { "type": "npm", "package": "@scope/pkg" }</code> to install straight from npm, or
+          <code>"source": { "type": "remote" }</code> with a <code>streamable-http</code> transport to proxy a
+          remote server without installing anything.</p>
+
+        <h3 id="projects">projects/&lt;slug&gt;.json</h3>
+        <p>A <strong>project</strong> is a custom aggregate: it exposes a chosen subset of servers at its own
+          <code>/mcp/p/&lt;slug&gt;</code> endpoint. The <code>slug</code> is derived from the name (and doubles as
+          the filename); each member may override the base server's <code>env</code>, <code>args</code>, or
+          <code>headers</code> for this project only. Each member runs as an isolated downstream instance, so a
+          project can run a server that's globally disabled — and its overrides never touch the base server.</p>
+        <pre class="code"><code>{
+  "name": "Coding assistant",
+  "slug": "coding-assistant",
+  "enabled": true,               <span class="cmt">// false = the /mcp/p/&lt;slug&gt; endpoint 404s</span>
+  "description": "GitHub + local files for a code client.",
+  "members": {
+    "github": { "enabled": true },
+    "filesystem": {
+      "enabled": true,
+      "args": ["/data/servers/filesystem", "/srv/repo"],  <span class="cmt">// replaces the base args</span>
+      "env": { "READ_ONLY": "1" }                          <span class="cmt">// merged over base env</span>
+    }
+  }
+}</code></pre>
+        <p>The effective enabled state of a member is <code>project.enabled &amp;&amp; member.enabled</code> — the base
+          server's own <code>enabled</code> flag is ignored inside a project. Members referencing a server that
+          doesn't exist are skipped.</p>
+
+        <h2 id="api">REST API</h2>
+        <p>Management API under <code>/api</code>, bearer auth, JSON in/out. Errors are non-2xx with
+          <code>{ "error": "...", "detail": "..." }</code>.</p>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>GET /api/status</code></td><td>Router status (version, auth mode, running/total)</td></tr>
+              <tr><td><code>GET/POST /api/registries</code></td><td>List / add registries</td></tr>
+              <tr><td><code>DELETE /api/registries/:name</code></td><td>Remove a registry</td></tr>
+              <tr><td><code>GET /api/registries/:name/servers</code></td><td>Search that registry</td></tr>
+              <tr><td><code>GET /api/servers</code></td><td>All installed servers with runtime state</td></tr>
+              <tr><td><code>POST /api/servers</code></td><td>Install (registry entry, npm package, or remote URL)</td></tr>
+              <tr><td><code>PATCH /api/servers/:name</code></td><td>Update env / enabled / transport</td></tr>
+              <tr><td><code>DELETE /api/servers/:name</code></td><td>Stop, delete config, remove install dir</td></tr>
+              <tr><td><code>POST /api/servers/:name/restart</code></td><td>Kill and respawn (after env edits)</td></tr>
+              <tr><td><code>GET /api/servers/:name/tools</code></td><td>Connect and list downstream tools</td></tr>
+              <tr><td><code>GET /api/projects</code></td><td>All projects with their endpoint paths</td></tr>
+              <tr><td><code>POST /api/projects</code></td><td>Create a project (slug auto-derived from the name)</td></tr>
+              <tr><td><code>PATCH /api/projects/:slug</code></td><td>Update members / overrides / enabled (renaming re-slugs)</td></tr>
+              <tr><td><code>DELETE /api/projects/:slug</code></td><td>Remove a project (servers untouched)</td></tr>
+              <tr><td><code>POST /api/reload</code></td><td>Re-read config and reconcile processes</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <h2 id="mcp">MCP endpoints</h2>
+        <div class="table-scroll">
+          <table>
+            <thead><tr><th>Endpoint</th><th>Purpose</th></tr></thead>
+            <tbody>
+              <tr><td><code>POST/GET/DELETE /mcp/&lt;name&gt;</code></td><td>Proxy 1:1 to that server</td></tr>
+              <tr><td><code>POST/GET/DELETE /mcp</code></td><td>Aggregate of all enabled servers, <code>&lt;server&gt;__</code> prefix</td></tr>
+              <tr><td><code>POST/GET/DELETE /mcp/p/&lt;slug&gt;</code></td><td>A project's custom aggregate — same <code>&lt;server&gt;__</code> prefix</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p>Both speak streamable HTTP and require the bearer token (unless <code>authEnabled</code> is false).
+          Disabled servers return 404; auth failures return 401 before any MCP handling.</p>
+
+        <h2 id="security">Security notes</h2>
+        <ul class="notes">
+          <li><strong>Secrets are plaintext</strong> in the JSON config (env values, remote headers, the auth
+            token). Files are mode <code>0600</code>, but anyone with read access to <code>DATA_DIR</code> can
+            read them. Protect the directory.</li>
+          <li><strong>One bearer token guards everything.</strong> Treat it like a password. Set it via
+            <code>MCP_ROUTER_TOKEN</code>.</li>
+          <li><strong>Don't expose the router directly to the internet</strong> — it speaks plain HTTP. Put it
+            behind a TLS-terminating reverse proxy, or bind to localhost / a private network.</li>
+          <li><strong>Installed servers run as child processes</strong> with the env you configure. Installing a
+            server means running its code with those secrets — install packages you trust.</li>
+        </ul>
+
+        <p class="docs-cta"><a class="btn btn-primary" href="{{ site.repo }}/blob/main/README.md">Read the full README ↗</a></p>
+      </article>
+    </div>
+  </div>
+</section>

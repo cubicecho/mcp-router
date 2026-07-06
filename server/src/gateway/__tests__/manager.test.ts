@@ -1,7 +1,7 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { serverConfigSchema, settingsFileSchema } from '@mcp-router/shared';
+import { projectConfigSchema, serverConfigSchema, settingsFileSchema } from '@mcp-router/shared';
 import { describe, expect, it } from 'vitest';
-import { GatewayManager } from '../manager.ts';
+import { GatewayManager, projectInstanceKey } from '../manager.ts';
 
 const settings = settingsFileSchema.parse({});
 const remoteConfig = (name: string) =>
@@ -85,5 +85,78 @@ describe('GatewayManager activity log', () => {
     expect(typeof stored).toBe('string');
     // No high surrogate left without its low half.
     expect(stored).not.toMatch(/[\uD800-\uDBFF](?![\uDC00-\uDFFF])/);
+  });
+});
+
+describe('GatewayManager projects', () => {
+  const stdioConfig = (name: string) =>
+    serverConfigSchema.parse({
+      name,
+      source: { type: 'npm', package: `pkg-${name}` },
+      transport: { type: 'stdio', command: 'node', args: ['base.js'] },
+      env: { BASE: '1', SHARED: 'base' },
+    });
+
+  const project = (members: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    projectConfigSchema.parse({ name: 'Acme', slug: 'acme', members, ...extra });
+
+  it('creates a project-scoped instance with per-member overrides applied', () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile(
+      [stdioConfig('gh')],
+      [project({ gh: { env: { SHARED: 'override', EXTRA: 'x' }, args: ['custom.js'] } })],
+    );
+
+    const status = manager.status(projectInstanceKey('acme', 'gh'));
+    expect(status).toBeDefined();
+    // Keeps the base name (for tool namespacing) but with overrides merged in.
+    expect(status?.config.name).toBe('gh');
+    expect(status?.config.env).toEqual({ BASE: '1', SHARED: 'override', EXTRA: 'x' });
+    expect(status?.config.transport).toMatchObject({ type: 'stdio', args: ['custom.js'] });
+  });
+
+  it('keeps project instances out of the base server views (statusAll / enabledNames)', () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([stdioConfig('gh')], [project({ gh: {} })]);
+
+    expect(manager.enabledNames()).toEqual(['gh']);
+    expect(manager.statusAll().map((s) => s.config.name)).toEqual(['gh']);
+  });
+
+  it('runs a project member even when its base server is globally disabled (independent scope)', () => {
+    const manager = new GatewayManager(() => settings);
+    const disabledBase = serverConfigSchema.parse({ ...stdioConfig('gh'), enabled: false });
+    manager.reconcile([disabledBase], [project({ gh: {} })]);
+
+    // The base server is off globally...
+    expect(manager.enabledNames()).toEqual([]);
+    // ...but its project-scoped instance is enabled and connectable.
+    expect(manager.status(projectInstanceKey('acme', 'gh'))?.config.enabled).toBe(true);
+  });
+
+  it('disables a project instance when the project itself is disabled', () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([stdioConfig('gh')], [project({ gh: {} }, { enabled: false })]);
+
+    expect(manager.status(projectInstanceKey('acme', 'gh'))?.config.enabled).toBe(false);
+  });
+
+  it('drops project instances whose base server no longer exists', () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([stdioConfig('gh')], [project({ gh: {}, ghost: {} })]);
+
+    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeDefined();
+    expect(manager.status(projectInstanceKey('acme', 'ghost'))).toBeUndefined();
+  });
+
+  it('removes a project instance when the project is removed on a later reconcile', () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([stdioConfig('gh')], [project({ gh: {} })]);
+    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeDefined();
+
+    manager.reconcile([stdioConfig('gh')], []);
+    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeUndefined();
+    // The base server survives.
+    expect(manager.status('gh')).toBeDefined();
   });
 });

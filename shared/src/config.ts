@@ -139,3 +139,54 @@ export type ServerSource = z.infer<typeof serverSourceSchema>;
 export type ServerTransport = z.infer<typeof serverTransportSchema>;
 export type EnvVarMeta = z.infer<typeof envVarMetaSchema>;
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
+
+// --- projects/<slug>.json ---
+
+/**
+ * A server's participation in a project, with optional per-project parameter
+ * overrides. When any override is set the server runs as its own downstream
+ * process for that project (keyed separately from the shared base instance);
+ * with no overrides it still runs isolated under the project. Merge semantics:
+ * `env` and `headers` are merged over the base server's values (project keys
+ * win); `args` replaces the base stdio args entirely when present.
+ */
+export const projectMemberSchema = z
+  .object({
+    /** Include this server in the project aggregate. Absent members are not in the project. */
+    enabled: z.boolean().default(true),
+    /** Env vars merged over the base server's env (stdio children). */
+    env: z.record(z.string()).optional(),
+    /** Replaces the base server's stdio args entirely when set. */
+    args: z.array(z.string()).optional(),
+    /** Headers merged over the base server's headers (remote streamable-http). */
+    headers: z.record(z.string()).optional(),
+  })
+  .passthrough();
+
+/** A named custom aggregate exposing a chosen subset of servers at /mcp/p/<slug>. */
+export const projectConfigSchema = z
+  .object({
+    /** Human-facing display name. */
+    name: z.string().min(1).max(100),
+    /** URL slug — the route segment at /mcp/p/<slug>, also the config filename. */
+    slug: serverNameSchema,
+    /** Disable to 404 the project's endpoint without deleting it. */
+    enabled: z.boolean().default(true),
+    description: z.string().optional(),
+    /** Members keyed by base server name. Only listed servers are in the project. */
+    members: z.record(projectMemberSchema).default({}),
+  })
+  .passthrough();
+
+export type ProjectMember = z.infer<typeof projectMemberSchema>;
+export type ProjectConfig = z.infer<typeof projectConfigSchema>;
+
+/** Derive a URL slug (a valid serverNameSchema value) from a display name. */
+export function slugify(name: string): string {
+  return name
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-') // non-slug chars → single dash
+    .replace(/^[^a-z0-9]+/, '') // must start alphanumeric
+    .replace(/[-.]+$/, '') // no trailing dash/dot
+    .slice(0, 64);
+}

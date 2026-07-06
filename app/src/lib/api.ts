@@ -1,8 +1,10 @@
 import type {
   ActivityResponse,
   ApiError,
+  CreateProjectRequest,
   CreateRegistryRequest,
   InstallRequest,
+  ProjectStatus,
   Registry,
   RegistryListResponse,
   RegistryServer,
@@ -11,6 +13,7 @@ import type {
   ServerStatus,
   ToolCallRequest,
   ToolCallResponse,
+  UpdateProjectRequest,
   UpdateServerRequest,
   UpdateSettingsRequest,
 } from '@mcp-router/shared';
@@ -182,6 +185,28 @@ export async function getRegistryServerDetail(registry: string, serverName: stri
   return 'server' in data && typeof data.server === 'object'
     ? (data as RegistryServerEntry).server
     : (data as RegistryServer);
+}
+
+// --- projects ---
+
+export function listProjects(): Promise<ProjectStatus[]> {
+  return request('/api/projects');
+}
+
+export function getProject(slug: string): Promise<ProjectStatus> {
+  return request(`/api/projects/${encodeURIComponent(slug)}`);
+}
+
+export function createProject(body: CreateProjectRequest): Promise<ProjectStatus> {
+  return request('/api/projects', { method: 'POST', body });
+}
+
+export function updateProject(slug: string, body: UpdateProjectRequest): Promise<ProjectStatus> {
+  return request(`/api/projects/${encodeURIComponent(slug)}`, { method: 'PATCH', body });
+}
+
+export function deleteProject(slug: string): Promise<void> {
+  return request(`/api/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' });
 }
 
 // --- config ---

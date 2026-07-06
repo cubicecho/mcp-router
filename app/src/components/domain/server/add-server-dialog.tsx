@@ -39,27 +39,50 @@ function rowsToRecord(rows: KeyValueRow[]): Record<string, string> {
   return result;
 }
 
-/** Parse a pasted JSON config (a bare `{command,args,env}` object or a
- *  `claude_desktop_config.json`-style `{ mcpServers: { name: {...} } }` wrapper). */
+/** Parse a pasted JSON config into a single stdio server entry. Accepts:
+ *  - a bare `{ command, args, env }` object,
+ *  - a named entry `{ "my-server": { command, args } }`,
+ *  - a `claude_desktop_config.json` wrapper `{ mcpServers: { "my-server": {...} } }`
+ *    (or a `servers` wrapper).
+ *  When several servers are present, the first is used and `extraCount` reports
+ *  how many were skipped. Trailing commas (a common copy-paste artifact) are tolerated. */
 function parseJsonConfig(text: string): {
   name?: string;
   command: string;
   args: string[];
   env: Record<string, string>;
+  extraCount: number;
 } {
-  const parsed = JSON.parse(text) as Record<string, unknown>;
+  // Tolerate trailing commas before a closing brace/bracket.
+  const cleaned = text.replace(/,(\s*[}\]])/g, '$1');
+  const parsed = JSON.parse(cleaned) as Record<string, unknown>;
+
+  // Unwrap a `mcpServers` / `servers` wrapper if present.
+  const wrapper = parsed.mcpServers ?? parsed.servers;
+  const map = wrapper && typeof wrapper === 'object' ? (wrapper as Record<string, unknown>) : parsed;
+
   let name: string | undefined;
-  let entry = parsed;
-  const servers = parsed.mcpServers ?? parsed.servers;
-  if (servers && typeof servers === 'object') {
-    const keys = Object.keys(servers as Record<string, unknown>);
+  let entry: Record<string, unknown>;
+  let extraCount = 0;
+  if (typeof map.command === 'string') {
+    // A bare `{ command, args, env }` config.
+    entry = map;
+  } else {
+    // A name -> config map; use the first entry.
+    const keys = Object.keys(map);
     const first = keys[0];
     if (!first) {
-      throw new Error('No servers found under "mcpServers"');
+      throw new Error('No server entries found');
     }
     name = first;
-    entry = (servers as Record<string, Record<string, unknown>>)[first] ?? {};
+    extraCount = keys.length - 1;
+    const value = map[first];
+    if (!value || typeof value !== 'object') {
+      throw new Error(`Entry "${first}" is not an object`);
+    }
+    entry = value as Record<string, unknown>;
   }
+
   const command = entry.command;
   if (typeof command !== 'string' || !command) {
     throw new Error('Config has no "command" string');
@@ -71,7 +94,7 @@ function parseJsonConfig(text: string): {
       env[k] = String(v);
     }
   }
-  return { name, command, args, env };
+  return { name, command, args, env, extraCount };
 }
 
 export function AddServerDialog({
@@ -129,6 +152,7 @@ export function AddServerDialog({
   const applyJson = () => {
     try {
       const config = parseJsonConfig(jsonText);
+      setMode('stdio');
       setCommand(config.command);
       setArgsText(config.args.join('\n'));
       setEnvRows(recordToRows(config.env));
@@ -138,7 +162,15 @@ export function AddServerDialog({
           setName(suggested.data);
         }
       }
-      toast.success('Config applied to the form below');
+      if (config.extraCount > 0) {
+        toast.success(
+          `Applied "${config.name}". Ignored ${config.extraCount} other ${
+            config.extraCount === 1 ? 'server' : 'servers'
+          } in the paste — add ${config.extraCount === 1 ? 'it' : 'them'} one at a time.`,
+        );
+      } else {
+        toast.success('Config applied — fields filled in below');
+      }
     } catch (error) {
       toast.error(`Could not parse config: ${error instanceof Error ? error.message : 'invalid JSON'}`);
     }
@@ -225,6 +257,34 @@ export function AddServerDialog({
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          {!isEdit && (
+            <section className="flex flex-col gap-2 rounded-lg border border-dashed bg-muted/40 p-3">
+              <div className="flex items-center justify-between gap-2">
+                <Label htmlFor="add-json">Paste a config</Label>
+                <Button type="button" variant="outline" size="sm" disabled={!jsonText.trim()} onClick={applyJson}>
+                  Apply config
+                </Button>
+              </div>
+              <Textarea
+                id="add-json"
+                value={jsonText}
+                rows={10}
+                className="resize-y font-mono text-xs"
+                placeholder={
+                  '{\n  "mcpServers": {\n    "sequentialthinking": {\n      "command": "npx",\n      "args": ["-y", "@modelcontextprotocol/server-sequential-thinking"]\n    }\n  }\n}'
+                }
+                onChange={(event) => setJsonText(event.target.value)}
+              />
+              <p className="text-xs text-muted-foreground">
+                Paste a full <code className="font-mono">claude_desktop_config.json</code> block (
+                <code className="font-mono">mcpServers</code> wrapper), a single named{' '}
+                <code className="font-mono">{'{ "name": { command, args } }'}</code> entry, or a bare{' '}
+                <code className="font-mono">{'{ command, args, env }'}</code> object. Fills in the fields below; the
+                first server is used if several are present.
+              </p>
+            </section>
+          )}
+
           <div className="flex flex-col gap-2">
             <Label htmlFor="add-name">Local name</Label>
             <Input
@@ -253,30 +313,6 @@ export function AddServerDialog({
             </TabsList>
 
             <TabsContent value="stdio" className="flex flex-col gap-4 pt-2">
-              {!isEdit && (
-                <div className="flex flex-col gap-2">
-                  <Label htmlFor="add-json">Paste config (optional)</Label>
-                  <Textarea
-                    id="add-json"
-                    value={jsonText}
-                    rows={3}
-                    className="font-mono text-xs"
-                    placeholder={'{ "command": "npx", "args": ["-y", "some-mcp-server"], "env": { "API_KEY": "…" } }'}
-                    onChange={(event) => setJsonText(event.target.value)}
-                  />
-                  <div className="flex justify-end">
-                    <Button type="button" variant="outline" size="sm" disabled={!jsonText.trim()} onClick={applyJson}>
-                      Apply config
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Accepts a bare <code className="font-mono">{'{ command, args, env }'}</code> object or a{' '}
-                    <code className="font-mono">claude_desktop_config.json</code>{' '}
-                    <code className="font-mono">mcpServers</code> entry.
-                  </p>
-                </div>
-              )}
-
               <div className="flex flex-col gap-2">
                 <Label htmlFor="add-command">Command</Label>
                 <Input

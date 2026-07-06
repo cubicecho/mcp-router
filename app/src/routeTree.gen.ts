@@ -11,6 +11,7 @@
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RegistriesRouteImport } from './routes/registries'
+import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as ServersNameRouteImport } from './routes/servers.$name'
@@ -23,6 +24,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const RegistriesRoute = RegistriesRouteImport.update({
   id: '/registries',
   path: '/registries',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ProjectsRoute = ProjectsRouteImport.update({
+  id: '/projects',
+  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrowseRoute = BrowseRouteImport.update({
@@ -44,6 +50,7 @@ const ServersNameRoute = ServersNameRouteImport.update({
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/servers/$name': typeof ServersNameRoute
@@ -51,6 +58,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/servers/$name': typeof ServersNameRoute
@@ -59,19 +67,33 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/servers/$name': typeof ServersNameRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/browse' | '/registries' | '/settings' | '/servers/$name'
+  fullPaths:
+    | '/'
+    | '/browse'
+    | '/projects'
+    | '/registries'
+    | '/settings'
+    | '/servers/$name'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/browse' | '/registries' | '/settings' | '/servers/$name'
+  to:
+    | '/'
+    | '/browse'
+    | '/projects'
+    | '/registries'
+    | '/settings'
+    | '/servers/$name'
   id:
     | '__root__'
     | '/'
     | '/browse'
+    | '/projects'
     | '/registries'
     | '/settings'
     | '/servers/$name'
@@ -80,6 +102,7 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrowseRoute: typeof BrowseRoute
+  ProjectsRoute: typeof ProjectsRoute
   RegistriesRoute: typeof RegistriesRoute
   SettingsRoute: typeof SettingsRoute
   ServersNameRoute: typeof ServersNameRoute
@@ -99,6 +122,13 @@ declare module '@tanstack/react-router' {
       path: '/registries'
       fullPath: '/registries'
       preLoaderRoute: typeof RegistriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/projects': {
+      id: '/projects'
+      path: '/projects'
+      fullPath: '/projects'
+      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/browse': {
@@ -128,6 +158,7 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrowseRoute: BrowseRoute,
+  ProjectsRoute: ProjectsRoute,
   RegistriesRoute: RegistriesRoute,
   SettingsRoute: SettingsRoute,
   ServersNameRoute: ServersNameRoute,
