@@ -173,4 +173,54 @@ describe('REST API', () => {
     expect((await authed(request(app).get('/api/registries/nope/servers'))).status).toBe(404);
     expect((await authed(request(app).post('/mcp/nope')).send({})).status).toBe(404);
   });
+
+  it('manages projects: auto-slug, member validation, rename, and endpoint gating', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    // Members must reference existing servers.
+    const badMember = await authed(request(app).post('/api/projects')).send({
+      name: 'Acme',
+      members: { ghost: {} },
+    });
+    expect(badMember.status).toBe(400);
+
+    // Slug is derived from the name; response carries the derived endpoint path.
+    const created = await authed(request(app).post('/api/projects')).send({
+      name: 'Acme Backend',
+      members: { hosted: { headers: { 'X-Env': 'prod' } } },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.slug).toBe('acme-backend');
+    expect(created.body.path).toBe('/mcp/p/acme-backend');
+    expect(store.getProject('acme-backend')?.members.hosted?.headers).toEqual({ 'X-Env': 'prod' });
+
+    const dup = await authed(request(app).post('/api/projects')).send({ name: 'Acme Backend' });
+    expect(dup.status).toBe(409);
+
+    const list = await authed(request(app).get('/api/projects'));
+    expect(list.body).toHaveLength(1);
+
+    // The project endpoint is reachable while enabled...
+    expect((await authed(request(app).post('/mcp/p/acme-backend')).send({})).status).not.toBe(404);
+
+    // Renaming re-derives the slug (and moves the URL); the old slug is gone.
+    const renamed = await authed(request(app).patch('/api/projects/acme-backend')).send({ name: 'Renamed' });
+    expect(renamed.status).toBe(200);
+    expect(renamed.body.slug).toBe('renamed');
+    expect(store.getProject('acme-backend')).toBeUndefined();
+    expect(store.getProject('renamed')).toBeDefined();
+
+    // Disabling 404s the endpoint without deleting the project.
+    await authed(request(app).patch('/api/projects/renamed')).send({ enabled: false });
+    expect((await authed(request(app).post('/mcp/p/renamed')).send({})).status).toBe(404);
+    expect(store.getProject('renamed')?.enabled).toBe(false);
+
+    const deleted = await authed(request(app).delete('/api/projects/renamed'));
+    expect(deleted.status).toBe(204);
+    expect((await authed(request(app).get('/api/projects/renamed'))).status).toBe(404);
+  });
 });

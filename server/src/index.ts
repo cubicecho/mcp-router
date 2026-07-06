@@ -10,10 +10,10 @@ async function main(): Promise<void> {
   await store.init();
 
   const manager = new GatewayManager(() => store.getSettings());
-  manager.reconcile(store.getServers());
+  manager.reconcile(store.getServers(), store.getProjects());
   store.on('change', (state) => {
     console.log('Config changed on disk; reconciling servers');
-    manager.reconcile(state.servers);
+    manager.reconcile(state.servers, state.projects);
   });
   store.startWatching();
 
