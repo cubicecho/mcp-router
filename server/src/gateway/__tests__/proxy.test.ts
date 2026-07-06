@@ -3,6 +3,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
+import { HttpError } from '../../errors.ts';
 import { type AggregateDeps, createAggregateServer, createProxyServer, type ProxyDeps } from '../proxy.ts';
 
 type RecordedActivity = ActivityEntry & { name: string };
@@ -66,6 +67,24 @@ describe('proxy activity recording', () => {
     });
     expect(activity[0]?.result).toMatchObject({ content: [{ type: 'text', text: 'echo:hi' }] });
     expect(typeof activity[0]?.durationMs).toBe('number');
+  });
+
+  it('surfaces HttpError detail (e.g. a stderr tail) in the recorded error', async () => {
+    const { activity, record } = collector();
+    const deps: ProxyDeps = {
+      getClient: async () => {
+        throw new HttpError(502, 'Failed to connect to server "demo"', 'Traceback: ModuleNotFoundError: mcp');
+      },
+      recordToolCount: () => {},
+      recordActivity: record,
+    };
+    const { client, close } = await connectProxy(deps);
+
+    await expect(client.callTool({ name: 'echo' })).rejects.toThrow(/ModuleNotFoundError/);
+    await close();
+
+    expect(activity).toHaveLength(1);
+    expect(activity[0]?.error).toContain('ModuleNotFoundError');
   });
 
   it('records a failed direct list', async () => {

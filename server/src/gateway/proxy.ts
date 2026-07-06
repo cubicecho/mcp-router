@@ -13,7 +13,7 @@ import {
   McpError,
   ReadResourceRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { errorMessage } from '../errors.ts';
+import { errorDetailMessage, errorMessage } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 
@@ -36,7 +36,7 @@ function toMcpError(err: unknown): McpError {
   if (err instanceof McpError) {
     return err;
   }
-  return new McpError(ErrorCode.InternalError, errorMessage(err));
+  return new McpError(ErrorCode.InternalError, errorDetailMessage(err));
 }
 
 /** A tool call that resolves with `isError: true` is a downstream failure, not a success. */
@@ -113,7 +113,7 @@ async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: (
       ok: false,
       durationMs: Date.now() - startedAt,
       params: ctx.params,
-      error: errorMessage(err),
+      error: errorDetailMessage(err),
     });
     throw toMcpError(err);
   }
@@ -244,7 +244,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
               method,
               ok: false,
               durationMs: Date.now() - startedAt,
-              error: errorMessage(err),
+              error: errorDetailMessage(err),
             });
           }
           return [];
