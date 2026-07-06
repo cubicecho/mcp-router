@@ -1,17 +1,30 @@
-import { createFileRoute, Link } from '@tanstack/react-router';
-import { ArrowLeftIcon, CheckIcon, CopyIcon, RotateCwIcon } from 'lucide-react';
+import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
+import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { ActivityCard } from '@/components/domain/server/activity-card';
+import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { ToolsCard } from '@/components/domain/server/tools-card';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatSource } from '@/lib/format';
-import { useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
+import { formatRelativeTime, formatSource } from '@/lib/format';
+import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 export const Route = createFileRoute('/servers/$name')({
@@ -49,11 +62,24 @@ function OverviewRow({ label, children }: { label: string; children: ReactNode }
 
 function ServerDetailPage() {
   const { name } = Route.useParams();
+  const navigate = useNavigate();
   const { data: server, isPending, error } = useServer(name);
   const update = useUpdateServer();
   const restart = useRestartServer();
+  const remove = useDeleteServer();
+  const [editOpen, setEditOpen] = useState(false);
 
   const endpointUrl = `${window.location.origin}/mcp/${name}`;
+
+  const handleDelete = () => {
+    remove.mutate(name, {
+      onSuccess: () => {
+        toast.success(`Deleted ${name}`);
+        navigate({ to: '/' });
+      },
+      onError: toastApiError,
+    });
+  };
 
   const handleRestart = () => {
     restart.mutate(name, {
@@ -98,11 +124,36 @@ function ServerDetailPage() {
         <>
           <Card>
             <CardHeader>
-              <CardTitle className="flex items-center justify-between">
+              <CardTitle className="flex flex-wrap items-center justify-between gap-2">
                 Overview
-                <Button variant="outline" size="sm" disabled={restart.isPending} onClick={handleRestart}>
-                  <RotateCwIcon /> Restart
-                </Button>
+                <span className="flex items-center gap-2">
+                  <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
+                    <PencilIcon /> Edit
+                  </Button>
+                  <Button variant="outline" size="sm" disabled={restart.isPending} onClick={handleRestart}>
+                    <RotateCwIcon /> Restart
+                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button variant="outline" size="sm" disabled={remove.isPending}>
+                        <Trash2Icon className="text-destructive" /> Delete
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Delete {name}?</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          This stops the server, deletes its config file, and removes its install directory. This cannot
+                          be undone.
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Cancel</AlertDialogCancel>
+                        <AlertDialogAction onClick={handleDelete}>Delete</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                </span>
               </CardTitle>
             </CardHeader>
             <CardContent className="flex flex-col gap-3">
@@ -126,8 +177,33 @@ function ServerDetailPage() {
                 </span>
               </OverviewRow>
               <OverviewRow label="Enabled">
-                <span>{server.config.enabled ? 'Yes' : 'No'}</span>
+                <Switch
+                  checked={server.config.enabled}
+                  disabled={update.isPending}
+                  aria-label={`Enable ${name}`}
+                  onCheckedChange={(enabled) =>
+                    update.mutate(
+                      { name, enabled },
+                      {
+                        onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${name}`),
+                        onError: toastApiError,
+                      },
+                    )
+                  }
+                />
               </OverviewRow>
+              {server.pid !== undefined && (
+                <OverviewRow label="PID">
+                  <span className="tabular-nums">{server.pid}</span>
+                </OverviewRow>
+              )}
+              {server.startedAt && (
+                <OverviewRow label="Started">
+                  <span title={new Date(server.startedAt).toLocaleString()}>
+                    {formatRelativeTime(server.startedAt)}
+                  </span>
+                </OverviewRow>
+              )}
               {server.state === 'error' && server.lastError && (
                 <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
                   <p className="font-medium">Last error</p>
@@ -169,6 +245,8 @@ function ServerDetailPage() {
               <ActivityCard name={name} />
             </TabsContent>
           </Tabs>
+
+          {editOpen && <AddServerDialog key={name} open server={server} onOpenChange={setEditOpen} />}
         </>
       )}
     </div>

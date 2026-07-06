@@ -36,6 +36,8 @@ export function useServer(name: string) {
   return useQuery({
     queryKey: queryKeys.server(name),
     queryFn: () => api.getServer(name),
+    // Keep the detail page's state/pid live (crashes, idle shutdowns).
+    refetchInterval: 10_000,
   });
 }
 
