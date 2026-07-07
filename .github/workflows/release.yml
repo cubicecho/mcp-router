@@ -29,6 +29,11 @@ jobs:
       - name: Semantic Release
         id: semantic
         uses: cycjimmy/semantic-release-action@v4
+        with:
+          # @semantic-release/git is not a bundled plugin; install it so it can
+          # commit the version-bumped package.json/lockfile back to main.
+          extra_plugins: |
+            @semantic-release/git@10
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
