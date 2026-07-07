@@ -11,7 +11,7 @@ hand-editable flat config files.
 | Question | Decision |
 | --- | --- |
 | Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-project custom aggregates `/mcp/p/<slug>` |
-| Projects | Custom aggregates: a named subset of servers at `/mcp/p/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers` overrides; each member runs as an isolated downstream instance (key `p:<slug>:<server>`), so a project scope is fully independent of a server's global enabled state; effective enabled = `project.enabled && member.enabled` |
+| Projects | Custom aggregates: a named subset of servers at `/mcp/p/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `p:<slug>:<server>`), so a project scope is fully independent of a server's global enabled state; effective enabled = `project.enabled && member.enabled` |
 | Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
 | Secrets | Plaintext values in the JSON config files, written with mode 0600 |
@@ -47,9 +47,11 @@ mcp-router/
   (uv resolves/caches on spawn, no install dir)
 - `projects/<slug>.json` — one file per project (`projectConfigSchema`): name,
   slug (matches the filename), enabled, description, `members` — a map of server
-  name → `{ enabled, env?, args?, headers? }`. Overrides merge over the base
-  server config (`env`/`headers` shallow-merged, `args` replaced) for that
-  project's instance only; members whose server no longer exists are skipped
+  name → `{ enabled, env?, args?, headers?, url? }`. Overrides merge over the
+  base server config (`env`/`headers` shallow-merged, `args`/`url` replaced) for
+  that project's instance only; `url` re-points a remote member's
+  streamable-http endpoint (e.g. to scope a shared upstream to a project path);
+  members whose server no longer exists are skipped
 
 ### Management REST API (`/api`, bearer auth)
 

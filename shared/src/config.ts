@@ -148,7 +148,7 @@ export type ServerConfig = z.infer<typeof serverConfigSchema>;
  * process for that project (keyed separately from the shared base instance);
  * with no overrides it still runs isolated under the project. Merge semantics:
  * `env` and `headers` are merged over the base server's values (project keys
- * win); `args` replaces the base stdio args entirely when present.
+ * win); `args` and `url` replace the base value entirely when present.
  */
 export const projectMemberSchema = z
   .object({
@@ -160,6 +160,9 @@ export const projectMemberSchema = z
     args: z.array(z.string()).optional(),
     /** Headers merged over the base server's headers (remote streamable-http). */
     headers: z.record(z.string()).optional(),
+    /** Replaces the base server's streamable-http URL entirely when set (remote members) —
+     *  e.g. to scope a shared upstream to a project-specific path. */
+    url: z.string().url().optional(),
   })
   .passthrough();
 

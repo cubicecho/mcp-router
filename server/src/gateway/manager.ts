@@ -115,16 +115,21 @@ function isProjectKey(key: string): boolean {
 /**
  * Effective downstream config for a server as used by a project: the base
  * server config with per-project overrides applied. `env`/`headers` merge over
- * the base (project wins); `args` replaces the base stdio args. The config keeps
- * the base server's `name` so aggregate tool namespacing is unaffected; its
- * `enabled` reflects both the project and the member being on.
+ * the base (project wins); `args` replaces the base stdio args and `url` replaces
+ * the base streamable-http URL. The config keeps the base server's `name` so
+ * aggregate tool namespacing is unaffected; its `enabled` reflects both the
+ * project and the member being on.
  */
 export function resolveMemberConfig(base: ServerConfig, member: ProjectMember, project: ProjectConfig): ServerConfig {
   let transport = base.transport;
   if (transport.type === 'stdio' && member.args) {
     transport = { ...transport, args: member.args };
-  } else if (transport.type === 'streamable-http' && member.headers) {
-    transport = { ...transport, headers: { ...transport.headers, ...member.headers } };
+  } else if (transport.type === 'streamable-http' && (member.headers || member.url)) {
+    transport = {
+      ...transport,
+      url: member.url ?? transport.url,
+      headers: member.headers ? { ...transport.headers, ...member.headers } : transport.headers,
+    };
   }
   return {
     ...base,

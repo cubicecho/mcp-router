@@ -26,9 +26,10 @@ interface OverrideText {
   env: string;
   args: string;
   headers: string;
+  url: string;
 }
 
-const emptyOverride = (): OverrideText => ({ env: '', args: '', headers: '' });
+const emptyOverride = (): OverrideText => ({ env: '', args: '', headers: '', url: '' });
 
 const recordToLines = (record?: Record<string, string>): string =>
   Object.entries(record ?? {})
@@ -82,6 +83,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
         env: recordToLines(member.env),
         args: (member.args ?? []).join('\n'),
         headers: recordToLines(member.headers),
+        url: member.url ?? '',
       };
     }
     return initial;
@@ -104,6 +106,18 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
       }
       return next;
     });
+    if (on) {
+      // Seed the URL override for remote members with the base URL so "extending"
+      // it (e.g. appending a project path) is just editing the tail. Unchanged
+      // values are dropped on submit, so this never persists a redundant override.
+      const config = servers?.find((s) => s.config.name === server)?.config;
+      if (config?.transport.type === 'streamable-http') {
+        const baseUrl = config.transport.url;
+        setOverrides((prev) =>
+          prev[server]?.url ? prev : { ...prev, [server]: { ...emptyOverride(), ...prev[server], url: baseUrl } },
+        );
+      }
+    }
   };
 
   const setOverride = (server: string, patch: Partial<OverrideText>) => {
@@ -132,6 +146,11 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
         const headers = linesToRecord(ov.headers);
         if (Object.keys(headers).length > 0) {
           member.headers = headers;
+        }
+        // Only persist a URL override when it actually differs from the base URL.
+        const url = ov.url.trim();
+        if (server.config.transport.type === 'streamable-http' && url && url !== server.config.transport.url) {
+          member.url = url;
         }
       }
       result[serverName] = member;
@@ -291,6 +310,7 @@ function MemberRow({
 }: MemberRowProps) {
   const isStdio = server.config.transport.type === 'stdio';
   const name = server.config.name;
+  const baseUrl = server.config.transport.type === 'streamable-http' ? server.config.transport.url : undefined;
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -343,20 +363,38 @@ function MemberRow({
               </div>
             </>
           ) : (
-            <div className="flex flex-col gap-1.5">
-              <Label htmlFor={`headers-${name}`} className="text-xs">
-                Header overrides (KEY=VALUE per line)
-              </Label>
-              <Textarea
-                id={`headers-${name}`}
-                rows={3}
-                className="resize-y font-mono text-xs"
-                placeholder={'Authorization=Bearer project-token'}
-                value={override.headers}
-                onChange={(event) => onOverrideChange({ headers: event.target.value })}
-              />
-              <p className="text-xs text-muted-foreground">Merged over the server's request headers.</p>
-            </div>
+            <>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`url-${name}`} className="text-xs">
+                  URL override
+                </Label>
+                <Input
+                  id={`url-${name}`}
+                  className="font-mono text-xs"
+                  placeholder={baseUrl ?? 'https://example.com/mcp'}
+                  value={override.url}
+                  onChange={(event) => onOverrideChange({ url: event.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">
+                  Replaces the server's URL for this project — e.g. append a path to scope a shared upstream. Leave as
+                  the base URL to inherit it.
+                </p>
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <Label htmlFor={`headers-${name}`} className="text-xs">
+                  Header overrides (KEY=VALUE per line)
+                </Label>
+                <Textarea
+                  id={`headers-${name}`}
+                  rows={3}
+                  className="resize-y font-mono text-xs"
+                  placeholder={'Authorization=Bearer project-token'}
+                  value={override.headers}
+                  onChange={(event) => onOverrideChange({ headers: event.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">Merged over the server's request headers.</p>
+              </div>
+            </>
           )}
         </div>
       )}

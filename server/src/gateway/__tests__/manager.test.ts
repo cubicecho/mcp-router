@@ -115,6 +115,44 @@ describe('GatewayManager projects', () => {
     expect(status?.config.transport).toMatchObject({ type: 'stdio', args: ['custom.js'] });
   });
 
+  it('overrides a remote member URL while merging headers over the base', () => {
+    const manager = new GatewayManager(() => settings);
+    const remote = serverConfigSchema.parse({
+      name: 'api',
+      source: { type: 'remote' },
+      transport: {
+        type: 'streamable-http',
+        url: 'http://localhost:1001/mcp',
+        headers: { 'X-Base': 'base' },
+      },
+    });
+    manager.reconcile(
+      [remote],
+      [project({ api: { url: 'http://localhost:1001/mcp/p/something', headers: { Authorization: 'Bearer scoped' } } })],
+    );
+
+    const transport = manager.status(projectInstanceKey('acme', 'api'))?.config.transport;
+    expect(transport).toMatchObject({
+      type: 'streamable-http',
+      url: 'http://localhost:1001/mcp/p/something',
+      headers: { 'X-Base': 'base', Authorization: 'Bearer scoped' },
+    });
+  });
+
+  it('leaves a remote member URL untouched when no url override is set', () => {
+    const manager = new GatewayManager(() => settings);
+    const remote = serverConfigSchema.parse({
+      name: 'api',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'http://localhost:1001/mcp' },
+    });
+    manager.reconcile([remote], [project({ api: {} })]);
+
+    expect(manager.status(projectInstanceKey('acme', 'api'))?.config.transport).toMatchObject({
+      url: 'http://localhost:1001/mcp',
+    });
+  });
+
   it('keeps project instances out of the base server views (statusAll / enabledNames)', () => {
     const manager = new GatewayManager(() => settings);
     manager.reconcile([stdioConfig('gh')], [project({ gh: {} })]);
