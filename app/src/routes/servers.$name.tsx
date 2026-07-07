@@ -6,6 +6,8 @@ import { ConnectCard } from '@/components/domain/connect-card';
 import { ActivityCard } from '@/components/domain/server/activity-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
+import { PromptsCard } from '@/components/domain/server/prompts-card';
+import { ResourcesCard } from '@/components/domain/server/resources-card';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { ToolsCard } from '@/components/domain/server/tools-card';
 import {
@@ -237,11 +239,19 @@ function ServerDetailPage() {
           <Tabs defaultValue="tools">
             <TabsList>
               <TabsTrigger value="tools">Tools</TabsTrigger>
+              <TabsTrigger value="resources">Resources</TabsTrigger>
+              <TabsTrigger value="prompts">Prompts</TabsTrigger>
               <TabsTrigger value="activity">Activity</TabsTrigger>
               <TabsTrigger value="connect">Connect</TabsTrigger>
             </TabsList>
             <TabsContent value="tools">
               <ToolsCard name={name} />
+            </TabsContent>
+            <TabsContent value="resources">
+              <ResourcesCard name={name} />
+            </TabsContent>
+            <TabsContent value="prompts">
+              <PromptsCard name={name} />
             </TabsContent>
             <TabsContent value="activity">
               <ActivityCard name={name} />

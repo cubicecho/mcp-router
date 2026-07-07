@@ -5,10 +5,14 @@ import type {
   CreateRegistryRequest,
   InstallRequest,
   ProjectStatus,
+  PromptGetRequest,
+  PromptGetResponse,
   Registry,
   RegistryListResponse,
   RegistryServer,
   RegistryServerEntry,
+  ResourceReadRequest,
+  ResourceReadResponse,
   RouterStatus,
   ServerStatus,
   ToolCallRequest,
@@ -123,6 +127,54 @@ export interface ServerToolsResponse {
 
 export function getServerTools(name: string): Promise<ServerToolsResponse> {
   return request(`/api/servers/${encodeURIComponent(name)}/tools`);
+}
+
+/** One resource of a downstream server, as reported by MCP resources/list. */
+export interface ServerResource {
+  uri: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+/** One resource template of a downstream server, as reported by MCP resources/templates/list. */
+export interface ServerResourceTemplate {
+  uriTemplate: string;
+  name?: string;
+  description?: string;
+  mimeType?: string;
+}
+
+export interface ServerResourcesResponse {
+  resources: ServerResource[];
+  resourceTemplates: ServerResourceTemplate[];
+}
+
+export function getServerResources(name: string): Promise<ServerResourcesResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/resources`);
+}
+
+export function readServerResource(name: string, body: ResourceReadRequest): Promise<ResourceReadResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/resources/read`, { method: 'POST', body });
+}
+
+/** One prompt of a downstream server, as reported by MCP prompts/list. */
+export interface ServerPrompt {
+  name: string;
+  description?: string;
+  arguments?: { name: string; description?: string; required?: boolean }[];
+}
+
+export interface ServerPromptsResponse {
+  prompts: ServerPrompt[];
+}
+
+export function getServerPrompts(name: string): Promise<ServerPromptsResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/prompts`);
+}
+
+export function getServerPrompt(name: string, body: PromptGetRequest): Promise<PromptGetResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/prompts/get`, { method: 'POST', body });
 }
 
 export function callServerTool(name: string, body: ToolCallRequest): Promise<ToolCallResponse> {

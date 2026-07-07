@@ -13,6 +13,8 @@ export const queryKeys = {
   servers: ['servers'] as const,
   server: (name: string) => ['servers', name] as const,
   serverTools: (name: string) => ['servers', name, 'tools'] as const,
+  serverResources: (name: string) => ['servers', name, 'resources'] as const,
+  serverPrompts: (name: string) => ['servers', name, 'prompts'] as const,
   serverActivity: (name: string) => ['servers', name, 'activity'] as const,
   registries: ['registries'] as const,
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
@@ -54,6 +56,26 @@ export function useServerTools(name: string) {
   return useQuery({
     queryKey: queryKeys.serverTools(name),
     queryFn: () => api.getServerTools(name),
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** Listing resources may spawn the downstream server — allow it to be slow, never auto-retry. */
+export function useServerResources(name: string) {
+  return useQuery({
+    queryKey: queryKeys.serverResources(name),
+    queryFn: () => api.getServerResources(name),
+    retry: false,
+    staleTime: 60_000,
+  });
+}
+
+/** Listing prompts may spawn the downstream server — allow it to be slow, never auto-retry. */
+export function useServerPrompts(name: string) {
+  return useQuery({
+    queryKey: queryKeys.serverPrompts(name),
+    queryFn: () => api.getServerPrompts(name),
     retry: false,
     staleTime: 60_000,
   });
@@ -150,6 +172,24 @@ export function useCallServerTool(name: string) {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: Parameters<typeof api.callServerTool>[1]) => api.callServerTool(name, body),
+    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+  });
+}
+
+/** Read one resource from the UI; the call also lands in the server's activity log. */
+export function useReadServerResource(name: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.readServerResource>[1]) => api.readServerResource(name, body),
+    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+  });
+}
+
+/** Get one prompt from the UI; the call also lands in the server's activity log. */
+export function useGetServerPrompt(name: string) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Parameters<typeof api.getServerPrompt>[1]) => api.getServerPrompt(name, body),
     onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
   });
 }

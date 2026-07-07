@@ -10,6 +10,7 @@ import type { ServerTool } from '@/lib/api';
 import { useCallServerTool, useServerTools } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { ResultBlock } from './capability-list';
 
 /** Prefill the args editor from the tool's input schema: one key per property. */
 function argsTemplate(inputSchema: unknown): string {
@@ -89,19 +90,11 @@ function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool })
             </Button>
           </div>
           {result && (
-            <div>
-              <p className={cn('text-xs font-medium', result.isError ? 'text-destructive' : 'text-muted-foreground')}>
-                {result.isError ? 'Tool returned an error' : 'Result'}
-              </p>
-              <pre
-                className={cn(
-                  'mt-1 max-h-96 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap',
-                  result.isError && 'border border-destructive/50',
-                )}
-              >
-                {JSON.stringify(result, null, 2)}
-              </pre>
-            </div>
+            <ResultBlock
+              result={result}
+              isError={result.isError}
+              label={result.isError ? 'Tool returned an error' : 'Result'}
+            />
           )}
         </div>
       )}

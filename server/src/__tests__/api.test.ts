@@ -150,6 +150,112 @@ describe('REST API', () => {
     expect(bad.body.error).toBe('Validation failed');
   });
 
+  it('lists resources and prompts from a connected server', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    vi.spyOn(manager, 'getClient').mockResolvedValue({
+      listResources: async () => ({ resources: [{ uri: 'file:///a.txt', name: 'A' }] }),
+      listResourceTemplates: async () => ({
+        resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }],
+      }),
+      listPrompts: async () => ({ prompts: [{ name: 'greet', description: 'Say hi' }] }),
+      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
+    } as any);
+
+    const resources = await authed(request(app).get('/api/servers/hosted/resources'));
+    expect(resources.status).toBe(200);
+    expect(resources.body.resources).toEqual([{ uri: 'file:///a.txt', name: 'A' }]);
+    expect(resources.body.resourceTemplates).toEqual([{ uriTemplate: 'file:///{path}', name: 'Files' }]);
+
+    const prompts = await authed(request(app).get('/api/servers/hosted/prompts'));
+    expect(prompts.status).toBe(200);
+    expect(prompts.body.prompts).toEqual([{ name: 'greet', description: 'Say hi' }]);
+  });
+
+  it('returns empty lists when the downstream lacks resources/prompts', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    const unsupported = () =>
+      Promise.reject(new Error('Server does not support resources (required for resources/list)'));
+    vi.spyOn(manager, 'getClient').mockResolvedValue({
+      listResources: unsupported,
+      listResourceTemplates: unsupported,
+      listPrompts: unsupported,
+      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
+    } as any);
+
+    const resources = await authed(request(app).get('/api/servers/hosted/resources'));
+    expect(resources.status).toBe(200);
+    expect(resources.body).toEqual({ resources: [], resourceTemplates: [] });
+
+    const prompts = await authed(request(app).get('/api/servers/hosted/prompts'));
+    expect(prompts.status).toBe(200);
+    expect(prompts.body).toEqual({ prompts: [] });
+
+    expect((await authed(request(app).get('/api/servers/nope/resources'))).status).toBe(404);
+    expect((await authed(request(app).get('/api/servers/nope/prompts'))).status).toBe(404);
+  });
+
+  it('reads a resource and gets a prompt from the UI, recording both to activity', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    const readResource = vi.fn(async ({ uri }: { uri: string }) => ({ contents: [{ uri, text: 'hello' }] }));
+    const getPrompt = vi.fn(
+      async ({ name, arguments: args }: { name: string; arguments?: Record<string, string> }) => ({
+        description: `prompt ${name}`,
+        messages: [{ role: 'user', content: { type: 'text', text: args?.topic ?? '' } }],
+      }),
+    );
+    vi.spyOn(manager, 'getClient').mockResolvedValue({
+      readResource,
+      getPrompt,
+      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
+    } as any);
+
+    const read = await authed(request(app).post('/api/servers/hosted/resources/read')).send({ uri: 'file:///a.txt' });
+    expect(read.status).toBe(200);
+    expect(read.body.contents[0]).toMatchObject({ uri: 'file:///a.txt', text: 'hello' });
+    expect(readResource).toHaveBeenCalledWith({ uri: 'file:///a.txt' });
+
+    const got = await authed(request(app).post('/api/servers/hosted/prompts/get')).send({
+      name: 'greet',
+      arguments: { topic: 'weather' },
+    });
+    expect(got.status).toBe(200);
+    expect(got.body.description).toBe('prompt greet');
+    expect(getPrompt).toHaveBeenCalledWith({ name: 'greet', arguments: { topic: 'weather' } });
+
+    // Both UI invocations land in the activity log, newest first.
+    const activity = await authed(request(app).get('/api/servers/hosted/activity'));
+    expect(activity.body.entries.map((e: { method: string }) => e.method)).toEqual(['prompts/get', 'resources/read']);
+    expect(activity.body.entries.every((e: { via: string; ok: boolean }) => e.via === 'ui' && e.ok)).toBe(true);
+  });
+
+  it('validates resource-read and prompt-get requests, and 404s unknown servers', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    expect((await authed(request(app).post('/api/servers/hosted/resources/read')).send({})).status).toBe(400);
+    expect((await authed(request(app).post('/api/servers/hosted/prompts/get')).send({})).status).toBe(400);
+    expect((await authed(request(app).post('/api/servers/nope/resources/read')).send({ uri: 'x' })).status).toBe(404);
+    expect((await authed(request(app).post('/api/servers/nope/prompts/get')).send({ name: 'x' })).status).toBe(404);
+  });
+
   it('updates the idle timeout via PATCH /api/settings and persists it', async () => {
     const before = await authed(request(app).get('/api/status'));
     expect(before.body.idleTimeoutMs).toBe(5 * 60 * 1000);

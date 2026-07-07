@@ -293,6 +293,10 @@ with `{ "error": "...", "detail": "..." }`.
 | `DELETE /api/servers/:name` | Stop, delete config, remove its install dir |
 | `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
 | `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
+| `GET /api/servers/:name/resources` | Connect and list downstream resources + resource templates (empty when unsupported) |
+| `POST /api/servers/:name/resources/read` | Read one resource by URI (recorded to the activity log) |
+| `GET /api/servers/:name/prompts` | Connect and list downstream prompts (empty when unsupported) |
+| `POST /api/servers/:name/prompts/get` | Get one prompt with arguments (recorded to the activity log) |
 | `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
 | `GET /api/projects` | All projects with their endpoint paths |
 | `POST /api/projects` | Create a project (slug auto-derived from the name) |

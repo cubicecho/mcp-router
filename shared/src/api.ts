@@ -108,6 +108,42 @@ export const toolCallResponseSchema = z
   .passthrough();
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
+// --- POST /api/servers/:name/resources/read ---
+
+/** Read one resource of a downstream server from the UI. The URI is either a
+ *  static resource's URI or a concrete URI expanded from a resource template. */
+export const resourceReadRequestSchema = z.object({
+  uri: z.string().min(1),
+});
+export type ResourceReadRequest = z.infer<typeof resourceReadRequestSchema>;
+
+/** MCP ReadResourceResult, loosely typed — contents shape is resource-defined. */
+export const resourceReadResponseSchema = z
+  .object({
+    contents: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+export type ResourceReadResponse = z.infer<typeof resourceReadResponseSchema>;
+
+// --- POST /api/servers/:name/prompts/get ---
+
+/** Get one prompt of a downstream server from the UI. MCP prompt argument
+ *  values are strings. */
+export const promptGetRequestSchema = z.object({
+  name: z.string().min(1),
+  arguments: z.record(z.string()).default({}),
+});
+export type PromptGetRequest = z.infer<typeof promptGetRequestSchema>;
+
+/** MCP GetPromptResult, loosely typed — messages shape is prompt-defined. */
+export const promptGetResponseSchema = z
+  .object({
+    description: z.string().optional(),
+    messages: z.array(z.unknown()).optional(),
+  })
+  .passthrough();
+export type PromptGetResponse = z.infer<typeof promptGetResponseSchema>;
+
 // --- POST /api/registries ---
 
 export const createRegistryRequestSchema = z.object({

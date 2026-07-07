@@ -24,7 +24,7 @@ const PROXY_CAPABILITIES = { capabilities: { tools: {}, resources: {}, prompts: 
  * "method not found" or our client-side capability assertion refused to send.
  * List endpoints treat this as an empty list.
  */
-function lacksCapability(err: unknown): boolean {
+export function lacksCapability(err: unknown): boolean {
   if (err instanceof McpError && err.code === ErrorCode.MethodNotFound) {
     return true;
   }

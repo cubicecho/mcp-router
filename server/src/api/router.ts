@@ -5,6 +5,8 @@ import {
   createRegistryRequestSchema,
   installRequestSchema,
   projectConfigSchema,
+  promptGetRequestSchema,
+  resourceReadRequestSchema,
   serverNameSchema,
   slugify,
   toolCallRequestSchema,
@@ -17,10 +19,22 @@ import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
-import { toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
+import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
 import type { RegistryClient } from '../registry/client.ts';
 import { SERVER_VERSION } from '../version.ts';
+
+/** Run a downstream list call, mapping a "capability not supported" failure to null. */
+async function emptyOnMissing<T>(run: () => Promise<T>): Promise<T | null> {
+  try {
+    return await run();
+  } catch (cause) {
+    if (lacksCapability(cause)) {
+      return null;
+    }
+    throw cause;
+  }
+}
 
 export interface ApiDeps {
   store: ConfigStore;
@@ -54,6 +68,69 @@ export function createApiRouter(deps: ApiDeps): Router {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
     return status;
+  };
+
+  // Connect (spawning if needed) for a listing/call endpoint. A missing server
+  // surfaces as 404; any other connect failure as 502 with the downstream detail.
+  const connect = async (name: string): Promise<Awaited<ReturnType<GatewayManager['getClient']>>> => {
+    try {
+      return await manager.getClient(name);
+    } catch (cause) {
+      if (cause instanceof HttpError && cause.status === 404) {
+        throw cause;
+      }
+      const detail = cause instanceof HttpError ? (cause.detail ?? cause.message) : String(cause);
+      throw new HttpError(502, `Failed to connect to server "${name}"`, detail, { cause });
+    }
+  };
+
+  /**
+   * Run one downstream call invoked from the UI (tool call, resource read, prompt
+   * get) and record it to the activity log under via 'ui', exactly like proxied
+   * calls. A thrown downstream error becomes a 502; `detectFailure` lets a result
+   * that resolves-but-signals-failure (e.g. a tool's `isError`) be logged as not-ok.
+   */
+  const runUiCall = async (
+    name: string,
+    ctx: {
+      method: string;
+      target: string;
+      params: unknown;
+      failLabel: string;
+      detectFailure?: (result: unknown) => string | null;
+    },
+    run: (client: Awaited<ReturnType<GatewayManager['getClient']>>) => Promise<unknown>,
+  ): Promise<unknown> => {
+    const client = await connect(name);
+    const startedAt = Date.now();
+    try {
+      const result = await run(client);
+      const failure = ctx.detectFailure?.(result) ?? null;
+      manager.recordActivity(name, {
+        at: new Date().toISOString(),
+        via: 'ui',
+        method: ctx.method,
+        target: ctx.target,
+        ok: failure === null,
+        durationMs: Date.now() - startedAt,
+        params: ctx.params,
+        result,
+        error: failure ?? undefined,
+      });
+      return result;
+    } catch (cause) {
+      manager.recordActivity(name, {
+        at: new Date().toISOString(),
+        via: 'ui',
+        method: ctx.method,
+        target: ctx.target,
+        ok: false,
+        durationMs: Date.now() - startedAt,
+        params: ctx.params,
+        error: errorMessage(cause),
+      });
+      throw new HttpError(502, ctx.failLabel, errorMessage(cause), { cause });
+    }
   };
 
   // --- status ---
@@ -207,66 +284,82 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.get('/servers/:name/tools', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    let client: Awaited<ReturnType<GatewayManager['getClient']>>;
-    try {
-      client = await manager.getClient(name);
-    } catch (cause) {
-      if (cause instanceof HttpError && cause.status === 404) {
-        throw cause;
-      }
-      const detail = cause instanceof HttpError ? (cause.detail ?? cause.message) : String(cause);
-      throw new HttpError(502, `Failed to connect to server "${name}"`, detail, { cause });
-    }
+    const client = await connect(name);
     const result = await client.listTools();
     manager.recordToolCount(name, result.tools.length);
     res.json({ tools: result.tools });
   });
 
+  // A downstream that lacks resources/prompts answers "method not found" (or our
+  // client refuses to send). That's not an error for a listing endpoint — it's an
+  // empty list, so the UI shows "none reported" rather than a failure.
+  router.get('/servers/:name/resources', async (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    const client = await connect(name);
+    const [resources, templates] = await Promise.all([
+      emptyOnMissing(() => client.listResources()),
+      emptyOnMissing(() => client.listResourceTemplates()),
+    ]);
+    res.json({
+      resources: resources?.resources ?? [],
+      resourceTemplates: templates?.resourceTemplates ?? [],
+    });
+  });
+
+  router.get('/servers/:name/prompts', async (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    const client = await connect(name);
+    const result = await emptyOnMissing(() => client.listPrompts());
+    res.json({ prompts: result?.prompts ?? [] });
+  });
+
   // Run one tool from the UI. Recorded to the activity log like proxied calls,
-  // under via 'ui'.
+  // under via 'ui'. A tool that resolves with `isError: true` is logged not-ok.
   router.post('/servers/:name/tools/call', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
     const body = toolCallRequestSchema.parse(req.body);
-    let client: Awaited<ReturnType<GatewayManager['getClient']>>;
-    try {
-      client = await manager.getClient(name);
-    } catch (cause) {
-      if (cause instanceof HttpError && cause.status === 404) {
-        throw cause;
-      }
-      const detail = cause instanceof HttpError ? (cause.detail ?? cause.message) : String(cause);
-      throw new HttpError(502, `Failed to connect to server "${name}"`, detail, { cause });
-    }
-    const startedAt = Date.now();
-    try {
-      const result = await client.callTool({ name: body.name, arguments: body.arguments });
-      const failed = toolCallFailed(result);
-      manager.recordActivity(name, {
-        at: new Date().toISOString(),
-        via: 'ui',
+    const result = await runUiCall(
+      name,
+      {
         method: 'tools/call',
         target: body.name,
-        ok: !failed,
-        durationMs: Date.now() - startedAt,
         params: body,
-        result,
-        error: failed ? toolErrorText(result) : undefined,
-      });
-      res.json(result);
-    } catch (cause) {
-      manager.recordActivity(name, {
-        at: new Date().toISOString(),
-        via: 'ui',
-        method: 'tools/call',
-        target: body.name,
-        ok: false,
-        durationMs: Date.now() - startedAt,
-        params: body,
-        error: errorMessage(cause),
-      });
-      throw new HttpError(502, `Tool "${body.name}" failed`, errorMessage(cause), { cause });
-    }
+        failLabel: `Tool "${body.name}" failed`,
+        detectFailure: (r) => (toolCallFailed(r) ? toolErrorText(r) : null),
+      },
+      (client) => client.callTool({ name: body.name, arguments: body.arguments }),
+    );
+    res.json(result);
+  });
+
+  // Read one resource by URI from the UI. Works for a static resource's URI or a
+  // concrete URI the caller expanded from a resource template.
+  router.post('/servers/:name/resources/read', async (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    const body = resourceReadRequestSchema.parse(req.body);
+    const result = await runUiCall(
+      name,
+      { method: 'resources/read', target: body.uri, params: body, failLabel: `Resource "${body.uri}" failed to read` },
+      (client) => client.readResource({ uri: body.uri }),
+    );
+    res.json(result);
+  });
+
+  // Get one prompt (with its arguments) from the UI.
+  router.post('/servers/:name/prompts/get', async (req, res) => {
+    const name = req.params.name;
+    requireStatus(name);
+    const body = promptGetRequestSchema.parse(req.body);
+    const result = await runUiCall(
+      name,
+      { method: 'prompts/get', target: body.name, params: body, failLabel: `Prompt "${body.name}" failed` },
+      (client) => client.getPrompt({ name: body.name, arguments: body.arguments }),
+    );
+    res.json(result);
   });
 
   router.get('/servers/:name/activity', (req, res) => {

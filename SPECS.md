@@ -68,6 +68,10 @@ mcp-router/
 | `DELETE /api/servers/:name` | stop, delete config file, remove `data/servers/<name>` install dir |
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
 | `GET /api/servers/:name/tools` | connect (spawning if needed) and list downstream tools |
+| `GET /api/servers/:name/resources` | connect and list downstream resources + resource templates (empty when unsupported) |
+| `POST /api/servers/:name/resources/read` | read one resource by URI from the UI (`ResourceReadRequest`); recorded to activity as via 'ui' |
+| `GET /api/servers/:name/prompts` | connect and list downstream prompts (empty when unsupported) |
+| `POST /api/servers/:name/prompts/get` | get one prompt with arguments from the UI (`PromptGetRequest`); recorded to activity as via 'ui' |
 | `GET /api/servers/:name/activity` / `DELETE` | in-memory log of proxied calls (`ActivityResponse`) for the Activity tab; DELETE clears it |
 | `GET /api/projects` | `ProjectStatus[]` (config + derived endpoint `path`) |
 | `POST /api/projects` | create (`CreateProjectRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
