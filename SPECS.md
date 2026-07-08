@@ -85,13 +85,23 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 ### MCP endpoints (streamable HTTP, bearer auth)
 
 - `POST/GET/DELETE /mcp/<name>` — proxy to that server: tools, resources,
-  prompts, and calls forwarded 1:1
-- `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tool names
-  prefixed `<server>__`; resources/prompts likewise namespaced; `tools/call`
-  strips the prefix and routes to the owning downstream client
+  resource templates, prompts, completions, logging, and resource subscriptions
+  forwarded 1:1; downstream `list_changed` / `resources/updated` / log
+  notifications relayed back
+- `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tools,
+  resources, resource templates, and prompts namespaced `<server>__`; calls,
+  completions, and subscriptions strip the prefix and route to the owning
+  downstream client; `logging/setLevel` fans out to every member; relayed
+  notifications are re-namespaced
 - `POST/GET/DELETE /mcp/p/<slug>` — a project's custom aggregate: same
   `<server>__` namespacing, but only over that project's enabled members, each
   served by its own isolated (override-applied) downstream instance
+- **Stateful sessions:** `initialize` mints an `Mcp-Session-Id` reused across the
+  session's requests and its GET SSE stream (which carries relayed
+  notifications); a non-initialize request with no session id → 400, an
+  unknown/expired session id → 404
+- Reverse-direction capabilities (sampling / elicitation / roots) are **not**
+  offered downstream — see Phase 4 F7 for the shared-client blocker
 - Disabled servers 404. Disabled or unknown projects 404. Auth failures 401
   before any MCP handling.
 
@@ -161,6 +171,64 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
   toggles, per-member override editors, ConnectCard in edit mode)
 - [x] P7 Tests: manager project-instance behavior (overrides, isolation from
   global disable, drop-on-remove); API auto-slug/validation/rename/gating
+
+### Phase 4 — Full MCP proxy (complete protocol passthrough)
+
+The gateway now proxies the request/response core **and** the streaming half of
+the protocol (F1–F6): completions, resource subscriptions, logging, and
+downstream→client change/resource/log notifications ride a stateful session.
+The one remaining gap (F7, reverse-direction sampling/elicitation/roots) is
+blocked by the shared-downstream-client architecture and is documented below.
+
+- [x] F1 Aggregate resource templates: `createAggregateServer` fans out
+  `resources/templates/list` and namespaces `uriTemplate` + `name` (was
+  hardcoded `[]`), matching the per-server endpoint; test in `proxy.test.ts`
+- [x] F2 Completions (`completion/complete`): `CompleteRequestSchema` handlers on
+  both proxy servers; per-server forwards 1:1 via `client.complete()`; aggregate
+  strips the `<server>__` prefix off the `ref` (prompt name or resource `uri`) and
+  routes to the owning client; degrades to an empty `completion.values` when the
+  downstream lacks the capability. Recorded failures-only (fires per keystroke)
+- [x] F3 **Stateful sessions (foundational).** `gateway/routes.ts` now runs the
+  exposed `StreamableHTTPServerTransport` session-backed (`sessionIdGenerator` →
+  `randomUUID`): the `initialize` request mints a session kept in a
+  `Map<sessionId, transport>`, reused across the session's `POST`/`GET`(SSE)/
+  `DELETE` and torn down on transport close. Non-initialize requests without a
+  session `400`; unknown/expired session ids `404`. Downstream client lifecycle
+  (lazy spawn, idle timeout) unchanged. Real-client end-to-end test in `api.test.ts`
+- [x] F4 Change notifications: `PROXY_CAPABILITIES` advertises `listChanged: true`
+  for tools / resources / prompts. `GatewayManager` exposes a notification bus
+  (`onNotification`) fed by each downstream client's `fallbackNotificationHandler`
+  (re-installed on every reconnect, so it survives respawns); each session
+  subscribes and relays `notifications/{tools,resources,prompts}/list_changed` to
+  its client (aggregate/project sessions relay for any member)
+- [x] F5 Resource subscriptions: advertises `resources: { subscribe: true }`;
+  `resources/subscribe` + `resources/unsubscribe` handlers forward to the downstream
+  client (aggregate strips the `<server>__` URI prefix); downstream
+  `notifications/resources/updated` is relayed to the subscribing session with the
+  URI re-namespaced on the aggregate/project path (`namespaceNotification`)
+- [x] F6 Logging passthrough: advertises the `logging` capability; `logging/setLevel`
+  forwards to the downstream client (per-server) or fans out to every member
+  (aggregate); downstream `notifications/message` is relayed over the same bus as F4
+- [ ] F7 Reverse-direction (server→client) capabilities — **blocked by the
+  shared-client model.** Sampling / elicitation / roots require forwarding a
+  *downstream→router* request out to a specific *upstream* MCP client. But one
+  downstream `Client` is shared across all sessions (lazy-spawned, idle-killed), and
+  an incoming server→client request carries no correlation to whichever upstream
+  session's tool call provoked it — so the router cannot attribute it to a session.
+  Doing this soundly requires **per-session (or per-request) downstream instances**
+  instead of the shared client, a larger architecture change. Until then the router
+  advertises none of these to downstream servers (they degrade gracefully). Track as
+  its own phase: (a) key downstream instances by session, (b) offer `sampling`/
+  `elicitation`/`roots` on the downstream `Client`, (c) forward each request to the
+  session's upstream client and its response back, (d) gate behind config since it
+  exposes the host client's LLM/user to downstream servers
+- [x] F8 Tests + docs: unit tests for each handler's forward + namespace-strip +
+  capability-degrade path (`proxy.test.ts`), `namespaceNotification`
+  (`notifications.test.ts`), and a real-MCP-client session-lifecycle test plus
+  400/404 session-guard tests (`api.test.ts`); MCP-endpoints section of this file
+  and `README.md` updated. Live notification-relay against
+  `@modelcontextprotocol/server-everything` remains a manual e2e smoke (needs a
+  spawned downstream that emits them)
 
 ### Phase 2 — Integration (after tracks merge)
 

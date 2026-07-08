@@ -10,6 +10,7 @@ import type {
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { errorMessage, HttpError } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 
@@ -171,6 +172,8 @@ export class GatewayManager {
   /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
   private readonly activity = new Map<string, ActivityEntry[]>();
   private activitySeq = 0;
+  /** Listeners for downstream server→client notifications (list_changed, resources/updated, log messages). */
+  private readonly notificationListeners = new Set<(key: string, notification: Notification) => void>();
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
@@ -267,6 +270,31 @@ export class GatewayManager {
     return [...this.entries.values()].filter((e) => !isProjectKey(e.key) && e.state === 'running').length;
   }
 
+  /**
+   * Subscribe to downstream server→client notifications. The listener is called
+   * with the instance key (base server name, or `p:<slug>:<server>` for a
+   * project instance) and the raw notification. Returns an unsubscribe function.
+   * Used by MCP sessions to relay list_changed / resources/updated / log
+   * messages to their upstream client; survives downstream respawns because the
+   * handler is (re)installed on every {@link connect}.
+   */
+  onNotification(listener: (key: string, notification: Notification) => void): () => void {
+    this.notificationListeners.add(listener);
+    return () => {
+      this.notificationListeners.delete(listener);
+    };
+  }
+
+  private emitNotification(key: string, notification: Notification): void {
+    for (const listener of this.notificationListeners) {
+      try {
+        listener(key, notification);
+      } catch (err) {
+        console.warn(`Notification listener for "${key}" threw: ${errorMessage(err)}`);
+      }
+    }
+  }
+
   recordToolCount(name: string, count: number): void {
     const entry = this.entries.get(name);
     if (entry) {
@@ -356,6 +384,12 @@ export class GatewayManager {
     entry.stopping = false;
     entry.stderrTail = '';
     const client = new Client({ name: 'mcp-router', version: SERVER_VERSION });
+    // Relay any notification the SDK doesn't handle itself (list_changed,
+    // resources/updated, logging/message) out to subscribed MCP sessions.
+    client.fallbackNotificationHandler = (notification) => {
+      this.emitNotification(entry.key, notification);
+      return Promise.resolve();
+    };
     let transport: StdioClientTransport | StreamableHTTPClientTransport;
     if (config.transport.type === 'stdio') {
       const stdioTransport = new StdioClientTransport({
