@@ -4,6 +4,7 @@ import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
   CallToolRequestSchema,
+  CompleteRequestSchema,
   ErrorCode,
   GetPromptRequestSchema,
   ListPromptsRequestSchema,
@@ -12,13 +13,29 @@ import {
   ListToolsRequestSchema,
   McpError,
   ReadResourceRequestSchema,
+  SetLevelRequestSchema,
+  SubscribeRequestSchema,
+  UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { errorDetailMessage, errorMessage } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAll } from './pagination.ts';
 
-const PROXY_CAPABILITIES = { capabilities: { tools: {}, resources: {}, prompts: {} } };
+const PROXY_CAPABILITIES = {
+  capabilities: {
+    // listChanged + subscribe are relayed from the downstream servers over a
+    // stateful session; completions/logging are forwarded request/response.
+    tools: { listChanged: true },
+    resources: { subscribe: true, listChanged: true },
+    prompts: { listChanged: true },
+    logging: {},
+    completions: {},
+  },
+};
+
+/** Empty completion result used when a downstream server has no completions capability. */
+const EMPTY_COMPLETION = { completion: { values: [], total: 0, hasMore: false } };
 
 /**
  * The downstream lacks the capability entirely: either it answered
@@ -207,6 +224,61 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
     ),
   );
 
+  // Completions fire per keystroke; like list ops, only their failures are recorded.
+  server.setRequestHandler(CompleteRequestSchema, async (req) =>
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'completion/complete', params: req.params, failuresOnly: true },
+      async () => {
+        try {
+          return await (await client()).complete(req.params);
+        } catch (err) {
+          if (lacksCapability(err)) {
+            return EMPTY_COMPLETION;
+          }
+          throw err;
+        }
+      },
+    ),
+  );
+
+  server.setRequestHandler(SubscribeRequestSchema, async (req) =>
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'resources/subscribe', target: req.params.uri, params: req.params },
+      () => client().then((c) => c.subscribeResource(req.params)),
+    ),
+  );
+
+  server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'resources/unsubscribe', target: req.params.uri, params: req.params },
+      () => client().then((c) => c.unsubscribeResource(req.params)),
+    ),
+  );
+
+  server.setRequestHandler(SetLevelRequestSchema, async (req) =>
+    track(
+      deps,
+      name,
+      { via: 'direct', method: 'logging/setLevel', target: req.params.level, params: req.params },
+      async () => {
+        try {
+          await (await client()).setLoggingLevel(req.params.level);
+        } catch (err) {
+          if (!lacksCapability(err)) {
+            throw err;
+          }
+        }
+        return {};
+      },
+    ),
+  );
+
   return server;
 }
 
@@ -358,6 +430,58 @@ export function createAggregateServer(deps: AggregateDeps): Server {
     return track(deps, serverName, { via: 'aggregate', method: 'prompts/get', target: name, params }, () =>
       deps.getClient(serverName).then((client) => client.getPrompt(params)),
     );
+  });
+
+  // The completion ref is namespaced like the prompt/resource it points at
+  // (`<server>__<name>` for prompts, `<server>__<uri>` for resources); strip it
+  // to route, then hand the downstream its own un-prefixed ref.
+  server.setRequestHandler(CompleteRequestSchema, async (req) => {
+    const ref = req.params.ref;
+    const full = ref.type === 'ref/prompt' ? ref.name : ref.uri;
+    const { serverName, name } = route(full, 'completion ref');
+    const strippedRef = ref.type === 'ref/prompt' ? { ...ref, name } : { ...ref, uri: name };
+    const params = { ...req.params, ref: strippedRef };
+    return track(
+      deps,
+      serverName,
+      { via: 'aggregate', method: 'completion/complete', target: full, params, failuresOnly: true },
+      async () => {
+        try {
+          return await (await deps.getClient(serverName)).complete(params);
+        } catch (err) {
+          if (lacksCapability(err)) {
+            return EMPTY_COMPLETION;
+          }
+          throw err;
+        }
+      },
+    );
+  });
+
+  server.setRequestHandler(SubscribeRequestSchema, async (req) => {
+    const { serverName, name: uri } = route(req.params.uri, 'resource');
+    const params = { ...req.params, uri };
+    return track(deps, serverName, { via: 'aggregate', method: 'resources/subscribe', target: uri, params }, () =>
+      deps.getClient(serverName).then((client) => client.subscribeResource(params)),
+    );
+  });
+
+  server.setRequestHandler(UnsubscribeRequestSchema, async (req) => {
+    const { serverName, name: uri } = route(req.params.uri, 'resource');
+    const params = { ...req.params, uri };
+    return track(deps, serverName, { via: 'aggregate', method: 'resources/unsubscribe', target: uri, params }, () =>
+      deps.getClient(serverName).then((client) => client.unsubscribeResource(params)),
+    );
+  });
+
+  // setLevel has no ref, so it applies to the whole connection: fan the level
+  // out to every member (best-effort — capability-less members are skipped).
+  server.setRequestHandler(SetLevelRequestSchema, async (req) => {
+    await collect('logging/setLevel', async (client) => {
+      await client.setLoggingLevel(req.params.level);
+      return [];
+    });
+    return {};
   });
 
   return server;

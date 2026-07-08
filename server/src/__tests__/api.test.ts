@@ -1,6 +1,10 @@
 import { mkdtemp, rm } from 'node:fs/promises';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
@@ -329,5 +333,80 @@ describe('REST API', () => {
     const deleted = await authed(request(app).delete('/api/projects/renamed'));
     expect(deleted.status).toBe(204);
     expect((await authed(request(app).get('/api/projects/renamed'))).status).toBe(404);
+  });
+});
+
+describe('MCP session lifecycle', () => {
+  let dataDir: string;
+  let store: ConfigStore;
+  let manager: GatewayManager;
+  let token: string;
+  let app: ReturnType<typeof buildApp>;
+
+  beforeEach(async () => {
+    delete process.env.MCP_ROUTER_TOKEN;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-session-'));
+    store = new ConfigStore(dataDir);
+    await store.init();
+    token = store.getSettings().authToken as string;
+    manager = new GatewayManager(() => store.getSettings());
+    manager.reconcile(store.getServers());
+    app = buildApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+  });
+
+  afterEach(async () => {
+    await manager.stopAll();
+    await store.close();
+    await rm(dataDir, { recursive: true, force: true });
+    vi.restoreAllMocks();
+  });
+
+  const authed = (req: request.Test) => req.set('Authorization', `Bearer ${token}`);
+  const asEventStream = (req: request.Test) => req.set('Accept', 'application/json, text/event-stream');
+
+  it('completes a full stateful session over HTTP via a real MCP client', async () => {
+    const httpServer = createServer(app);
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { port } = httpServer.address() as AddressInfo;
+
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    try {
+      // connect() runs the full initialize handshake against a minted session.
+      await client.connect(transport);
+      expect(transport.sessionId).toBeTruthy();
+      // The aggregate advertises the full capability set now.
+      expect(client.getServerCapabilities()).toMatchObject({
+        tools: { listChanged: true },
+        resources: { subscribe: true, listChanged: true },
+        prompts: { listChanged: true },
+        logging: {},
+        completions: {},
+      });
+      // No servers installed → the aggregate lists nothing, over the same session.
+      expect((await client.listTools()).tools).toEqual([]);
+    } finally {
+      await client.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
+  });
+
+  it('rejects a non-initialize request that carries no session id', async () => {
+    const res = await asEventStream(authed(request(app).post('/mcp'))).send({
+      jsonrpc: '2.0',
+      id: 1,
+      method: 'tools/list',
+    });
+    expect(res.status).toBe(400);
+  });
+
+  it('404s a request bearing an unknown or expired session id', async () => {
+    const res = await asEventStream(authed(request(app).post('/mcp')))
+      .set('mcp-session-id', 'does-not-exist')
+      .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
+    expect(res.status).toBe(404);
   });
 });

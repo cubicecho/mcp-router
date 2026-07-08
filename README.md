@@ -8,8 +8,8 @@ over streamable HTTP:
 
 - **Per-server routes** — each installed server at `http://host:3000/mcp/<name>`
 - **One aggregate endpoint** — `http://host:3000/mcp` merges all enabled
-  servers, with tool names namespaced as `<server>__<tool>` (resources and
-  prompts likewise); calls are routed back to the owning server
+  servers, with tool names namespaced as `<server>__<tool>` (resources, resource
+  templates, and prompts likewise); calls are routed back to the owning server
 - **Projects (custom aggregates)** — group a chosen subset of servers at their
   own `http://host:3000/mcp/p/<slug>` endpoint, with optional per-project
   `env`/`args`/`headers` overrides; give each client exactly the tools it needs
@@ -22,6 +22,10 @@ Highlights:
 
 - stdio servers spawn lazily on first request, stay warm, and shut down after
   an idle timeout (default 5 minutes, per-server override)
+- Full MCP passthrough — tools, resources, resource templates, prompts,
+  completions, logging, and resource subscriptions, plus downstream
+  `list_changed` / resource-update / log notifications relayed over a stateful
+  session (reverse-direction sampling/elicitation/roots are not yet proxied)
 - Single bearer token guards the management API and all MCP endpoints
 - Config is plain JSON under `DATA_DIR/config` — watched for changes, plus an
   explicit `POST /api/reload`

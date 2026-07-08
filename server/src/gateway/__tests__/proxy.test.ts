@@ -277,3 +277,141 @@ describe('aggregate activity recording', () => {
     expect(activity[0]?.error).toContain('ECONNREFUSED');
   });
 });
+
+describe('completions passthrough', () => {
+  it('forwards a completion request on the per-server endpoint', async () => {
+    const fakeClient = {
+      complete: async (params: { ref: { name: string } }) => ({
+        completion: { values: [`${params.ref.name}:done`] },
+      }),
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    const result = await client.complete({
+      ref: { type: 'ref/prompt', name: 'greet' },
+      argument: { name: 'who', value: 'a' },
+    });
+    await close();
+
+    expect(result.completion.values).toEqual(['greet:done']);
+  });
+
+  it('returns empty values when the downstream lacks the completions capability', async () => {
+    const fakeClient = {
+      complete: async () => {
+        throw new McpError(ErrorCode.MethodNotFound, 'no completions');
+      },
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    const result = await client.complete({
+      ref: { type: 'ref/resource', uri: 'file:///x' },
+      argument: { name: 'p', value: '' },
+    });
+    await close();
+
+    expect(result.completion.values).toEqual([]);
+  });
+
+  it('strips the namespace off a completion ref and routes to the owning server', async () => {
+    let seenRef: unknown;
+    const fakeClient = {
+      complete: async (params: { ref: unknown }) => {
+        seenRef = params.ref;
+        return { completion: { values: ['ok'] } };
+      },
+    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['alpha', 'beta'] };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.complete({
+      ref: { type: 'ref/prompt', name: 'alpha__greet' },
+      argument: { name: 'who', value: '' },
+    });
+    await close();
+
+    expect(seenRef).toEqual({ type: 'ref/prompt', name: 'greet' });
+    expect(result.completion.values).toEqual(['ok']);
+  });
+});
+
+describe('resource subscriptions', () => {
+  it('forwards subscribe and unsubscribe on the per-server endpoint', async () => {
+    const calls: Array<[string, string]> = [];
+    const fakeClient = {
+      subscribeResource: async (p: { uri: string }) => {
+        calls.push(['sub', p.uri]);
+        return {};
+      },
+      unsubscribeResource: async (p: { uri: string }) => {
+        calls.push(['unsub', p.uri]);
+        return {};
+      },
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    await client.subscribeResource({ uri: 'file:///x' });
+    await client.unsubscribeResource({ uri: 'file:///x' });
+    await close();
+
+    expect(calls).toEqual([
+      ['sub', 'file:///x'],
+      ['unsub', 'file:///x'],
+    ]);
+  });
+
+  it('strips the namespace off a subscribed resource uri on the aggregate', async () => {
+    let seen: string | undefined;
+    const fakeClient = {
+      subscribeResource: async (p: { uri: string }) => {
+        seen = p.uri;
+        return {};
+      },
+    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['alpha'] };
+    const { client, close } = await connectAggregate(deps);
+
+    await client.subscribeResource({ uri: 'alpha__file:///x' });
+    await close();
+
+    expect(seen).toBe('file:///x');
+  });
+});
+
+describe('logging passthrough', () => {
+  it('forwards logging/setLevel on the per-server endpoint', async () => {
+    let level: string | undefined;
+    const fakeClient = {
+      setLoggingLevel: async (l: string) => {
+        level = l;
+      },
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    await client.setLoggingLevel('debug');
+    await close();
+
+    expect(level).toBe('debug');
+  });
+
+  it('fans logging/setLevel out to every member on the aggregate', async () => {
+    const levels: Record<string, string> = {};
+    const deps: AggregateDeps = {
+      ...stubDeps(null, {
+        getClient: async (name) =>
+          ({
+            setLoggingLevel: async (l: string) => {
+              levels[name] = l;
+            },
+          }) as unknown as Client,
+      }),
+      serverNames: () => ['alpha', 'beta'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    await client.setLoggingLevel('warning');
+    await close();
+
+    expect(levels).toEqual({ alpha: 'warning', beta: 'warning' });
+  });
+});
