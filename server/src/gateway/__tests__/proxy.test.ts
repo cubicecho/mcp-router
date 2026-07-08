@@ -200,6 +200,27 @@ describe('aggregate activity recording', () => {
     expect(activity).toEqual([]);
   });
 
+  it('merges and namespaces resource templates across servers', async () => {
+    const fakeClient = {
+      listResourceTemplates: async () => ({
+        resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }],
+      }),
+    };
+    const deps: AggregateDeps = {
+      ...stubDeps(fakeClient),
+      serverNames: () => ['alpha', 'beta'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.listResourceTemplates();
+    await close();
+
+    expect(result.resourceTemplates).toEqual([
+      { uriTemplate: 'alpha__file:///{path}', name: 'alpha__Files' },
+      { uriTemplate: 'beta__file:///{path}', name: 'beta__Files' },
+    ]);
+  });
+
   it('drains every page of a paginating downstream list', async () => {
     const { activity, record } = collector();
     const toolCounts: Record<string, number> = {};

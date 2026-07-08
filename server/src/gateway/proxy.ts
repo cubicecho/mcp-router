@@ -317,7 +317,20 @@ export function createAggregateServer(deps: AggregateDeps): Server {
   });
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    return { resourceTemplates: [] };
+    const resourceTemplates = await collect('resources/templates/list', async (client, name) => {
+      const all = await listAll(
+        (params) => client.listResourceTemplates(params),
+        (result) => result.resourceTemplates,
+      );
+      // Namespace the URI template so a read of an expanded URI routes back to
+      // this server, mirroring how plain resources namespace their `uri`.
+      return all.map((template) => ({
+        ...template,
+        uriTemplate: namespaceName(name, template.uriTemplate),
+        name: namespaceName(name, template.name),
+      }));
+    });
+    return { resourceTemplates };
   });
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) => {

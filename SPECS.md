@@ -87,8 +87,9 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - `POST/GET/DELETE /mcp/<name>` — proxy to that server: tools, resources,
   prompts, and calls forwarded 1:1
 - `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tool names
-  prefixed `<server>__`; resources/prompts likewise namespaced; `tools/call`
-  strips the prefix and routes to the owning downstream client
+  prefixed `<server>__`; resources, resource templates, and prompts likewise
+  namespaced; `tools/call` strips the prefix and routes to the owning downstream
+  client
 - `POST/GET/DELETE /mcp/p/<slug>` — a project's custom aggregate: same
   `<server>__` namespacing, but only over that project's enabled members, each
   served by its own isolated (override-applied) downstream instance
@@ -161,6 +162,56 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
   toggles, per-member override editors, ConnectCard in edit mode)
 - [x] P7 Tests: manager project-instance behavior (overrides, isolation from
   global disable, drop-on-remove); API auto-slug/validation/rename/gating
+
+### Phase 4 — Full MCP proxy (complete protocol passthrough)
+
+Today the gateway proxies the request/response core (tools, resources,
+resource templates, prompts — list + call/read/get) but drops the rest of the
+protocol. These items bring it to a faithful, bidirectional MCP proxy. They are
+ordered: F1 is a quick correctness fix, F2 is stateless and independent, and
+F3–F6 depend on **F3** because notifications, subscriptions, and
+server→client requests all require a long-lived session that the current
+stateless per-request transport cannot carry.
+
+- [x] F1 Aggregate resource templates: `createAggregateServer` fanned out
+  `resources/templates/list` and namespaces `uriTemplate` + `name` (was
+  hardcoded `[]`), matching the per-server endpoint; test in `proxy.test.ts`
+- [ ] F2 Completions (`completion/complete`): add `CompleteRequestSchema`
+  handlers to both proxy servers; per-server forwards 1:1 via `client.complete()`;
+  aggregate strips the `<server>__` prefix off the `ref` (prompt name or resource
+  `uri`/`uriTemplate`) and routes to the owning client; degrade to
+  `{ completion: { values: [] } }` when the downstream lacks the capability
+  (reuse `lacksCapability`)
+- [ ] F3 **Stateful sessions (foundational).** Switch the exposed
+  `StreamableHTTPServerTransport` from stateless (`sessionIdGenerator: undefined`,
+  fresh Server per request in `gateway/routes.ts`) to session-backed: generate a
+  session id, keep a `Map<sessionId, { server, transport }>`, reuse it across the
+  `POST`/`GET`(SSE)/`DELETE` of one MCP session, and tear it down on transport
+  close. This is the prerequisite for any server→client message (F4–F6). Keep the
+  downstream client lifecycle (lazy spawn, idle timeout) unchanged; a session
+  pins nothing beyond its own transport
+- [ ] F4 Change notifications: advertise `listChanged: true` for tools /
+  resources / prompts in `PROXY_CAPABILITIES`; subscribe to the downstream client's
+  `notifications/{tools,resources,prompts}/list_changed` and re-emit them to every
+  live upstream session for that server (aggregate/project sessions re-emit for any
+  member). Requires F3
+- [ ] F5 Resource subscriptions: advertise `resources: { subscribe: true }`; add
+  `resources/subscribe` + `resources/unsubscribe` handlers that forward to the
+  downstream client (aggregate strips the `<server>__` URI prefix); relay
+  downstream `notifications/resources/updated` back to the subscribing session,
+  re-namespacing the URI on the aggregate path. Requires F3
+- [ ] F6 Logging passthrough: advertise the `logging` capability; forward
+  `logging/setLevel` to the downstream client and relay downstream
+  `notifications/message` to the originating session. Requires F3
+- [ ] F7 Reverse-direction (server→client) capabilities: offer `sampling`,
+  `elicitation`, and `roots` to downstream servers when connecting the client
+  (`manager.ts`), and forward each downstream request out to the upstream MCP
+  client and its response back. Requires F3; gate behind config since it exposes
+  the host client's LLM/user to downstream servers
+- [ ] F8 Tests + docs: unit-test each new handler's forward + namespace-strip +
+  capability-degrade path; a session-lifecycle test for F3; end-to-end notification
+  relay against `@modelcontextprotocol/server-everything` (emits all of the above);
+  update the MCP-endpoints section of this file and `README.md`
 
 ### Phase 2 — Integration (after tracks merge)
 
