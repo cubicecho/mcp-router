@@ -1,24 +1,21 @@
-import type { PromptGetResponse } from '@mcp-router/shared';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import type { ServerPrompt } from '@/lib/api';
 import { useGetServerPrompt, useServerPrompts } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
 function PromptRow({ serverName, prompt }: { serverName: string; prompt: ServerPrompt }) {
   const [args, setArgs] = useState<Record<string, string>>({});
-  const [result, setResult] = useState<PromptGetResponse | null>(null);
   const get = useGetServerPrompt(serverName);
+  const { result, run, pending } = useCapabilityRun(get);
   const declaredArgs = prompt.arguments ?? [];
 
-  const run = () => {
+  const submit = () => {
     // Only send filled-in values; the server defaults missing optional args. Trim
     // to match the required-arg check, so a whitespace-only entry counts as unset.
     const filled = Object.fromEntries(Object.entries(args).filter(([, value]) => value.trim().length > 0));
-    setResult(null);
-    get.mutate({ name: prompt.name, arguments: filled }, { onSuccess: setResult, onError: toastApiError });
+    run({ name: prompt.name, arguments: filled });
   };
 
   const missingRequired = declaredArgs.some((arg) => arg.required && (args[arg.name] ?? '').trim().length === 0);
@@ -48,7 +45,7 @@ function PromptRow({ serverName, prompt }: { serverName: string; prompt: ServerP
           />
         </div>
       ))}
-      <RunButton label="Get" pending={get.isPending} disabled={missingRequired} onClick={run} />
+      <RunButton label="Get" pending={pending} disabled={missingRequired} onClick={submit} />
       {result && <ResultBlock result={result} />}
     </CapabilityRow>
   );

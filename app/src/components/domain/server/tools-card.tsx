@@ -1,11 +1,9 @@
-import type { ToolCallResponse } from '@mcp-router/shared';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
 import type { ServerTool } from '@/lib/api';
 import { useCallServerTool, useServerTools } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
 /** Prefill the args editor from the tool's input schema: one key per property. */
 function argsTemplate(inputSchema: unknown): string {
@@ -33,10 +31,10 @@ function argsTemplate(inputSchema: unknown): string {
 
 function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool }) {
   const [argsText, setArgsText] = useState(() => argsTemplate(tool.inputSchema));
-  const [result, setResult] = useState<ToolCallResponse | null>(null);
   const call = useCallServerTool(serverName);
+  const { result, run, pending } = useCapabilityRun(call);
 
-  const run = () => {
+  const submit = () => {
     let args: Record<string, unknown>;
     try {
       const parsed: unknown = JSON.parse(argsText.trim() || '{}');
@@ -48,14 +46,7 @@ function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool })
       toast.error(`Invalid arguments: ${error instanceof Error ? error.message : 'not valid JSON'}`);
       return;
     }
-    setResult(null);
-    call.mutate(
-      { name: tool.name, arguments: args },
-      {
-        onSuccess: setResult,
-        onError: toastApiError,
-      },
-    );
+    run({ name: tool.name, arguments: args });
   };
 
   return (
@@ -74,7 +65,7 @@ function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool })
         aria-label={`Arguments for ${tool.name}`}
         onChange={(event) => setArgsText(event.target.value)}
       />
-      <RunButton label="Run" pending={call.isPending} onClick={run} />
+      <RunButton label="Run" pending={pending} onClick={submit} />
       {result && (
         <ResultBlock
           result={result}
@@ -103,7 +94,9 @@ export function ToolsCard({ name }: { name: string }) {
       emptyText="No tools reported."
     >
       {tools.map((tool) => (
-        <ToolRow key={tool.name} serverName={name} tool={tool} />
+        // Key by schema too: a refetch that changes a same-named tool's schema
+        // remounts the row so the args editor re-seeds from the new schema.
+        <ToolRow key={`${tool.name}:${JSON.stringify(tool.inputSchema)}`} serverName={name} tool={tool} />
       ))}
     </CapabilityList>
   );

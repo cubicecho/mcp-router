@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
 import { GatewayManager } from '../gateway/manager.ts';
+import { SERVER_VERSION } from '../version.ts';
 
 describe('REST API', () => {
   let dataDir: string;
@@ -43,7 +44,7 @@ describe('REST API', () => {
   it('reports router status', async () => {
     const res = await authed(request(app).get('/api/status'));
     expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ version: '0.1.0', serverCount: 0, runningCount: 0, authEnabled: true });
+    expect(res.body).toMatchObject({ version: SERVER_VERSION, serverCount: 0, runningCount: 0, authEnabled: true });
   });
 
   it('manages registries with validation and conflict handling', async () => {

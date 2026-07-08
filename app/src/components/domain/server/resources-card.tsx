@@ -1,10 +1,8 @@
-import type { ResourceReadResponse } from '@mcp-router/shared';
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import type { ServerResource, ServerResourceTemplate } from '@/lib/api';
 import { useReadServerResource, useServerResources } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
 /** A resource (concrete URI) or a template (an RFC 6570 URI to fill in). */
 interface ResourceRowData {
@@ -19,13 +17,8 @@ interface ResourceRowData {
 
 function ResourceRow({ serverName, data }: { serverName: string; data: ResourceRowData }) {
   const [uri, setUri] = useState(data.uri);
-  const [result, setResult] = useState<ResourceReadResponse | null>(null);
   const read = useReadServerResource(serverName);
-
-  const run = () => {
-    setResult(null);
-    read.mutate({ uri: uri.trim() }, { onSuccess: setResult, onError: toastApiError });
-  };
+  const { result, run, pending } = useCapabilityRun(read);
 
   return (
     <CapabilityRow
@@ -52,7 +45,12 @@ function ResourceRow({ serverName, data }: { serverName: string; data: ResourceR
       {data.isTemplate && (
         <p className="text-xs text-muted-foreground">Replace the {'{placeholders}'} with concrete values.</p>
       )}
-      <RunButton label="Read" pending={read.isPending} disabled={uri.trim().length === 0} onClick={run} />
+      <RunButton
+        label="Read"
+        pending={pending}
+        disabled={uri.trim().length === 0}
+        onClick={() => run({ uri: uri.trim() })}
+      />
       {result && <ResultBlock result={result} />}
     </CapabilityRow>
   );

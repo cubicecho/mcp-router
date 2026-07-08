@@ -1,8 +1,10 @@
+import type { UseMutationResult } from '@tanstack/react-query';
 import { ChevronRightIcon, Loader2Icon, PlayIcon, RotateCwIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
+import { toastApiError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
 
 interface CapabilityListProps {
@@ -21,8 +23,10 @@ interface CapabilityListProps {
 }
 
 /**
- * Shared card shell for a downstream capability listing (resources, prompts):
- * connecting skeleton, retryable error, empty state, else the caller's list.
+ * Shared card shell for a downstream capability listing (tools, resources,
+ * prompts): connecting skeleton, retryable error, empty state, else the caller's
+ * list. A failed background refetch shows the error banner above the last-loaded
+ * list rather than blanking it.
  */
 export function CapabilityList({
   title,
@@ -62,7 +66,7 @@ export function CapabilityList({
           </div>
         )}
         {!isPending && !error && count === 0 && <p className="text-sm text-muted-foreground">{emptyText}</p>}
-        {!isPending && !error && count > 0 && <ul className="flex flex-col divide-y">{children}</ul>}
+        {!isPending && count > 0 && <ul className="flex flex-col divide-y">{children}</ul>}
       </CardContent>
     </Card>
   );
@@ -107,6 +111,20 @@ export function RunButton({
       </Button>
     </div>
   );
+}
+
+/**
+ * Shared run/read/get state for a capability row: holds the last result, clears
+ * it before each invocation, and toasts errors. Callers supply the mutation
+ * (call/read/get) and pass their built variables to `run`.
+ */
+export function useCapabilityRun<TData, TVariables>(mutation: UseMutationResult<TData, Error, TVariables>) {
+  const [result, setResult] = useState<TData | null>(null);
+  const run = (variables: TVariables) => {
+    setResult(null);
+    mutation.mutate(variables, { onSuccess: setResult, onError: toastApiError });
+  };
+  return { result, run, pending: mutation.isPending };
 }
 
 /** Shared JSON result panel for a run/read/get invocation. */

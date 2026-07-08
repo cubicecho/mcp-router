@@ -19,7 +19,8 @@ import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
-import { allPages, lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
+import { listAll } from '../gateway/pagination.ts';
+import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
 import type { RegistryClient } from '../registry/client.ts';
 import { SERVER_VERSION } from '../version.ts';
@@ -281,40 +282,44 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json(requireStatus(name));
   });
 
+  // Every listing drains all pages (listAll), so a downstream that paginates
+  // doesn't silently lose items — or, for tools, report a wrong count — past
+  // page 1.
   router.get('/servers/:name/tools', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
-    const result = await client.listTools();
-    manager.recordToolCount(name, result.tools.length);
-    res.json({ tools: result.tools });
+    const tools = await listAll(
+      (params) => client.listTools(params),
+      (result) => result.tools,
+    );
+    manager.recordToolCount(name, tools.length);
+    res.json({ tools });
   });
 
   // A downstream that lacks resources/prompts answers "method not found" (or our
   // client refuses to send). That's not an error for a listing endpoint — it's an
-  // empty list, so the UI shows "none reported" rather than a failure. Every
-  // listing drains all pages (allPages), so a downstream that paginates doesn't
-  // silently lose items past page 1.
+  // empty list, so the UI shows "none reported" rather than a failure.
   router.get('/servers/:name/resources', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
     const [resources, templates] = await Promise.all([
       emptyOnMissing(() =>
-        allPages(async (cursor) => {
-          const page = await client.listResources(cursor === undefined ? undefined : { cursor });
-          return { items: page.resources, nextCursor: page.nextCursor };
-        }),
+        listAll(
+          (params) => client.listResources(params),
+          (result) => result.resources,
+        ),
       ),
       // Templates are a supplementary sub-listing: a genuine failure here must not
       // discard a successful resources list, so it is best-effort (missing → null
       // via emptyOnMissing; any other error → warn + null) rather than fatal to the
       // whole endpoint.
       emptyOnMissing(() =>
-        allPages(async (cursor) => {
-          const page = await client.listResourceTemplates(cursor === undefined ? undefined : { cursor });
-          return { items: page.resourceTemplates, nextCursor: page.nextCursor };
-        }),
+        listAll(
+          (params) => client.listResourceTemplates(params),
+          (result) => result.resourceTemplates,
+        ),
       ).catch((cause: unknown) => {
         console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
         return null;
@@ -331,10 +336,10 @@ export function createApiRouter(deps: ApiDeps): Router {
     requireStatus(name);
     const client = await connect(name);
     const prompts = await emptyOnMissing(() =>
-      allPages(async (cursor) => {
-        const page = await client.listPrompts(cursor === undefined ? undefined : { cursor });
-        return { items: page.prompts, nextCursor: page.nextCursor };
-      }),
+      listAll(
+        (params) => client.listPrompts(params),
+        (result) => result.prompts,
+      ),
     );
     res.json({ prompts: prompts ?? [] });
   });
