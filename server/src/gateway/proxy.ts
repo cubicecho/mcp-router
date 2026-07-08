@@ -53,7 +53,7 @@ const MAX_LIST_PAGES = 100;
  * returning only page 1 (and its count) would silently hide tools/resources/
  * prompts of any downstream that paginates.
  */
-async function allPages<T>(
+export async function allPages<T>(
   fetchPage: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor?: string }>,
 ): Promise<T[]> {
   const items: T[] = [];

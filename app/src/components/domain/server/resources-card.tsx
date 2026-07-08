@@ -1,13 +1,10 @@
 import type { ResourceReadResponse } from '@mcp-router/shared';
-import { ChevronRightIcon, Loader2Icon, PlayIcon } from 'lucide-react';
 import { useState } from 'react';
-import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import type { ServerResource, ServerResourceTemplate } from '@/lib/api';
 import { useReadServerResource, useServerResources } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
-import { cn } from '@/lib/utils';
-import { CapabilityList, ResultBlock } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RunButton } from './capability-list';
 
 /** A resource (concrete URI) or a template (an RFC 6570 URI to fill in). */
 interface ResourceRowData {
@@ -21,7 +18,6 @@ interface ResourceRowData {
 }
 
 function ResourceRow({ serverName, data }: { serverName: string; data: ResourceRowData }) {
-  const [open, setOpen] = useState(false);
   const [uri, setUri] = useState(data.uri);
   const [result, setResult] = useState<ResourceReadResponse | null>(null);
   const read = useReadServerResource(serverName);
@@ -32,12 +28,9 @@ function ResourceRow({ serverName, data }: { serverName: string; data: ResourceR
   };
 
   return (
-    <li className="py-2 first:pt-0 last:pb-0">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-start gap-2 text-left">
-        <ChevronRightIcon
-          className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
-        />
-        <span className="min-w-0">
+    <CapabilityRow
+      header={
+        <>
           <span className="flex flex-wrap items-baseline gap-x-2">
             <span className="font-mono text-sm">{data.label}</span>
             {data.isTemplate && <span className="text-xs text-muted-foreground">template</span>}
@@ -47,28 +40,21 @@ function ResourceRow({ serverName, data }: { serverName: string; data: ResourceR
             <span className="block font-mono text-xs break-all text-muted-foreground">{data.uri}</span>
           )}
           {data.description && <p className="text-sm text-muted-foreground">{data.description}</p>}
-        </span>
-      </button>
-      {open && (
-        <div className="mt-2 ml-6 flex flex-col gap-2">
-          <Input
-            value={uri}
-            className="font-mono text-xs"
-            aria-label={`URI to read for ${data.label}`}
-            onChange={(event) => setUri(event.target.value)}
-          />
-          {data.isTemplate && (
-            <p className="text-xs text-muted-foreground">Replace the {'{placeholders}'} with concrete values.</p>
-          )}
-          <div>
-            <Button size="sm" variant="outline" disabled={read.isPending || uri.trim().length === 0} onClick={run}>
-              {read.isPending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} Read
-            </Button>
-          </div>
-          {result && <ResultBlock result={result} />}
-        </div>
+        </>
+      }
+    >
+      <Input
+        value={uri}
+        className="font-mono text-xs"
+        aria-label={`URI to read for ${data.label}`}
+        onChange={(event) => setUri(event.target.value)}
+      />
+      {data.isTemplate && (
+        <p className="text-xs text-muted-foreground">Replace the {'{placeholders}'} with concrete values.</p>
       )}
-    </li>
+      <RunButton label="Read" pending={read.isPending} disabled={uri.trim().length === 0} onClick={run} />
+      {result && <ResultBlock result={result} />}
+    </CapabilityRow>
   );
 }
 

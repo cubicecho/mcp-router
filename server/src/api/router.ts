@@ -19,7 +19,7 @@ import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
-import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
+import { allPages, lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
 import type { RegistryClient } from '../registry/client.ts';
 import { SERVER_VERSION } from '../version.ts';
@@ -292,18 +292,37 @@ export function createApiRouter(deps: ApiDeps): Router {
 
   // A downstream that lacks resources/prompts answers "method not found" (or our
   // client refuses to send). That's not an error for a listing endpoint — it's an
-  // empty list, so the UI shows "none reported" rather than a failure.
+  // empty list, so the UI shows "none reported" rather than a failure. Every
+  // listing drains all pages (allPages), so a downstream that paginates doesn't
+  // silently lose items past page 1.
   router.get('/servers/:name/resources', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
     const [resources, templates] = await Promise.all([
-      emptyOnMissing(() => client.listResources()),
-      emptyOnMissing(() => client.listResourceTemplates()),
+      emptyOnMissing(() =>
+        allPages(async (cursor) => {
+          const page = await client.listResources(cursor === undefined ? undefined : { cursor });
+          return { items: page.resources, nextCursor: page.nextCursor };
+        }),
+      ),
+      // Templates are a supplementary sub-listing: a genuine failure here must not
+      // discard a successful resources list, so it is best-effort (missing → null
+      // via emptyOnMissing; any other error → warn + null) rather than fatal to the
+      // whole endpoint.
+      emptyOnMissing(() =>
+        allPages(async (cursor) => {
+          const page = await client.listResourceTemplates(cursor === undefined ? undefined : { cursor });
+          return { items: page.resourceTemplates, nextCursor: page.nextCursor };
+        }),
+      ).catch((cause: unknown) => {
+        console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
+        return null;
+      }),
     ]);
     res.json({
-      resources: resources?.resources ?? [],
-      resourceTemplates: templates?.resourceTemplates ?? [],
+      resources: resources ?? [],
+      resourceTemplates: templates ?? [],
     });
   });
 
@@ -311,8 +330,13 @@ export function createApiRouter(deps: ApiDeps): Router {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
-    const result = await emptyOnMissing(() => client.listPrompts());
-    res.json({ prompts: result?.prompts ?? [] });
+    const prompts = await emptyOnMissing(() =>
+      allPages(async (cursor) => {
+        const page = await client.listPrompts(cursor === undefined ? undefined : { cursor });
+        return { items: page.prompts, nextCursor: page.nextCursor };
+      }),
+    );
+    res.json({ prompts: prompts ?? [] });
   });
 
   // Run one tool from the UI. Recorded to the activity log like proxied calls,

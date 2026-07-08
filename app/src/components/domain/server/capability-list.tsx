@@ -1,5 +1,5 @@
-import { RotateCwIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { ChevronRightIcon, Loader2Icon, PlayIcon, RotateCwIcon } from 'lucide-react';
+import { type ReactNode, useState } from 'react';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -65,6 +65,47 @@ export function CapabilityList({
         {!isPending && !error && count > 0 && <ul className="flex flex-col divide-y">{children}</ul>}
       </CardContent>
     </Card>
+  );
+}
+
+/**
+ * Shared collapsible row for one capability (tool, resource, prompt): a chevron
+ * toggle with a caller-supplied header, revealing the caller's body (inputs, a
+ * {@link RunButton}, and a {@link ResultBlock}) when expanded.
+ */
+export function CapabilityRow({ header, children }: { header: ReactNode; children: ReactNode }) {
+  const [open, setOpen] = useState(false);
+  return (
+    <li className="py-2 first:pt-0 last:pb-0">
+      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-start gap-2 text-left">
+        <ChevronRightIcon
+          className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
+        />
+        <span className="min-w-0">{header}</span>
+      </button>
+      {open && <div className="mt-2 ml-6 flex flex-col gap-3">{children}</div>}
+    </li>
+  );
+}
+
+/** Shared run/read/get action button: shows a spinner while pending, a play icon otherwise. */
+export function RunButton({
+  label,
+  pending,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  pending: boolean;
+  disabled?: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <div>
+      <Button size="sm" variant="outline" disabled={pending || disabled} onClick={onClick}>
+        {pending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} {label}
+      </Button>
+    </div>
   );
 }
 
