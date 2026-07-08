@@ -30,9 +30,18 @@ function argsTemplate(inputSchema: unknown): string {
 }
 
 function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool }) {
+  const schemaSig = JSON.stringify(tool.inputSchema);
+  const [seededSig, setSeededSig] = useState(schemaSig);
   const [argsText, setArgsText] = useState(() => argsTemplate(tool.inputSchema));
   const call = useCallServerTool(serverName);
   const { result, run, pending } = useCapabilityRun(call);
+
+  // A refetch that genuinely changes this tool's schema re-seeds the args editor
+  // in place (rather than remounting the row), so the last result stays visible.
+  if (schemaSig !== seededSig) {
+    setSeededSig(schemaSig);
+    setArgsText(argsTemplate(tool.inputSchema));
+  }
 
   const submit = () => {
     let args: Record<string, unknown>;
@@ -94,9 +103,7 @@ export function ToolsCard({ name }: { name: string }) {
       emptyText="No tools reported."
     >
       {tools.map((tool) => (
-        // Key by schema too: a refetch that changes a same-named tool's schema
-        // remounts the row so the args editor re-seeds from the new schema.
-        <ToolRow key={`${tool.name}:${JSON.stringify(tool.inputSchema)}`} serverName={name} tool={tool} />
+        <ToolRow key={tool.name} serverName={name} tool={tool} />
       ))}
     </CapabilityList>
   );
