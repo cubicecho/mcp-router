@@ -1,11 +1,13 @@
+import { randomUUID } from 'node:crypto';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
+import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
-import { errorMessage } from '../errors.ts';
 import type { GatewayManager } from './manager.ts';
 import { projectInstanceKey } from './manager.ts';
+import { namespaceNotification, pushNotification } from './notifications.ts';
 import { createAggregateServer, createProxyServer } from './proxy.ts';
 
 export interface McpRouterDeps {
@@ -13,24 +15,64 @@ export interface McpRouterDeps {
   manager: GatewayManager;
 }
 
+/** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
+type WireRelay = (server: Server) => () => void;
+
 /**
- * Streamable-HTTP MCP endpoints, stateless mode: a fresh proxy Server +
- * transport per request, cleaned up when the response closes.
+ * Streamable-HTTP MCP endpoints in stateful mode: the initialize request mints
+ * a session (its own proxy Server + transport), kept in a map and reused across
+ * the session's subsequent POST/GET(SSE)/DELETE requests. A long-lived session
+ * is what lets downstream notifications (list_changed, resources/updated, log
+ * messages) reach the client over its GET SSE stream.
  */
 export function createMcpRouter(deps: McpRouterDeps): Router {
   const { store, manager } = deps;
   const router = Router();
+  /** Live sessions by MCP session id. */
+  const sessions = new Map<string, StreamableHTTPServerTransport>();
 
-  const handle = async (req: Request, res: Response, buildServer: () => Server): Promise<void> => {
+  const sessionId = (req: Request): string | undefined => {
+    const raw = req.headers['mcp-session-id'];
+    return Array.isArray(raw) ? raw[0] : raw;
+  };
+
+  /** Route a request that carries a session id to its existing transport. Returns false if there is none. */
+  const resume = async (req: Request, res: Response): Promise<boolean> => {
+    const id = sessionId(req);
+    if (!id) {
+      return false;
+    }
+    const transport = sessions.get(id);
+    if (!transport) {
+      res.status(404).json({ error: `Unknown or expired MCP session "${id}"` });
+      return true;
+    }
+    await transport.handleRequest(req, res, req.body);
+    return true;
+  };
+
+  /** Start a new session for an initialize request; anything else without a session id is a 400. */
+  const start = async (req: Request, res: Response, buildServer: () => Server, wire: WireRelay): Promise<void> => {
+    if (!isInitializeRequest(req.body)) {
+      res.status(400).json({ error: 'Missing or expired mcp-session-id' });
+      return;
+    }
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
+      sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
+      onsessioninitialized: (id) => {
+        sessions.set(id, transport);
+      },
     });
-    res.on('close', () => {
-      transport.close().catch((err: unknown) => console.warn(`MCP transport close failed: ${errorMessage(err)}`));
-      server.close().catch((err: unknown) => console.warn(`MCP server close failed: ${errorMessage(err)}`));
-    });
+    const unwire = wire(server);
+    // Set before connect(): the SDK chains our onclose ahead of its own teardown.
+    transport.onclose = () => {
+      if (transport.sessionId) {
+        sessions.delete(transport.sessionId);
+      }
+      unwire();
+    };
     await server.connect(transport);
     await transport.handleRequest(req, res, req.body);
   };
@@ -43,13 +85,31 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
   };
 
   router.all('/', async (req, res) => {
-    await handle(req, res, () => createAggregateServer({ ...proxyDeps, serverNames: () => manager.enabledNames() }));
+    if (await resume(req, res)) {
+      return;
+    }
+    const serverNames = () => manager.enabledNames();
+    await start(
+      req,
+      res,
+      () => createAggregateServer({ ...proxyDeps, serverNames }),
+      (server) =>
+        manager.onNotification((key, notification) => {
+          // enabledNames() lists only base keys, so project instances never match here.
+          if (serverNames().includes(key)) {
+            pushNotification(server, namespaceNotification(notification, key));
+          }
+        }),
+    );
   });
 
   // Custom aggregate for a project: only its enabled members that still exist, run
   // as project-scoped downstream instances. Registered before '/:name' so the two
   // path segments never fall through to the per-server route.
   router.all('/p/:slug', async (req, res) => {
+    if (await resume(req, res)) {
+      return;
+    }
     const slug = req.params.slug;
     const project = store.getProject(slug);
     if (!project || !project.enabled) {
@@ -70,17 +130,45 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
         manager.recordActivity(name, entry),
       serverNames: memberNames,
     };
-    await handle(req, res, () => createAggregateServer(projectDeps));
+    await start(
+      req,
+      res,
+      () => createAggregateServer(projectDeps),
+      (server) =>
+        manager.onNotification((key, notification) => {
+          // Downstream notifications arrive under the project instance key.
+          for (const name of memberNames()) {
+            if (key === projectInstanceKey(slug, name)) {
+              pushNotification(server, namespaceNotification(notification, name));
+              return;
+            }
+          }
+        }),
+    );
   });
 
   router.all('/:name', async (req, res) => {
+    if (await resume(req, res)) {
+      return;
+    }
     const name = req.params.name;
     const config = store.getServer(name);
     if (!config || !config.enabled) {
       res.status(404).json({ error: `Unknown server "${name}"` });
       return;
     }
-    await handle(req, res, () => createProxyServer(name, proxyDeps));
+    await start(
+      req,
+      res,
+      () => createProxyServer(name, proxyDeps),
+      // 1:1 endpoint: no namespacing, forward the owning server's notifications as-is.
+      (server) =>
+        manager.onNotification((key, notification) => {
+          if (key === name) {
+            pushNotification(server, notification);
+          }
+        }),
+    );
   });
 
   return router;
