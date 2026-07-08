@@ -42,6 +42,25 @@ describe('GatewayManager activity log', () => {
     expect(manager.getActivity('a')).toEqual([]);
   });
 
+  it('counts recorded calls and stamps the last-called time on the status', () => {
+    const manager = newManager(['a']);
+    expect(manager.status('a')?.callCount).toBe(0);
+    expect(manager.status('a')?.lastCalledAt).toBeUndefined();
+
+    manager.recordActivity('a', { ...baseEntry, at: '2026-01-01T00:00:00.000Z' });
+    manager.recordActivity('a', { ...baseEntry, at: '2026-01-01T00:05:00.000Z' });
+
+    expect(manager.status('a')?.callCount).toBe(2);
+    expect(manager.status('a')?.lastCalledAt).toBe('2026-01-01T00:05:00.000Z');
+  });
+
+  it('does not count activity for an unmanaged server', () => {
+    const manager = newManager(['a']);
+    manager.recordActivity('ghost', { ...baseEntry });
+    expect(manager.status('ghost')).toBeUndefined();
+    expect(manager.status('a')?.callCount).toBe(0);
+  });
+
   it('bounds the log to the newest 200 entries, newest first', () => {
     const manager = newManager(['a']);
     for (let i = 0; i < 250; i += 1) {

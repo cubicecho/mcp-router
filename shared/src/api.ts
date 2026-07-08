@@ -26,6 +26,10 @@ export const serverStatusSchema = z.object({
   lastError: z.string().optional(),
   /** Populated once the downstream server has been connected at least once. */
   toolCount: z.number().optional(),
+  /** Number of proxied downstream calls recorded this process (tool calls, resource/prompt reads, failures). */
+  callCount: z.number().optional(),
+  /** ISO timestamp of the most recent proxied call, if any. */
+  lastCalledAt: z.string().optional(),
 });
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 

@@ -21,7 +21,7 @@ import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import { formatSource } from '@/lib/format';
+import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
@@ -76,6 +76,23 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             <TooltipContent>Known after the first connection — try Test connection.</TooltipContent>
           </Tooltip>
         )}
+      </TableCell>
+      <TableCell className="hidden tabular-nums lg:table-cell">
+        {server.callCount ? (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span>{server.callCount.toLocaleString()}</span>
+            </TooltipTrigger>
+            <TooltipContent>
+              {server.lastCalledAt ? `Last called ${formatRelativeTime(server.lastCalledAt)}` : 'Since last restart'}
+            </TooltipContent>
+          </Tooltip>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        )}
+      </TableCell>
+      <TableCell className="hidden text-muted-foreground xl:table-cell">
+        {server.lastCalledAt ? formatRelativeTime(server.lastCalledAt) : '—'}
       </TableCell>
       <TableCell>
         <Switch
@@ -206,6 +223,8 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
             <TableHead className="hidden md:table-cell">Transport</TableHead>
             <TableHead className="hidden lg:table-cell">Source</TableHead>
             <TableHead className="hidden sm:table-cell">Tools</TableHead>
+            <TableHead className="hidden lg:table-cell">Calls</TableHead>
+            <TableHead className="hidden xl:table-cell">Last called</TableHead>
             <TableHead>Enabled</TableHead>
             <TableHead className="text-right">Actions</TableHead>
           </TableRow>

@@ -38,7 +38,8 @@ export function useServers() {
   return useQuery({
     queryKey: queryKeys.servers,
     queryFn: api.listServers,
-    refetchInterval: 10_000,
+    // Poll so the live call counts / last-called times stay current.
+    refetchInterval: 5_000,
   });
 }
 

@@ -83,6 +83,10 @@ interface ManagedServer {
   startedAt?: string;
   lastError?: string;
   toolCount?: number;
+  /** Count of proxied calls recorded via recordActivity this process (reset on restart). */
+  callCount: number;
+  /** ISO timestamp of the most recent recorded call. */
+  lastCalledAt?: string;
   idleTimer: NodeJS.Timeout | null;
   stderrTail: string;
   lastCrashAt: number;
@@ -96,6 +100,7 @@ function newEntry(key: string, config: ServerConfig): ManagedServer {
     client: null,
     connecting: null,
     state: 'stopped',
+    callCount: 0,
     idleTimer: null,
     stderrTail: '',
     lastCrashAt: 0,
@@ -309,9 +314,12 @@ export class GatewayManager {
     // resurrect a stray activity entry that then leaks forever. A call that
     // completes right after a Clear legitimately re-populates the log — the
     // server still exists, so that is new activity, not a leak.
-    if (!this.entries.has(name)) {
+    const managed = this.entries.get(name);
+    if (!managed) {
       return;
     }
+    managed.callCount += 1;
+    managed.lastCalledAt = entry.at;
     const log = this.activity.get(name) ?? [];
     log.push({
       ...entry,
@@ -474,5 +482,7 @@ function toStatus(entry: ManagedServer): ServerStatus {
     startedAt: entry.startedAt,
     lastError: entry.lastError,
     toolCount: entry.toolCount,
+    callCount: entry.callCount,
+    lastCalledAt: entry.lastCalledAt,
   };
 }
