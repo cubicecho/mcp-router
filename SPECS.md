@@ -236,3 +236,40 @@ blocked by the shared-downstream-client architecture and is documented below.
 - [x] I2 End-to-end smoke: install a real server from the official registry (e.g. `@modelcontextprotocol/server-everything`), set an env var in the UI, connect an MCP client to `/mcp/<name>` and `/mcp`, call a tool through both
 - [x] I3 Config reload smoke: hand-edit a server JSON, `POST /api/reload`, verify reconcile
 - [x] I4 Docker smoke: `docker compose up`, repeat I2 against the container
+
+### Phase 5 — MCP transport hardening (spec compliance)
+
+Gaps found reviewing `/mcp*` against the Streamable HTTP transport spec. The SDK
+(`@modelcontextprotocol/sdk` 1.29, `StreamableHTTPServerTransport`) already
+covers most of it: crypto session ids, `MCP-Protocol-Version` validation (400 on
+unsupported), `Accept`-header checks, 400/404 session guards, GET SSE for relayed
+notifications, DELETE termination. These are the remaining items.
+
+- [ ] H1 **Session leak — idle eviction + cap.** `sessions` in
+  `gateway/routes.ts` only drops an entry when the client sends `DELETE` (the
+  SDK fires `onclose`/`onsessionclosed` *only* on DELETE — a GET-stream abort or
+  a client that just disappears never closes the session). A long-running gateway
+  accumulates dead sessions (each holding a proxy `Server` + notification
+  subscription) unbounded. Add a last-activity timestamp per session (bump it in
+  `resume`/`start`), a periodic sweep that `close()`s sessions idle past a TTL
+  (config-driven, default e.g. 30 min), and a max-live-session cap that evicts
+  oldest / rejects new with 503. Cover with a unit test that advances a fake clock.
+- [ ] H2 **Origin validation / DNS-rebinding protection.** No `Origin` check on
+  `/mcp*`. The transport supports `enableDnsRebindingProtection` +
+  `allowedHosts`/`allowedOrigins` (now deprecated there in favour of external
+  middleware). Bearer auth mitigates the browser attack when auth is on, but
+  `SECURE_LOCAL_NET=true` disables auth *and* the server binds all interfaces
+  (`app.listen(port)` with no host) — so a malicious page on the trusted network
+  could DNS-rebind onto the gateway. Add Origin-allowlist middleware in front of
+  `/mcp` (configurable allowlist in settings; default to same-origin + localhost),
+  and expose a `HOST` env/setting so operators can bind `127.0.0.1` when they don't
+  need LAN exposure. Spec: servers SHOULD validate `Origin` and SHOULD bind
+  localhost when local.
+- [ ] H3 **SSE resumability (`EventStore` / `Last-Event-ID`).** No `eventStore`
+  is passed, so notifications emitted while a client's GET stream is down are lost
+  and cannot be replayed on reconnect — spec-optional (client MAY resume via
+  `Last-Event-ID`), lower priority. Implement a bounded in-memory `EventStore`
+  (ring buffer per stream, mirrors the activity-log approach) and wire it into
+  each session's transport; drop it into the priming/replay path the SDK already
+  supports (`>= 2025-11-25`). Defer unless a client actually needs gap-free
+  notification delivery.
