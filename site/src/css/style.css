@@ -331,7 +331,6 @@ td code { white-space: nowrap; }
 .docs-cta { margin-top: 36px; }
 
 /* Get Started — numbered walkthrough */
-.gs-intro { max-width: 62ch; }
 .steps { counter-reset: step; max-width: 860px; margin-top: 8px; }
 .step { position: relative; padding-left: 68px; margin-bottom: 52px; }
 .step:last-child { margin-bottom: 0; }
@@ -362,10 +361,10 @@ td code { white-space: nowrap; }
   width: 2px;
   background: var(--border);
 }
-.step h3 { margin: 6px 0 10px; font-size: 1.3rem; letter-spacing: -0.01em; }
+.step h2 { margin: 6px 0 10px; font-size: 1.3rem; letter-spacing: -0.01em; }
 .step > p, .step li { color: var(--text-muted); }
 .step strong { color: var(--text); }
-.step h4 { margin: 22px 0 8px; font-size: 0.95rem; color: var(--text); }
+.step h3 { margin: 22px 0 8px; font-size: 0.95rem; color: var(--text); }
 .step .shot { margin-top: 20px; }
 .step ul { padding-left: 20px; }
 .step ul li { margin-bottom: 6px; }

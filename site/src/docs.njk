@@ -43,12 +43,15 @@ permalink: /docs/
   "port": 3000,                 <span class="cmt">// PORT env wins over this</span>
   "authToken": "a-long-secret", <span class="cmt">// MCP_ROUTER_TOKEN env wins</span>
   "authEnabled": true,          <span class="cmt">// false = unauthenticated (trusted nets only)</span>
-  "host": "127.0.0.1",          <span class="cmt">// HOST env wins; omit to bind all interfaces</span>
   "allowedOrigins": [],         <span class="cmt">// extra browser Origins allowed to reach /mcp</span>
   "idleTimeoutMs": 300000,      <span class="cmt">// default stdio idle shutdown (ms)</span>
   "sessionIdleTimeoutMs": 1800000, <span class="cmt">// reclaim an idle MCP session after this (ms)</span>
   "maxSessions": 1000           <span class="cmt">// cap on live sessions; LRU-evicted past it</span>
 }</code></pre>
+        <p>The optional <code>host</code> key (or <code>HOST</code> env) picks the bind interface. Leave it
+          <strong>unset to bind all interfaces</strong> — that's what Docker and LAN exposure need, so the
+          published port stays reachable. Set it to <code>127.0.0.1</code> only for a bare-metal,
+          localhost-only install; inside a container that would make the mapped port refuse connections.</p>
         <p>The <code>/mcp</code> endpoints run <strong>stateful sessions</strong>: <code>initialize</code> mints an
           <code>Mcp-Session-Id</code> reused across the session's requests and its GET SSE stream. Idle sessions are
           reclaimed after <code>sessionIdleTimeoutMs</code>, and a browser <strong>Origin</strong> guard (loopback +

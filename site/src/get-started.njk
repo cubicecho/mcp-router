@@ -9,8 +9,8 @@ permalink: /get-started/
   <div class="wrap">
     <p class="eyebrow">Get started</p>
     <h1>From zero to a working gateway.</h1>
-    <p class="lede gs-intro">
-      Nine short steps: run the router, install your first MCP server from the registry, confirm it's live,
+    <p class="lede">
+      Eight short steps: run the router, install your first MCP server from the registry, confirm it's live,
       test its tools in the UI, and point your client at it. No config spelunking — every step has a screenshot.
     </p>
     <div class="cta-row">
@@ -25,22 +25,22 @@ permalink: /get-started/
     <div class="steps">
 
       <div class="step" id="run">
-        <h3>Run the router</h3>
+        <h2>Run the router</h2>
         <p>MCP Router ships as a single container. Pick whichever start fits — all three land you on the same
           web UI at <code>http://localhost:3000</code>. State lives in <code>./data</code> (bind-mounted to
           <code>/data</code> in Docker), so nothing is hidden away.</p>
 
-        <h4>Prebuilt image — no clone</h4>
+        <h3>Prebuilt image — no clone</h3>
         <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
   -e MCP_ROUTER_TOKEN=your-secret-token \
   vantreeseba/mcp-router:latest</code></pre>
 
-        <h4>Docker Compose — from the repo</h4>
+        <h3>Docker Compose — from the repo</h3>
         <pre class="code"><code>git clone https://github.com/cubicecho/mcp-router mcp-router &amp;&amp; cd mcp-router
 cp .env.example .env      <span class="cmt"># set a real MCP_ROUTER_TOKEN</span>
 docker compose up -d</code></pre>
 
-        <h4>Bare Node <span class="pill">Node ≥ 22.18</span></h4>
+        <h3>Bare Node <span class="pill">Node ≥ 22.18</span></h3>
         <pre class="code"><code>npm install &amp;&amp; npm run build
 MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
 
@@ -52,7 +52,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step">
-        <h3>Open the UI and sign in</h3>
+        <h2>Open the UI and sign in</h2>
         <p>Visit <code>http://localhost:3000</code> and paste your bearer token when prompted — it's the same
           <code>MCP_ROUTER_TOKEN</code> from step 1, and it guards both the management API and every MCP endpoint.
           You'll land on the <strong>Servers</strong> page. On a fresh install it's empty; that's what the next
@@ -60,7 +60,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step" id="install">
-        <h3>Install your first server</h3>
+        <h2>Install your first server</h2>
         <p>Open <strong>Browse</strong> and search the official MCP registry (or switch to the <em>From npm</em> /
           <em>From PyPI</em> tabs to install a package directly). For a first run, grab the
           <strong>Everything</strong> reference server — it's purpose-built for testing a client, with tools like
@@ -95,7 +95,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step">
-        <h3>Confirm it's running</h3>
+        <h2>Confirm it's running</h2>
         <p>Back on <strong>Servers</strong>, your new server appears in the list. stdio servers spawn lazily on the
           first request and stay warm — the tool count, call count, and last-called time fill in once it's been
           hit. The header shows how many servers are live at a glance.</p>
@@ -111,7 +111,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step">
-        <h3>Test it right in the UI</h3>
+        <h2>Test it right in the UI</h2>
         <p>Click a server to open its detail page. The <strong>Tools</strong> tab lists everything the downstream
           server exposes — expand any tool, pass JSON arguments, and run it. Runs land in the <strong>Activity</strong>
           tab so you can see exactly what came back. This is your proof the server works before any client touches it.</p>
@@ -127,7 +127,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step" id="connect">
-        <h3>Connect your client</h3>
+        <h2>Connect your client</h2>
         <p>The <strong>Connect</strong> tab hands you a ready-to-paste snippet for Claude Code, a raw
           <code>.mcp.json</code> block, or a <code>curl</code> call — already filled in with this server's URL.
           Point a single server, un-namespaced:</p>
@@ -149,7 +149,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step" id="workspaces">
-        <h3>Optional: group servers into a workspace</h3>
+        <h2>Optional: group servers into a workspace</h2>
         <p>Once you have a few servers, a <strong>workspace</strong> bundles a chosen subset into a custom aggregate
           at its own <code>/mcp/w/&lt;slug&gt;</code> URL — so each client sees exactly the tools it should. Open
           <strong>Workspaces → New workspace</strong>, name it, and toggle on the servers to include.</p>
@@ -180,7 +180,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
       </div>
 
       <div class="step">
-        <h3>You're up — where to next</h3>
+        <h2>You're up — where to next</h2>
         <p>You've gone from an empty install to a tested, connected MCP server (and optionally a workspace). From
           here:</p>
         <ul>
@@ -198,41 +198,4 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
   </div>
 </section>
 
-<!-- Lightbox: any img.zoomable opens here at full size. Closes on backdrop click, ✕, or Esc. -->
-<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged screenshot" hidden>
-  <button class="lightbox-close" type="button" aria-label="Close">&times;</button>
-  <img class="lightbox-img" src="" alt="" />
-</div>
-<script>
-  (function () {
-    const box = document.getElementById('lightbox');
-    const img = box.querySelector('.lightbox-img');
-    let lastFocus = null;
-
-    const close = () => {
-      box.hidden = true;
-      img.removeAttribute('src');
-      document.documentElement.style.overflow = '';
-      if (lastFocus) lastFocus.focus();
-    };
-    const open = (source, alt) => {
-      lastFocus = document.activeElement;
-      img.src = source;
-      img.alt = alt || '';
-      box.hidden = false;
-      document.documentElement.style.overflow = 'hidden';
-      box.querySelector('.lightbox-close').focus();
-    };
-
-    for (const el of document.querySelectorAll('img.zoomable')) {
-      el.addEventListener('click', () => open(el.currentSrc || el.src, el.alt));
-    }
-    box.addEventListener('click', (event) => {
-      if (event.target === box) close();
-    });
-    box.querySelector('.lightbox-close').addEventListener('click', close);
-    document.addEventListener('keydown', (event) => {
-      if (event.key === 'Escape' && !box.hidden) close();
-    });
-  })();
-</script>
+{% include "lightbox.njk" %}
