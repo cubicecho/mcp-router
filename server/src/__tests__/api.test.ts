@@ -409,4 +409,50 @@ describe('MCP session lifecycle', () => {
       .send({ jsonrpc: '2.0', id: 1, method: 'tools/list' });
     expect(res.status).toBe(404);
   });
+
+  const initBody = {
+    jsonrpc: '2.0',
+    id: 1,
+    method: 'initialize',
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'test', version: '1.0.0' } },
+  };
+
+  /** Mint a session over HTTP and return its id from the response header. */
+  const initSession = async (): Promise<string> => {
+    const res = await asEventStream(authed(request(app).post('/mcp'))).send(initBody);
+    expect(res.status).toBe(200);
+    const id = res.headers['mcp-session-id'];
+    expect(id).toBeTruthy();
+    return id as string;
+  };
+
+  /** A follow-up call on a session; 200 while live, 404 once the router has reclaimed it. */
+  const listWithSession = (id: string) =>
+    asEventStream(authed(request(app).post('/mcp')))
+      .set('mcp-session-id', id)
+      .send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+
+  it('reclaims a session left idle past the configured TTL', async () => {
+    await store.updateSettings({ sessionIdleTimeoutMs: 60_000 });
+    // Freeze only Date (not timers, so supertest's async still runs) to drive idleness deterministically.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    try {
+      const id = await initSession();
+      expect((await listWithSession(id)).status).toBe(200);
+      // Jump past the TTL; the next request's opportunistic sweep reclaims the idle session.
+      vi.setSystemTime(Date.now() + 61_000);
+      expect((await listWithSession(id)).status).toBe(404);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('evicts the least-recently-active session when the cap is reached', async () => {
+    await store.updateSettings({ maxSessions: 1 });
+    const first = await initSession();
+    // Initializing a second session while at the cap evicts the first.
+    const second = await initSession();
+    expect((await listWithSession(first)).status).toBe(404);
+    expect((await listWithSession(second)).status).toBe(200);
+  });
 });

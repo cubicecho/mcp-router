@@ -28,26 +28,73 @@ type WireRelay = (server: Server) => () => void;
 export function createMcpRouter(deps: McpRouterDeps): Router {
   const { store, manager } = deps;
   const router = Router();
-  /** Live sessions by MCP session id. */
-  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  /** Live sessions by MCP session id, with a last-touched clock for idle reclamation. */
+  interface Session {
+    transport: StreamableHTTPServerTransport;
+    lastActivity: number;
+  }
+  const sessions = new Map<string, Session>();
 
   const sessionId = (req: Request): string | undefined => {
     const raw = req.headers['mcp-session-id'];
     return Array.isArray(raw) ? raw[0] : raw;
   };
 
+  /** Drop and close a session, removing it from the map up front so a racing request can't reuse it. */
+  const drop = (id: string): void => {
+    const session = sessions.get(id);
+    if (!session) {
+      return;
+    }
+    sessions.delete(id);
+    // close() chains our onclose (which unwires the notification relay); the map delete above
+    // makes its own sessions.delete a harmless no-op.
+    void session.transport.close();
+  };
+
+  /**
+   * Reclaim sessions idle past the configured TTL. Run opportunistically on every request
+   * rather than on a timer, so there is no background handle to tear down (important for tests
+   * and clean shutdown). Idleness is measured from the last request on the session — a client
+   * holding only a quiet GET SSE stream is eventually reclaimed and re-initializes on its next call.
+   */
+  const sweepIdle = (): void => {
+    const ttl = store.getSettings().sessionIdleTimeoutMs;
+    const cutoff = Date.now() - ttl;
+    for (const [id, session] of sessions) {
+      if (session.lastActivity < cutoff) {
+        drop(id);
+      }
+    }
+  };
+
+  /** Evict least-recently-active sessions until there is room below the cap for one more. */
+  const enforceCap = (): void => {
+    const max = store.getSettings().maxSessions;
+    const overflow = sessions.size - max + 1; // +1 leaves room for the incoming session
+    if (overflow <= 0) {
+      return;
+    }
+    const oldestFirst = [...sessions.entries()].sort((a, b) => a[1].lastActivity - b[1].lastActivity);
+    for (const [id] of oldestFirst.slice(0, overflow)) {
+      drop(id);
+    }
+  };
+
   /** Route a request that carries a session id to its existing transport. Returns false if there is none. */
   const resume = async (req: Request, res: Response): Promise<boolean> => {
+    sweepIdle();
     const id = sessionId(req);
     if (!id) {
       return false;
     }
-    const transport = sessions.get(id);
-    if (!transport) {
+    const session = sessions.get(id);
+    if (!session) {
       res.status(404).json({ error: `Unknown or expired MCP session "${id}"` });
       return true;
     }
-    await transport.handleRequest(req, res, req.body);
+    session.lastActivity = Date.now();
+    await session.transport.handleRequest(req, res, req.body);
     return true;
   };
 
@@ -57,12 +104,13 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       res.status(400).json({ error: 'Missing or expired mcp-session-id' });
       return;
     }
+    enforceCap();
     const server = buildServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
       onsessioninitialized: (id) => {
-        sessions.set(id, transport);
+        sessions.set(id, { transport, lastActivity: Date.now() });
       },
     });
     const unwire = wire(server);

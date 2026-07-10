@@ -55,6 +55,17 @@ export const settingsFileSchema = z
       .int()
       .positive()
       .default(5 * 60 * 1000),
+    /** Idle lifetime of an MCP streamable-HTTP session before the router reclaims it.
+     *  Sessions normally end on a client DELETE; this bounds ones abandoned without one
+     *  (a client that drops its stream and never returns). Reclaimed sessions 404 on the
+     *  next request, prompting a well-behaved client to re-initialize. */
+    sessionIdleTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .default(30 * 60 * 1000),
+    /** Hard cap on concurrent live MCP sessions; the least-recently-active are evicted past it. */
+    maxSessions: z.number().int().positive().default(1000),
   })
   .passthrough();
 

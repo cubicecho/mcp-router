@@ -245,15 +245,17 @@ covers most of it: crypto session ids, `MCP-Protocol-Version` validation (400 on
 unsupported), `Accept`-header checks, 400/404 session guards, GET SSE for relayed
 notifications, DELETE termination. These are the remaining items.
 
-- [ ] H1 **Session leak — idle eviction + cap.** `sessions` in
-  `gateway/routes.ts` only drops an entry when the client sends `DELETE` (the
+- [x] H1 **Session leak — idle eviction + cap.** `sessions` in
+  `gateway/routes.ts` only dropped an entry when the client sent `DELETE` (the
   SDK fires `onclose`/`onsessionclosed` *only* on DELETE — a GET-stream abort or
-  a client that just disappears never closes the session). A long-running gateway
-  accumulates dead sessions (each holding a proxy `Server` + notification
-  subscription) unbounded. Add a last-activity timestamp per session (bump it in
-  `resume`/`start`), a periodic sweep that `close()`s sessions idle past a TTL
-  (config-driven, default e.g. 30 min), and a max-live-session cap that evicts
-  oldest / rejects new with 503. Cover with a unit test that advances a fake clock.
+  a client that just disappears never closes the session), so a long-running
+  gateway accumulated dead sessions (each holding a proxy `Server` + notification
+  subscription) unbounded. Now each session carries a `lastActivity` clock bumped
+  on every request; an opportunistic `sweepIdle()` on each request reclaims
+  sessions idle past `settings.sessionIdleTimeoutMs` (default 30 min), and
+  `enforceCap()` evicts the least-recently-active down to `settings.maxSessions`
+  (default 1000) before minting a new one. No background timer (nothing to tear
+  down). Covered by fake-clock idle-reclaim and cap-eviction tests in `api.test.ts`.
 - [ ] H2 **Origin validation / DNS-rebinding protection.** No `Origin` check on
   `/mcp*`. The transport supports `enableDnsRebindingProtection` +
   `allowedHosts`/`allowedOrigins` (now deprecated there in favour of external
