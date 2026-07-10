@@ -1,0 +1,238 @@
+---
+layout: base.njk
+title: Get Started
+description: A step-by-step walkthrough — from nothing to a running MCP Router with a working server you can test against your client.
+permalink: /get-started/
+---
+
+<section class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Get started</p>
+    <h1>From zero to a working gateway.</h1>
+    <p class="lede gs-intro">
+      Nine short steps: run the router, install your first MCP server from the registry, confirm it's live,
+      test its tools in the UI, and point your client at it. No config spelunking — every step has a screenshot.
+    </p>
+    <div class="cta-row">
+      <a class="btn btn-primary" href="#run">Start with step 1</a>
+      <a class="btn btn-ghost" href="{{ '/docs/' | url }}">Full reference ↗</a>
+    </div>
+  </div>
+</section>
+
+<section class="section">
+  <div class="wrap">
+    <div class="steps">
+
+      <div class="step" id="run">
+        <h3>Run the router</h3>
+        <p>MCP Router ships as a single container. Pick whichever start fits — all three land you on the same
+          web UI at <code>http://localhost:3000</code>. State lives in <code>./data</code> (bind-mounted to
+          <code>/data</code> in Docker), so nothing is hidden away.</p>
+
+        <h4>Prebuilt image — no clone</h4>
+        <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
+  -e MCP_ROUTER_TOKEN=your-secret-token \
+  vantreeseba/mcp-router:latest</code></pre>
+
+        <h4>Docker Compose — from the repo</h4>
+        <pre class="code"><code>git clone https://github.com/cubicecho/mcp-router mcp-router &amp;&amp; cd mcp-router
+cp .env.example .env      <span class="cmt"># set a real MCP_ROUTER_TOKEN</span>
+docker compose up -d</code></pre>
+
+        <h4>Bare Node <span class="pill">Node ≥ 22.18</span></h4>
+        <pre class="code"><code>npm install &amp;&amp; npm run build
+MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
+
+        <div class="gs-callout">
+          <strong>No token set?</strong> One is generated into <code>data/config/settings.json</code> and printed
+          to the log once at startup. On a trusted local network you can skip auth entirely with
+          <code>SECURE_LOCAL_NET=true</code>.
+        </div>
+      </div>
+
+      <div class="step">
+        <h3>Open the UI and sign in</h3>
+        <p>Visit <code>http://localhost:3000</code> and paste your bearer token when prompted — it's the same
+          <code>MCP_ROUTER_TOKEN</code> from step 1, and it guards both the management API and every MCP endpoint.
+          You'll land on the <strong>Servers</strong> page. On a fresh install it's empty; that's what the next
+          step fixes.</p>
+      </div>
+
+      <div class="step" id="install">
+        <h3>Install your first server</h3>
+        <p>Open <strong>Browse</strong> and search the official MCP registry (or switch to the <em>From npm</em> /
+          <em>From PyPI</em> tabs to install a package directly). For a first run, grab the
+          <strong>Everything</strong> reference server — it's purpose-built for testing a client, with tools like
+          <code>echo</code> and <code>get-sum</code>.</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>/browse</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/browse.png' | url }}" alt="Browse page — searching the official MCP registry, each result card with an Install button" loading="lazy" width="1440" height="2194" />
+          </div>
+          <figcaption><strong>Search, then Install.</strong> Every result shows its package source and version.
+            Hit <em>Install</em> on the one you want.</figcaption>
+        </figure>
+
+        <p>The install dialog lets you pick a <strong>local name</strong> (the route segment, e.g.
+          <code>/mcp/everything</code>) and fill in any environment variables the server needs — API keys go here,
+          stored with file mode <code>0600</code>.</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>install</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/browse-install.png' | url }}" alt="Install dialog — local name field and required environment variables" loading="lazy" width="1440" height="900" />
+          </div>
+          <figcaption><strong>Name it, key it, done.</strong> Required env vars are surfaced up front so the server
+            starts correctly on first spawn.</figcaption>
+        </figure>
+
+        <div class="gs-callout">
+          <strong>Not in a registry?</strong> Use <strong>Add server</strong> on the Servers page to paste a
+          command config (<code>npx …</code>) or point at a remote streamable-HTTP URL to proxy.
+        </div>
+      </div>
+
+      <div class="step">
+        <h3>Confirm it's running</h3>
+        <p>Back on <strong>Servers</strong>, your new server appears in the list. stdio servers spawn lazily on the
+          first request and stay warm — the tool count, call count, and last-called time fill in once it's been
+          hit. The header shows how many servers are live at a glance.</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>localhost:3000</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/servers.png' | url }}" alt="Servers list — each server with runtime state, tool count, and call activity" loading="lazy" width="1440" height="900" />
+          </div>
+          <figcaption><strong>Everything at a glance.</strong> State, transport, tools, and activity per server —
+            plus a copy-ready snippet to connect a client to the merged aggregate endpoint.</figcaption>
+        </figure>
+      </div>
+
+      <div class="step">
+        <h3>Test it right in the UI</h3>
+        <p>Click a server to open its detail page. The <strong>Tools</strong> tab lists everything the downstream
+          server exposes — expand any tool, pass JSON arguments, and run it. Runs land in the <strong>Activity</strong>
+          tab so you can see exactly what came back. This is your proof the server works before any client touches it.</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>/servers/everything</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/server-detail.png' | url }}" alt="Server detail — overview, environment editor, and the Tools tab listing runnable tools" loading="lazy" width="1440" height="1736" />
+          </div>
+          <figcaption><strong>Overview, secrets, and tools in one place.</strong> Edit env vars (secrets stay
+            masked), restart in place, and run any tool to smoke-test it.</figcaption>
+        </figure>
+      </div>
+
+      <div class="step" id="connect">
+        <h3>Connect your client</h3>
+        <p>The <strong>Connect</strong> tab hands you a ready-to-paste snippet for Claude Code, a raw
+          <code>.mcp.json</code> block, or a <code>curl</code> call — already filled in with this server's URL.
+          Point a single server, un-namespaced:</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>connect a client</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/connect.png' | url }}" alt="Connect a client tab — copyable Claude Code, .mcp.json, and curl snippets" loading="lazy" width="1440" height="1016" />
+          </div>
+          <figcaption><strong>Copy, paste, connected.</strong> One command wires Claude Code straight to the
+            server.</figcaption>
+        </figure>
+
+        <p>Prefer everything at once? Point your client at the <strong>aggregate</strong> — every enabled server
+          merged, tools named <code>&lt;server&gt;__&lt;tool&gt;</code>:</p>
+        <pre class="code"><code>claude mcp add --transport http router http://localhost:3000/mcp \
+  --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+        <p>That's a working setup: an installed server, tested, and connected to your client.</p>
+      </div>
+
+      <div class="step" id="workspaces">
+        <h3>Optional: group servers into a workspace</h3>
+        <p>Once you have a few servers, a <strong>workspace</strong> bundles a chosen subset into a custom aggregate
+          at its own <code>/mcp/w/&lt;slug&gt;</code> URL — so each client sees exactly the tools it should. Open
+          <strong>Workspaces → New workspace</strong>, name it, and toggle on the servers to include.</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>new workspace</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/workspace-create.png' | url }}" alt="New workspace dialog — name, description, and per-server toggles" loading="lazy" width="1440" height="900" />
+          </div>
+          <figcaption><strong>Pick the servers, shape the surface.</strong> Expand any server to override its env,
+            args, or headers for this workspace only — each member runs isolated from its global instance.</figcaption>
+        </figure>
+
+        <p>The workspace detail page shows its endpoint and the merged, namespaced tool list — ready to connect
+          just like a single server:</p>
+
+        <figure class="shot">
+          <div class="browser">
+            <div class="browser-bar"><span></span><span></span><span></span><em>/mcp/w/coding-assistant</em></div>
+            <img class="zoomable" src="{{ '/assets/screenshots/workspace-detail.png' | url }}" alt="Workspace detail — endpoint, member servers, and namespaced tools" loading="lazy" width="1440" height="2548" />
+          </div>
+          <figcaption><strong>A tailored endpoint per client.</strong> Give your coding client filesystem + memory,
+            and nothing else.</figcaption>
+        </figure>
+
+        <pre class="code"><code>claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assistant \
+  --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+      </div>
+
+      <div class="step">
+        <h3>You're up — where to next</h3>
+        <p>You've gone from an empty install to a tested, connected MCP server (and optionally a workspace). From
+          here:</p>
+        <ul>
+          <li>Install more servers from the registry, npm, or PyPI — or proxy remote HTTP servers.</li>
+          <li>Hand-edit the flat JSON under <code>DATA_DIR/config</code> and reload; unknown keys survive round-trips.</li>
+          <li>Tune session lifetime, allowed origins, and the idle timeout in <strong>Settings</strong>.</li>
+        </ul>
+        <div class="cta-row" style="margin-top: 24px;">
+          <a class="btn btn-primary" href="{{ '/docs/' | url }}">Read the docs</a>
+          <a class="btn btn-ghost" href="{{ site.repo }}">GitHub ↗</a>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Lightbox: any img.zoomable opens here at full size. Closes on backdrop click, ✕, or Esc. -->
+<div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Enlarged screenshot" hidden>
+  <button class="lightbox-close" type="button" aria-label="Close">&times;</button>
+  <img class="lightbox-img" src="" alt="" />
+</div>
+<script>
+  (function () {
+    const box = document.getElementById('lightbox');
+    const img = box.querySelector('.lightbox-img');
+    let lastFocus = null;
+
+    const close = () => {
+      box.hidden = true;
+      img.removeAttribute('src');
+      document.documentElement.style.overflow = '';
+      if (lastFocus) lastFocus.focus();
+    };
+    const open = (source, alt) => {
+      lastFocus = document.activeElement;
+      img.src = source;
+      img.alt = alt || '';
+      box.hidden = false;
+      document.documentElement.style.overflow = 'hidden';
+      box.querySelector('.lightbox-close').focus();
+    };
+
+    for (const el of document.querySelectorAll('img.zoomable')) {
+      el.addEventListener('click', () => open(el.currentSrc || el.src, el.alt));
+    }
+    box.addEventListener('click', (event) => {
+      if (event.target === box) close();
+    });
+    box.querySelector('.lightbox-close').addEventListener('click', close);
+    document.addEventListener('keydown', (event) => {
+      if (event.key === 'Escape' && !box.hidden) close();
+    });
+  })();
+</script>

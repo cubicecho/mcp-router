@@ -25,7 +25,8 @@ Highlights:
 - Full MCP passthrough — tools, resources, resource templates, prompts,
   completions, logging, and resource subscriptions, plus downstream
   `list_changed` / resource-update / log notifications relayed over a stateful
-  session (reverse-direction sampling/elicitation/roots are not yet proxied)
+  session; a dropped SSE stream resumes gap-free via `Last-Event-ID`
+  (reverse-direction sampling/elicitation/roots are not yet proxied)
 - Single bearer token guards the management API and all MCP endpoints
 - Config is plain JSON under `DATA_DIR/config` — watched for changes, plus an
   explicit `POST /api/reload`
