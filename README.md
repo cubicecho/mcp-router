@@ -65,7 +65,9 @@ MCP_ROUTER_TOKEN=your-secret-token npm start
 ```
 
 The server listens on port 3000 (override with `PORT`) and serves the built
-web UI. State lives in `./data` (override with `DATA_DIR`).
+web UI. State lives in `./data` (override with `DATA_DIR`). By default it binds
+all interfaces; set `HOST=127.0.0.1` (or `settings.host`) to restrict it to
+localhost.
 
 Both `npm start` and `npm run dev` also load a `.env` file from the repo root
 if one exists (`cp .env.example .env`), so you can keep `MCP_ROUTER_TOKEN`
@@ -85,7 +87,9 @@ output.
 On a trusted local network you can skip tokens entirely by setting
 `SECURE_LOCAL_NET=true` — this disables bearer auth for both `/api` and `/mcp`
 (no token is minted or required). Only do this when the router is not reachable
-from untrusted networks.
+from untrusted networks. The `/mcp` Origin guard (below) still applies, so a
+malicious web page cannot reach the endpoints via DNS rebinding even with auth
+off.
 
 ## Configuration
 
@@ -115,9 +119,21 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   "authToken": "a-long-random-secret",
   // Set false to allow unauthenticated access (trusted networks only!).
   "authEnabled": true,
+  // Interface to bind. The HOST env var wins. Omit to bind all interfaces
+  // (needed for Docker/LAN); set "127.0.0.1" to restrict to localhost.
+  "host": "127.0.0.1",
+  // Extra browser Origins allowed to reach /mcp (DNS-rebinding protection).
+  // Loopback origins are always allowed and native MCP clients send no Origin;
+  // add browser-based clients (e.g. the MCP Inspector on a non-loopback host).
+  "allowedOrigins": ["https://inspector.example.com"],
   // Default idle shutdown for stdio child processes, in milliseconds.
   // Per-server idleTimeoutMs overrides this.
-  "idleTimeoutMs": 300000
+  "idleTimeoutMs": 300000,
+  // Idle lifetime of an MCP session before the router reclaims it (ms).
+  // Sessions normally end on a client DELETE; this bounds abandoned ones.
+  "sessionIdleTimeoutMs": 1800000,
+  // Hard cap on concurrent live MCP sessions; least-recently-active evicted past it.
+  "maxSessions": 1000
 }
 ```
 

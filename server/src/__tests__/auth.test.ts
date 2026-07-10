@@ -1,7 +1,13 @@
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { authDisabledByEnv, createAuthMiddleware, tokensEqual } from '../auth.ts';
+import {
+  authDisabledByEnv,
+  createAuthMiddleware,
+  createOriginMiddleware,
+  isLoopbackOrigin,
+  tokensEqual,
+} from '../auth.ts';
 
 function appWith(auth: { enabled: boolean; token: string | null }) {
   const app = express();
@@ -76,5 +82,51 @@ describe('authDisabledByEnv', () => {
     for (const value of ['false', '0', 'no', 'off', '']) {
       expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(false);
     }
+  });
+});
+
+describe('isLoopbackOrigin', () => {
+  it('recognizes loopback hosts on any port', () => {
+    for (const origin of ['http://localhost', 'http://localhost:6274', 'http://127.0.0.1:3001', 'http://[::1]:80']) {
+      expect(isLoopbackOrigin(origin)).toBe(true);
+    }
+  });
+
+  it('rejects non-loopback and malformed origins', () => {
+    for (const origin of ['http://evil.com', 'https://mcp.example.com', 'not-a-url', '']) {
+      expect(isLoopbackOrigin(origin)).toBe(false);
+    }
+  });
+});
+
+describe('origin middleware', () => {
+  function appWith(allowed: string[]) {
+    const app = express();
+    app.use(createOriginMiddleware(() => allowed));
+    app.post('/mcp', (_req, res) => res.json({ ok: true }));
+    return app;
+  }
+
+  it('allows requests with no Origin (native MCP clients, curl)', async () => {
+    const res = await request(appWith([])).post('/mcp');
+    expect(res.status).toBe(200);
+  });
+
+  it('allows loopback origins without configuration', async () => {
+    const res = await request(appWith([])).post('/mcp').set('Origin', 'http://localhost:6274');
+    expect(res.status).toBe(200);
+  });
+
+  it('rejects a foreign origin with 403 (DNS-rebinding guard)', async () => {
+    const res = await request(appWith([])).post('/mcp').set('Origin', 'http://evil.com');
+    expect(res.status).toBe(403);
+    expect(res.body.error).toContain('evil.com');
+  });
+
+  it('allows a configured foreign origin', async () => {
+    const res = await request(appWith(['https://mcp.example.com']))
+      .post('/mcp')
+      .set('Origin', 'https://mcp.example.com');
+    expect(res.status).toBe(200);
   });
 });

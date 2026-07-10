@@ -256,17 +256,15 @@ notifications, DELETE termination. These are the remaining items.
   `enforceCap()` evicts the least-recently-active down to `settings.maxSessions`
   (default 1000) before minting a new one. No background timer (nothing to tear
   down). Covered by fake-clock idle-reclaim and cap-eviction tests in `api.test.ts`.
-- [ ] H2 **Origin validation / DNS-rebinding protection.** No `Origin` check on
-  `/mcp*`. The transport supports `enableDnsRebindingProtection` +
-  `allowedHosts`/`allowedOrigins` (now deprecated there in favour of external
-  middleware). Bearer auth mitigates the browser attack when auth is on, but
-  `SECURE_LOCAL_NET=true` disables auth *and* the server binds all interfaces
-  (`app.listen(port)` with no host) — so a malicious page on the trusted network
-  could DNS-rebind onto the gateway. Add Origin-allowlist middleware in front of
-  `/mcp` (configurable allowlist in settings; default to same-origin + localhost),
-  and expose a `HOST` env/setting so operators can bind `127.0.0.1` when they don't
-  need LAN exposure. Spec: servers SHOULD validate `Origin` and SHOULD bind
-  localhost when local.
+- [x] H2 **Origin validation / DNS-rebinding protection.** `createOriginMiddleware`
+  (`auth.ts`) now fronts `/mcp` (before auth, so it applies even when
+  `SECURE_LOCAL_NET` drops auth): requests with no `Origin` (native clients) or a
+  loopback origin pass, plus any `settings.allowedOrigins`; a foreign origin — what
+  a DNS-rebound browser page carries — gets 403. A `HOST` env / `settings.host`
+  lets operators bind `127.0.0.1` (default still binds all interfaces for
+  Docker/LAN). Covered by `isLoopbackOrigin` + middleware tests in `auth.test.ts`;
+  README settings block updated. Spec: servers SHOULD validate `Origin` and SHOULD
+  bind localhost when local.
 - [ ] H3 **SSE resumability (`EventStore` / `Last-Event-ID`).** No `eventStore`
   is passed, so notifications emitted while a client's GET stream is down are lost
   and cannot be replayed on reconnect — spec-optional (client MAY resume via

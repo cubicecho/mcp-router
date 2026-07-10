@@ -3,7 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { errorMiddleware } from './api/error-middleware.ts';
 import { createApiRouter } from './api/router.ts';
-import { authDisabledByEnv, createAuthMiddleware } from './auth.ts';
+import { authDisabledByEnv, createAuthMiddleware, createOriginMiddleware } from './auth.ts';
 import type { ConfigStore } from './config/store.ts';
 import type { GatewayManager } from './gateway/manager.ts';
 import { createMcpRouter } from './gateway/routes.ts';
@@ -33,8 +33,12 @@ export function buildApp(deps: AppDeps): express.Express {
     };
   });
 
+  // Origin check first so a DNS-rebound browser request is rejected regardless of the bearer token
+  // (which it cannot read anyway) — the one guard that still applies when SECURE_LOCAL_NET drops auth.
+  const originGuard = createOriginMiddleware(() => store.getSettings().allowedOrigins);
+
   app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir }));
-  app.use('/mcp', auth, createMcpRouter({ store, manager }));
+  app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));
 
   // Production: serve the built web UI with an SPA fallback for non-API GETs.
   const appDist = deps.appDistDir ?? path.resolve(import.meta.dirname, '../../app/dist');

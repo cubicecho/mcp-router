@@ -49,6 +49,12 @@ export const settingsFileSchema = z
     authToken: z.string().nullable().default(null),
     /** Disable to allow unauthenticated access (trusted networks only). */
     authEnabled: z.boolean().default(true),
+    /** Network interface to bind. Env HOST wins. Unset binds all interfaces (needed for Docker/LAN
+     *  exposure); set to 127.0.0.1 to restrict to localhost. */
+    host: z.string().optional(),
+    /** Extra browser Origins allowed to reach /mcp, for DNS-rebinding protection. Loopback origins
+     *  are always allowed and native MCP clients send no Origin; add browser-based clients here. */
+    allowedOrigins: z.array(z.string()).default([]),
     /** Default idle shutdown for stdio child processes (per-server override wins). */
     idleTimeoutMs: z
       .number()

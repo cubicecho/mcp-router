@@ -25,6 +25,34 @@ export function tokensEqual(a: string, b: string): boolean {
   return timingSafeEqual(digestA, digestB);
 }
 
+/** True for loopback origins (localhost / 127.0.0.1 / ::1, any port), which a remote attacker cannot forge. */
+export function isLoopbackOrigin(origin: string): boolean {
+  try {
+    const { hostname } = new URL(origin);
+    return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]' || hostname === '::1';
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * DNS-rebinding guard for /mcp: browsers attach an `Origin` header a page cannot
+ * spoof, so a rebound request from a malicious site carries that site's origin.
+ * Native MCP clients send no Origin at all. Allow no-Origin and loopback requests
+ * plus any operator-configured origin; reject the rest with 403.
+ */
+export function createOriginMiddleware(getAllowedOrigins: () => string[]): RequestHandler {
+  return (req, res, next) => {
+    const header = req.headers.origin;
+    const origin = Array.isArray(header) ? header[0] : header;
+    if (!origin || isLoopbackOrigin(origin) || getAllowedOrigins().includes(origin)) {
+      next();
+      return;
+    }
+    res.status(403).json({ error: `Origin "${origin}" is not allowed` });
+  };
+}
+
 /**
  * Bearer-token middleware for /api and /mcp. Skipped entirely when auth is
  * disabled; otherwise rejects with a 401 JSON envelope.

@@ -19,8 +19,10 @@ async function main(): Promise<void> {
 
   const app = buildApp({ store, manager });
   const port = Number(process.env.PORT ?? store.getSettings().port);
-  const httpServer = app.listen(port, () => {
-    console.log(`mcp-router listening on http://localhost:${port} (data dir: ${dataDir})`);
+  // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
+  const host = process.env.HOST ?? store.getSettings().host;
+  const onListen = () => {
+    console.log(`mcp-router listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
     if (authDisabledByEnv()) {
       console.log('Auth: disabled (SECURE_LOCAL_NET env var) — /api and /mcp are open on this network');
@@ -31,7 +33,8 @@ async function main(): Promise<void> {
     } else {
       console.log(`Auth: bearer token from ${path.join(dataDir, 'config/settings.json')}:\n  ${settings.authToken}`);
     }
-  });
+  };
+  const httpServer = host ? app.listen(port, host, onListen) : app.listen(port, onListen);
 
   let shuttingDown = false;
   const shutdown = (signal: NodeJS.Signals) => {
