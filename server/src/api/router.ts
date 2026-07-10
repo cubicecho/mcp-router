@@ -1,25 +1,25 @@
-import type { ProjectConfig, ProjectStatus, RouterStatus, ServerConfig, ServerStatus } from '@mcp-router/shared';
+import type { RouterStatus, ServerConfig, ServerStatus, WorkspaceConfig, WorkspaceStatus } from '@mcp-router/shared';
 import {
   activityResponseSchema,
-  createProjectRequestSchema,
   createRegistryRequestSchema,
+  createWorkspaceRequestSchema,
   installRequestSchema,
-  projectConfigSchema,
   promptGetRequestSchema,
   resourceReadRequestSchema,
   serverNameSchema,
   slugify,
   toolCallRequestSchema,
-  updateProjectRequestSchema,
   updateServerRequestSchema,
   updateSettingsRequestSchema,
+  updateWorkspaceRequestSchema,
+  workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
 import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
-import { projectInstanceKey } from '../gateway/manager.ts';
+import { workspaceInstanceKey } from '../gateway/manager.ts';
 import { namespaceName, splitNamespacedName } from '../gateway/naming.ts';
 import { listAll } from '../gateway/pagination.ts';
 import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
@@ -219,7 +219,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
-    manager.reconcile(store.getServers(), store.getProjects());
+    manager.reconcile(store.getServers(), store.getWorkspaces());
     res.status(201).json(requireStatus(config.name));
   });
 
@@ -258,7 +258,7 @@ export function createApiRouter(deps: ApiDeps): Router {
       }
     }
     await store.saveServer(next);
-    manager.reconcile(store.getServers(), store.getProjects());
+    manager.reconcile(store.getServers(), store.getWorkspaces());
     res.json(requireStatus(name));
   });
 
@@ -269,7 +269,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     }
     await manager.stop(name);
     await store.deleteServer(name);
-    manager.reconcile(store.getServers(), store.getProjects());
+    manager.reconcile(store.getServers(), store.getWorkspaces());
     await uninstall(dataDir, name);
     res.status(204).end();
   });
@@ -406,24 +406,27 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.status(204).end();
   });
 
-  // --- projects ---
+  // --- workspaces ---
 
-  const projectPath = (slug: string): string => `/mcp/p/${slug}`;
-  const toProjectStatus = (project: ProjectConfig): ProjectStatus => ({ ...project, path: projectPath(project.slug) });
+  const workspacePath = (slug: string): string => `/mcp/w/${slug}`;
+  const toWorkspaceStatus = (workspace: WorkspaceConfig): WorkspaceStatus => ({
+    ...workspace,
+    path: workspacePath(workspace.slug),
+  });
 
-  const requireProject = (slug: string): ProjectConfig => {
-    const project = store.getProject(slug);
-    if (!project) {
-      throw new HttpError(404, `Unknown project "${slug}"`);
+  const requireWorkspace = (slug: string): WorkspaceConfig => {
+    const workspace = store.getWorkspace(slug);
+    if (!workspace) {
+      throw new HttpError(404, `Unknown workspace "${slug}"`);
     }
-    return project;
+    return workspace;
   };
 
   /** Every member must reference a server that currently exists. */
   const assertMembersExist = (members: Record<string, unknown> | undefined): void => {
     for (const name of Object.keys(members ?? {})) {
       if (!store.getServer(name)) {
-        throw new HttpError(400, `Unknown server "${name}" in project members`);
+        throw new HttpError(400, `Unknown server "${name}" in workspace members`);
       }
     }
   };
@@ -431,50 +434,50 @@ export function createApiRouter(deps: ApiDeps): Router {
   const requireValidSlug = (slug: string): string => {
     const parsed = serverNameSchema.safeParse(slug);
     if (!parsed.success) {
-      throw new HttpError(400, `Invalid project slug "${slug}"`, 'derive a name that yields a valid URL slug');
+      throw new HttpError(400, `Invalid workspace slug "${slug}"`, 'derive a name that yields a valid URL slug');
     }
     return parsed.data;
   };
 
-  router.get('/projects', (_req, res) => {
-    res.json(store.getProjects().map(toProjectStatus));
+  router.get('/workspaces', (_req, res) => {
+    res.json(store.getWorkspaces().map(toWorkspaceStatus));
   });
 
-  router.post('/projects', async (req, res) => {
-    const request = createProjectRequestSchema.parse(req.body);
+  router.post('/workspaces', async (req, res) => {
+    const request = createWorkspaceRequestSchema.parse(req.body);
     const slug = requireValidSlug(request.slug ?? slugify(request.name));
-    if (store.getProject(slug)) {
-      throw new HttpError(409, `Project "${slug}" already exists`);
+    if (store.getWorkspace(slug)) {
+      throw new HttpError(409, `Workspace "${slug}" already exists`);
     }
     assertMembersExist(request.members);
-    const config = projectConfigSchema.parse({
+    const config = workspaceConfigSchema.parse({
       name: request.name,
       slug,
       enabled: request.enabled ?? true,
       description: request.description,
       members: request.members ?? {},
     });
-    await store.saveProject(config);
-    manager.reconcile(store.getServers(), store.getProjects());
-    res.status(201).json(toProjectStatus(config));
+    await store.saveWorkspace(config);
+    manager.reconcile(store.getServers(), store.getWorkspaces());
+    res.status(201).json(toWorkspaceStatus(config));
   });
 
-  router.get('/projects/:slug', (req, res) => {
-    res.json(toProjectStatus(requireProject(req.params.slug)));
+  router.get('/workspaces/:slug', (req, res) => {
+    res.json(toWorkspaceStatus(requireWorkspace(req.params.slug)));
   });
 
-  router.patch('/projects/:slug', async (req, res) => {
-    const existing = requireProject(req.params.slug);
-    const update = updateProjectRequestSchema.parse(req.body);
+  router.patch('/workspaces/:slug', async (req, res) => {
+    const existing = requireWorkspace(req.params.slug);
+    const update = updateWorkspaceRequestSchema.parse(req.body);
     assertMembersExist(update.members);
     // Auto-slug: renaming re-derives the slug (and thus the URL). Keep the old
     // slug when the name is unchanged so member-only edits never move the URL.
     const name = update.name ?? existing.name;
     const slug = update.name !== undefined ? requireValidSlug(slugify(name)) : existing.slug;
-    if (slug !== existing.slug && store.getProject(slug)) {
-      throw new HttpError(409, `Project "${slug}" already exists`);
+    if (slug !== existing.slug && store.getWorkspace(slug)) {
+      throw new HttpError(409, `Workspace "${slug}" already exists`);
     }
-    const next = projectConfigSchema.parse({
+    const next = workspaceConfigSchema.parse({
       ...existing,
       name,
       slug,
@@ -482,60 +485,60 @@ export function createApiRouter(deps: ApiDeps): Router {
       description: update.description !== undefined ? update.description : existing.description,
       members: update.members ?? existing.members,
     });
-    await store.saveProject(next);
+    await store.saveWorkspace(next);
     if (slug !== existing.slug) {
-      await store.deleteProject(existing.slug);
+      await store.deleteWorkspace(existing.slug);
     }
-    manager.reconcile(store.getServers(), store.getProjects());
-    res.json(toProjectStatus(next));
+    manager.reconcile(store.getServers(), store.getWorkspaces());
+    res.json(toWorkspaceStatus(next));
   });
 
-  router.delete('/projects/:slug', async (req, res) => {
-    requireProject(req.params.slug);
-    await store.deleteProject(req.params.slug);
-    manager.reconcile(store.getServers(), store.getProjects());
+  router.delete('/workspaces/:slug', async (req, res) => {
+    requireWorkspace(req.params.slug);
+    await store.deleteWorkspace(req.params.slug);
+    manager.reconcile(store.getServers(), store.getWorkspaces());
     res.status(204).end();
   });
 
-  // --- project capabilities (tools/resources/prompts + activity) ---
+  // --- workspace capabilities (tools/resources/prompts + activity) ---
   //
   // These mirror the per-server capability endpoints but run against each
-  // member's project-scoped downstream instance (so per-project param overrides
-  // apply), and present tools/resources/prompts exactly as the /mcp/p/:slug
+  // member's workspace-scoped downstream instance (so per-workspace param overrides
+  // apply), and present tools/resources/prompts exactly as the /mcp/w/:slug
   // aggregate does — `<server>__`-namespaced. Test calls route by that namespace
-  // back to the owning member and record activity under its project instance key.
+  // back to the owning member and record activity under its workspace instance key.
 
   /** Enabled members whose base server still exists (what the aggregate exposes), sorted. */
-  const enabledMembers = (project: ProjectConfig): string[] =>
-    Object.entries(project.members)
+  const enabledMembers = (workspace: WorkspaceConfig): string[] =>
+    Object.entries(workspace.members)
       .filter(([name, member]) => (member.enabled ?? true) && store.getServer(name))
       .map(([name]) => name)
       .sort();
 
   /** All members whose base server still exists (enabled or not), sorted — used for activity history. */
-  const existingMembers = (project: ProjectConfig): string[] =>
-    Object.keys(project.members)
+  const existingMembers = (workspace: WorkspaceConfig): string[] =>
+    Object.keys(workspace.members)
       .filter((name) => store.getServer(name))
       .sort();
 
-  // Fan a listing out over a project's enabled members, like the aggregate's
+  // Fan a listing out over a workspace's enabled members, like the aggregate's
   // collect(): a member that lacks the capability contributes nothing; any other
   // failure is skipped (not fatal to the whole list) but recorded to that
-  // member's project activity log so the Activity view shows why it's missing.
-  const projectCollect = async <T>(
-    project: ProjectConfig,
+  // member's workspace activity log so the Activity view shows why it's missing.
+  const workspaceCollect = async <T>(
+    workspace: WorkspaceConfig,
     method: string,
     fn: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<T[]>,
   ): Promise<T[]> => {
     const results = await Promise.all(
-      enabledMembers(project).map(async (name) => {
+      enabledMembers(workspace).map(async (name) => {
         const startedAt = Date.now();
         try {
-          return await fn(await manager.getClientForProject(project.slug, name), name);
+          return await fn(await manager.getClientForWorkspace(workspace.slug, name), name);
         } catch (cause) {
           if (!lacksCapability(cause)) {
-            console.warn(`Skipping member "${name}" of project "${project.slug}": ${errorMessage(cause)}`);
-            manager.recordActivity(projectInstanceKey(project.slug, name), {
+            console.warn(`Skipping member "${name}" of workspace "${workspace.slug}": ${errorMessage(cause)}`);
+            manager.recordActivity(workspaceInstanceKey(workspace.slug, name), {
               at: new Date().toISOString(),
               via: 'aggregate',
               method,
@@ -551,41 +554,41 @@ export function createApiRouter(deps: ApiDeps): Router {
     return results.flat();
   };
 
-  // Run one project tool/resource/prompt call from the UI: resolve the namespaced
-  // name to a member, then invoke + record activity against its project instance
+  // Run one workspace tool/resource/prompt call from the UI: resolve the namespaced
+  // name to a member, then invoke + record activity against its workspace instance
   // key (reusing runUiCall, whose `name` is any managed instance key).
-  const runProjectUiCall = async (
-    project: ProjectConfig,
+  const runWorkspaceUiCall = async (
+    workspace: WorkspaceConfig,
     full: string,
     kind: string,
     ctx: Omit<Parameters<typeof runUiCall>[1], 'target' | 'params'> & { params: unknown },
     run: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<unknown>,
   ): Promise<unknown> => {
-    const split = splitNamespacedName(full, enabledMembers(project));
+    const split = splitNamespacedName(full, enabledMembers(workspace));
     if (!split) {
       throw new HttpError(400, `Unknown ${kind} "${full}" (expected <server>__<name>)`);
     }
-    const key = projectInstanceKey(project.slug, split.serverName);
+    const key = workspaceInstanceKey(workspace.slug, split.serverName);
     return runUiCall(key, { ...ctx, target: split.name }, (client) => run(client, split.name));
   };
 
-  router.get('/projects/:slug/tools', async (req, res) => {
-    const project = requireProject(req.params.slug);
-    const tools = await projectCollect(project, 'tools/list', async (client, name) => {
+  router.get('/workspaces/:slug/tools', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
+    const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
       const all = await listAll(
         (params) => client.listTools(params),
         (result) => result.tools,
       );
-      manager.recordToolCount(projectInstanceKey(project.slug, name), all.length);
+      manager.recordToolCount(workspaceInstanceKey(workspace.slug, name), all.length);
       return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
     });
     res.json({ tools });
   });
 
-  router.get('/projects/:slug/resources', async (req, res) => {
-    const project = requireProject(req.params.slug);
+  router.get('/workspaces/:slug/resources', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
     const [resources, resourceTemplates] = await Promise.all([
-      projectCollect(project, 'resources/list', async (client, name) => {
+      workspaceCollect(workspace, 'resources/list', async (client, name) => {
         const all = await emptyOnMissing(() =>
           listAll(
             (params) => client.listResources(params),
@@ -598,7 +601,7 @@ export function createApiRouter(deps: ApiDeps): Router {
           name: resource.name === undefined ? undefined : namespaceName(name, resource.name),
         }));
       }),
-      projectCollect(project, 'resources/templates/list', async (client, name) => {
+      workspaceCollect(workspace, 'resources/templates/list', async (client, name) => {
         const all = await emptyOnMissing(() =>
           listAll(
             (params) => client.listResourceTemplates(params),
@@ -615,9 +618,9 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json({ resources, resourceTemplates });
   });
 
-  router.get('/projects/:slug/prompts', async (req, res) => {
-    const project = requireProject(req.params.slug);
-    const prompts = await projectCollect(project, 'prompts/list', async (client, name) => {
+  router.get('/workspaces/:slug/prompts', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
+    const prompts = await workspaceCollect(workspace, 'prompts/list', async (client, name) => {
       const all = await emptyOnMissing(() =>
         listAll(
           (params) => client.listPrompts(params),
@@ -629,11 +632,11 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json({ prompts });
   });
 
-  router.post('/projects/:slug/tools/call', async (req, res) => {
-    const project = requireProject(req.params.slug);
+  router.post('/workspaces/:slug/tools/call', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
     const body = toolCallRequestSchema.parse(req.body);
-    const result = await runProjectUiCall(
-      project,
+    const result = await runWorkspaceUiCall(
+      workspace,
       body.name,
       'tool',
       {
@@ -647,11 +650,11 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json(result);
   });
 
-  router.post('/projects/:slug/resources/read', async (req, res) => {
-    const project = requireProject(req.params.slug);
+  router.post('/workspaces/:slug/resources/read', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
     const body = resourceReadRequestSchema.parse(req.body);
-    const result = await runProjectUiCall(
-      project,
+    const result = await runWorkspaceUiCall(
+      workspace,
       body.uri,
       'resource',
       { method: 'resources/read', params: body, failLabel: `Resource "${body.uri}" failed to read` },
@@ -660,11 +663,11 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json(result);
   });
 
-  router.post('/projects/:slug/prompts/get', async (req, res) => {
-    const project = requireProject(req.params.slug);
+  router.post('/workspaces/:slug/prompts/get', async (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
     const body = promptGetRequestSchema.parse(req.body);
-    const result = await runProjectUiCall(
-      project,
+    const result = await runWorkspaceUiCall(
+      workspace,
       body.name,
       'prompt',
       { method: 'prompts/get', params: body, failLabel: `Prompt "${body.name}" failed` },
@@ -673,20 +676,20 @@ export function createApiRouter(deps: ApiDeps): Router {
     res.json(result);
   });
 
-  // Project activity merges every member instance's log, newest first. Ids are
+  // Workspace activity merges every member instance's log, newest first. Ids are
   // monotonic per process, so a descending id sort orders across members.
-  router.get('/projects/:slug/activity', (req, res) => {
-    const project = requireProject(req.params.slug);
-    const entries = existingMembers(project)
-      .flatMap((name) => manager.getActivity(projectInstanceKey(project.slug, name)))
+  router.get('/workspaces/:slug/activity', (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
+    const entries = existingMembers(workspace)
+      .flatMap((name) => manager.getActivity(workspaceInstanceKey(workspace.slug, name)))
       .sort((a, b) => b.id - a.id);
     res.json(activityResponseSchema.parse({ entries }));
   });
 
-  router.delete('/projects/:slug/activity', (req, res) => {
-    const project = requireProject(req.params.slug);
-    for (const name of existingMembers(project)) {
-      manager.clearActivity(projectInstanceKey(project.slug, name));
+  router.delete('/workspaces/:slug/activity', (req, res) => {
+    const workspace = requireWorkspace(req.params.slug);
+    for (const name of existingMembers(workspace)) {
+      manager.clearActivity(workspaceInstanceKey(workspace.slug, name));
     }
     res.status(204).end();
   });
@@ -695,7 +698,7 @@ export function createApiRouter(deps: ApiDeps): Router {
 
   router.post('/reload', async (_req, res) => {
     const state = await store.reload();
-    manager.reconcile(state.servers, state.projects);
+    manager.reconcile(state.servers, state.workspaces);
     res.json({ reloaded: true, serverCount: state.servers.length });
   });
 

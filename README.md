@@ -10,8 +10,8 @@ over streamable HTTP:
 - **One aggregate endpoint** — `http://host:3000/mcp` merges all enabled
   servers, with tool names namespaced as `<server>__<tool>` (resources, resource
   templates, and prompts likewise); calls are routed back to the owning server
-- **Projects (custom aggregates)** — group a chosen subset of servers at their
-  own `http://host:3000/mcp/p/<slug>` endpoint, with optional per-project
+- **Workspaces (custom aggregates)** — group a chosen subset of servers at their
+  own `http://host:3000/mcp/w/<slug>` endpoint, with optional per-workspace
   `env`/`args`/`headers` overrides; give each client exactly the tools it needs
 
 Point one MCP client at the router instead of configuring N servers in every
@@ -215,20 +215,20 @@ A remote server that is merely proxied (nothing installed):
 }
 ```
 
-### `projects/<slug>.json` — one file per project (custom aggregate)
+### `workspaces/<slug>.json` — one file per workspace (custom aggregate)
 
-A **project** exposes a chosen subset of servers as its own aggregate at
-`/mcp/p/<slug>`. The `slug` doubles as the filename and is derived from the
+A **workspace** exposes a chosen subset of servers as its own aggregate at
+`/mcp/w/<slug>`. The `slug` doubles as the filename and is derived from the
 name; each member may override the base server's `env`, `args`, or `headers`
-for that project only. Each member runs as an isolated downstream instance, so
-a project can run a server that's globally disabled, and its overrides never
+for that workspace only. Each member runs as an isolated downstream instance, so
+a workspace can run a server that's globally disabled, and its overrides never
 touch the base server.
 
 ```jsonc
 {
   "name": "Coding assistant",
   "slug": "coding-assistant",               // matches the filename; auto-derived
-  "enabled": true,                          // false → /mcp/p/<slug> returns 404
+  "enabled": true,                          // false → /mcp/w/<slug> returns 404
   "description": "GitHub + local files for a code client.",  // optional
   "members": {
     "github": { "enabled": true },
@@ -241,10 +241,10 @@ touch the base server.
 }
 ```
 
-A member's effective enabled state is `project.enabled && member.enabled` — the
-base server's own `enabled` flag is ignored inside a project. Members that
-reference a server which no longer exists are skipped. Manage projects from the
-**Projects** page in the web UI, or hand-edit these files and reload.
+A member's effective enabled state is `workspace.enabled && member.enabled` — the
+base server's own `enabled` flag is ignored inside a workspace. Members that
+reference a server which no longer exists are skipped. Manage workspaces from the
+**Workspaces** page in the web UI, or hand-edit these files and reload.
 
 ## Connecting MCP clients
 
@@ -266,10 +266,10 @@ claude mcp add --transport http github http://localhost:3000/mcp/github \
   --header "Authorization: Bearer <token>"
 ```
 
-Or a project — a custom aggregate of just the servers that client should see:
+Or a workspace — a custom aggregate of just the servers that client should see:
 
 ```bash
-claude mcp add --transport http coding http://localhost:3000/mcp/p/coding-assistant \
+claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assistant \
   --header "Authorization: Bearer <token>"
 ```
 
@@ -291,7 +291,7 @@ JSON config shape:
 ```
 
 Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server,
-or `http://localhost:3000/mcp/p/<slug>` for a project's custom aggregate.
+or `http://localhost:3000/mcp/w/<slug>` for a workspace's custom aggregate.
 
 ## API reference
 
@@ -318,11 +318,11 @@ with `{ "error": "...", "detail": "..." }`.
 | `GET /api/servers/:name/prompts` | Connect and list downstream prompts (empty when unsupported) |
 | `POST /api/servers/:name/prompts/get` | Get one prompt with arguments (recorded to the activity log) |
 | `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
-| `GET /api/projects` | All projects with their endpoint paths |
-| `POST /api/projects` | Create a project (slug auto-derived from the name) |
-| `GET /api/projects/:slug` | Single project |
-| `PATCH /api/projects/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
-| `DELETE /api/projects/:slug` | Remove a project (underlying servers untouched) |
+| `GET /api/workspaces` | All workspaces with their endpoint paths |
+| `POST /api/workspaces` | Create a workspace (slug auto-derived from the name) |
+| `GET /api/workspaces/:slug` | Single workspace |
+| `PATCH /api/workspaces/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
+| `DELETE /api/workspaces/:slug` | Remove a workspace (underlying servers untouched) |
 | `POST /api/reload` | Re-read all config from disk and reconcile running processes |
 
 MCP endpoints (streamable HTTP):
@@ -331,7 +331,7 @@ MCP endpoints (streamable HTTP):
 | --- | --- |
 | `POST/GET/DELETE /mcp/<name>` | Proxy 1:1 to that server (tools, resources, prompts) |
 | `POST/GET/DELETE /mcp` | Aggregate of all enabled servers, `<server>__` name prefix |
-| `POST/GET/DELETE /mcp/p/<slug>` | A project's custom aggregate — same `<server>__` prefix, over its members only |
+| `POST/GET/DELETE /mcp/w/<slug>` | A workspace's custom aggregate — same `<server>__` prefix, over its members only |
 
 ## Security notes
 

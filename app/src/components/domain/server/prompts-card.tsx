@@ -55,8 +55,8 @@ export function PromptsCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch, isRefetching } = useCapabilityPrompts(scope);
   const prompts = data?.prompts ?? [];
   const description =
-    scope.kind === 'project'
-      ? 'Prompt templates exposed by the project aggregate, `<server>__`-namespaced. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.'
+    scope.kind === 'workspace'
+      ? 'Prompt templates exposed by the workspace aggregate, `<server>__`-namespaced. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.'
       : 'Prompt templates exposed by the downstream server. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.';
 
   return (

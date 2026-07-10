@@ -80,8 +80,8 @@ export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch, isRefetching } = useCapabilityResources(scope);
   const rows = [...(data?.resources ?? []).map(toRow), ...(data?.resourceTemplates ?? []).map(templateToRow)];
   const description =
-    scope.kind === 'project'
-      ? 'Resources and resource templates exposed by the project aggregate, `<server>__`-namespaced. Expand one to read it — reads show up in the Activity tab.'
+    scope.kind === 'workspace'
+      ? 'Resources and resource templates exposed by the workspace aggregate, `<server>__`-namespaced. Expand one to read it — reads show up in the Activity tab.'
       : 'Resources and resource templates exposed by the downstream server. Expand one to read it — reads show up in the Activity tab.';
 
   return (

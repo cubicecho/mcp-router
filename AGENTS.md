@@ -5,11 +5,11 @@ the official registry at registry.modelcontextprotocol.io) or directly from
 npm, runs stdio servers as lazily-spawned child processes (or proxies remote
 streamable-HTTP servers), and re-exposes each one over streamable HTTP at
 `/mcp/<name>` plus a merged aggregate at `/mcp` with `<server>__`-namespaced
-tools. **Projects** are custom aggregates — a chosen subset of servers at
-`/mcp/p/<slug>` with optional per-project param overrides, each member running
+tools. **Workspaces** are custom aggregates — a chosen subset of servers at
+`/mcp/w/<slug>` with optional per-workspace param overrides, each member running
 as an isolated instance independent of the server's global state. Configuration
 lives in hand-editable flat JSON files under `DATA_DIR/config`; a React web UI
-manages registries, installs, projects, and per-server env vars/API keys.
+manages registries, installs, workspaces, and per-server env vars/API keys.
 
 **Read [`SPECS.md`](SPECS.md) first** — it holds the locked design decisions,
 config-file/API contracts, and the itemized work list.
@@ -19,7 +19,7 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 
 ## Commands
 
-All from the project root.
+All from the workspace root.
 
 ```bash
 # Dev

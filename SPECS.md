@@ -3,15 +3,15 @@
 An MCP gateway/router: install MCP servers from registries or npm, run them
 locally (stdio) or point at remote ones (streamable HTTP), and re-expose every
 one of them over streamable HTTP — per-server routes, one merged aggregate, and
-per-**project** custom aggregates. Managed through a React web UI and
+per-**workspace** custom aggregates. Managed through a React web UI and
 hand-editable flat config files.
 
 ## Decisions (locked)
 
 | Question | Decision |
 | --- | --- |
-| Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-project custom aggregates `/mcp/p/<slug>` |
-| Projects | Custom aggregates: a named subset of servers at `/mcp/p/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `p:<slug>:<server>`), so a project scope is fully independent of a server's global enabled state; effective enabled = `project.enabled && member.enabled` |
+| Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-workspace custom aggregates `/mcp/w/<slug>` |
+| Workspaces | Custom aggregates: a named subset of servers at `/mcp/w/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `w:<slug>:<server>`), so a workspace scope is fully independent of a server's global enabled state; effective enabled = `workspace.enabled && member.enabled` |
 | Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
 | Secrets | Plaintext values in the JSON config files, written with mode 0600 |
@@ -26,7 +26,7 @@ hand-editable flat config files.
 ```
 mcp-router/
 ├── shared/          # zod schemas + types (DONE — the contract, see shared/src/)
-│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json / projects/<slug>.json schemas
+│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json / workspaces/<slug>.json schemas
 │   ├── registry.ts  #   MCP registry API response schemas
 │   └── api.ts       #   REST DTOs (/api/*)
 ├── server/          # Express + MCP SDK backend        [Track A]
@@ -45,12 +45,12 @@ mcp-router/
   from the registry), idleTimeoutMs. npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
   (uv resolves/caches on spawn, no install dir)
-- `projects/<slug>.json` — one file per project (`projectConfigSchema`): name,
+- `workspaces/<slug>.json` — one file per workspace (`workspaceConfigSchema`): name,
   slug (matches the filename), enabled, description, `members` — a map of server
   name → `{ enabled, env?, args?, headers?, url? }`. Overrides merge over the
   base server config (`env`/`headers` shallow-merged, `args`/`url` replaced) for
-  that project's instance only; `url` re-points a remote member's
-  streamable-http endpoint (e.g. to scope a shared upstream to a project path);
+  that workspace's instance only; `url` re-points a remote member's
+  streamable-http endpoint (e.g. to scope a shared upstream to a workspace path);
   members whose server no longer exists are skipped
 
 ### Management REST API (`/api`, bearer auth)
@@ -73,11 +73,11 @@ mcp-router/
 | `GET /api/servers/:name/prompts` | connect and list downstream prompts (empty when unsupported) |
 | `POST /api/servers/:name/prompts/get` | get one prompt with arguments from the UI (`PromptGetRequest`); recorded to activity as via 'ui' |
 | `GET /api/servers/:name/activity` / `DELETE` | in-memory log of proxied calls (`ActivityResponse`) for the Activity tab; DELETE clears it |
-| `GET /api/projects` | `ProjectStatus[]` (config + derived endpoint `path`) |
-| `POST /api/projects` | create (`CreateProjectRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
-| `GET /api/projects/:slug` | single `ProjectStatus` |
-| `PATCH /api/projects/:slug` | `UpdateProjectRequest` (name, enabled, description, members); a name change re-derives the slug and moves the file/endpoint |
-| `DELETE /api/projects/:slug` | delete the project file (underlying servers untouched) |
+| `GET /api/workspaces` | `WorkspaceStatus[]` (config + derived endpoint `path`) |
+| `POST /api/workspaces` | create (`CreateWorkspaceRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
+| `GET /api/workspaces/:slug` | single `WorkspaceStatus` |
+| `PATCH /api/workspaces/:slug` | `UpdateWorkspaceRequest` (name, enabled, description, members); a name change re-derives the slug and moves the file/endpoint |
+| `DELETE /api/workspaces/:slug` | delete the workspace file (underlying servers untouched) |
 | `POST /api/reload` | re-read all config from disk, reconcile running processes |
 
 Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas.
@@ -93,8 +93,8 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
   completions, and subscriptions strip the prefix and route to the owning
   downstream client; `logging/setLevel` fans out to every member; relayed
   notifications are re-namespaced
-- `POST/GET/DELETE /mcp/p/<slug>` — a project's custom aggregate: same
-  `<server>__` namespacing, but only over that project's enabled members, each
+- `POST/GET/DELETE /mcp/w/<slug>` — a workspace's custom aggregate: same
+  `<server>__` namespacing, but only over that workspace's enabled members, each
   served by its own isolated (override-applied) downstream instance
 - **Stateful sessions:** `initialize` mints an `Mcp-Session-Id` reused across the
   session's requests and its GET SSE stream (which carries relayed
@@ -102,7 +102,7 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
   unknown/expired session id → 404
 - Reverse-direction capabilities (sampling / elicitation / roots) are **not**
   offered downstream — see Phase 4 F7 for the shared-client blocker
-- Disabled servers 404. Disabled or unknown projects 404. Auth failures 401
+- Disabled servers 404. Disabled or unknown workspaces 404. Auth failures 401
   before any MCP handling.
 
 ---
@@ -150,26 +150,26 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/api/status`
 - [x] C3 `README.md`: what it is, quickstart (docker compose + bare node), config file reference with examples, API + MCP endpoint reference, how to point Claude/other clients at `/mcp` and `/mcp/<name>`, security notes (plaintext secrets, bearer token)
 
-### Phase 3 — Projects (custom aggregates)
+### Phase 3 — Workspaces (custom aggregates)
 
-- [x] P1 Shared contract: `projectMemberSchema` / `projectConfigSchema` +
-  `slugify()` in `shared/src/config.ts`; `projectStatusSchema` (adds `path`),
-  `createProjectRequestSchema`, `updateProjectRequestSchema` in `shared/src/api.ts`
-- [x] P2 Config store: load/validate/write `projects/<slug>.json` (keyed by
-  slug, warn on slug/filename mismatch); `getProjects`/`getProject`/`saveProject`/
-  `deleteProject`; projects included in the reload snapshot
+- [x] P1 Shared contract: `workspaceMemberSchema` / `workspaceConfigSchema` +
+  `slugify()` in `shared/src/config.ts`; `workspaceStatusSchema` (adds `path`),
+  `createWorkspaceRequestSchema`, `updateWorkspaceRequestSchema` in `shared/src/api.ts`
+- [x] P2 Config store: load/validate/write `workspaces/<slug>.json` (keyed by
+  slug, warn on slug/filename mismatch); `getWorkspaces`/`getWorkspace`/`saveWorkspace`/
+  `deleteWorkspace`; workspaces included in the reload snapshot
 - [x] P3 Gateway manager: instances keyed by explicit key (base = name,
-  project = `p:<slug>:<server>`); `resolveMemberConfig` merges overrides;
-  `reconcile(configs, projects)` builds project instances; `getClientForProject`;
-  base-only views (`statusAll`/`enabledNames`/`runningCount`) exclude project keys
-- [x] P4 Project MCP endpoint `/mcp/p/:slug` (reuses `createAggregateServer` with
-  project-scoped `getClient`/`serverNames`); 404 on disabled/unknown project
-- [x] P5 REST API: `/api/projects` CRUD (auto-slug, collision + member-exists
-  validation, rename-re-slugs); every `reconcile` call now passes projects
-- [x] P6 Web UI: Projects nav item + `/projects` list route (URL + copy, server
-  count, enabled badge, edit/delete); `ProjectDialog` (name→slug preview, member
+  workspace = `w:<slug>:<server>`); `resolveMemberConfig` merges overrides;
+  `reconcile(configs, workspaces)` builds workspace instances; `getClientForWorkspace`;
+  base-only views (`statusAll`/`enabledNames`/`runningCount`) exclude workspace keys
+- [x] P4 Workspace MCP endpoint `/mcp/w/:slug` (reuses `createAggregateServer` with
+  workspace-scoped `getClient`/`serverNames`); 404 on disabled/unknown workspace
+- [x] P5 REST API: `/api/workspaces` CRUD (auto-slug, collision + member-exists
+  validation, rename-re-slugs); every `reconcile` call now passes workspaces
+- [x] P6 Web UI: Workspaces nav item + `/workspaces` list route (URL + copy, server
+  count, enabled badge, edit/delete); `WorkspaceDialog` (name→slug preview, member
   toggles, per-member override editors, ConnectCard in edit mode)
-- [x] P7 Tests: manager project-instance behavior (overrides, isolation from
+- [x] P7 Tests: manager workspace-instance behavior (overrides, isolation from
   global disable, drop-on-remove); API auto-slug/validation/rename/gating
 
 ### Phase 4 — Full MCP proxy (complete protocol passthrough)
@@ -200,12 +200,12 @@ blocked by the shared-downstream-client architecture and is documented below.
   (`onNotification`) fed by each downstream client's `fallbackNotificationHandler`
   (re-installed on every reconnect, so it survives respawns); each session
   subscribes and relays `notifications/{tools,resources,prompts}/list_changed` to
-  its client (aggregate/project sessions relay for any member)
+  its client (aggregate/workspace sessions relay for any member)
 - [x] F5 Resource subscriptions: advertises `resources: { subscribe: true }`;
   `resources/subscribe` + `resources/unsubscribe` handlers forward to the downstream
   client (aggregate strips the `<server>__` URI prefix); downstream
   `notifications/resources/updated` is relayed to the subscribing session with the
-  URI re-namespaced on the aggregate/project path (`namespaceNotification`)
+  URI re-namespaced on the aggregate/workspace path (`namespaceNotification`)
 - [x] F6 Logging passthrough: advertises the `logging` capability; `logging/setLevel`
   forwards to the downstream client (per-server) or fans out to every member
   (aggregate); downstream `notifications/message` is relayed over the same bus as F4

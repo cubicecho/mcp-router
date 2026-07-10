@@ -3,13 +3,13 @@ import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import type { ProjectConfig, RegistriesFile, Registry, ServerConfig, SettingsFile } from '@mcp-router/shared';
+import type { RegistriesFile, Registry, ServerConfig, SettingsFile, WorkspaceConfig } from '@mcp-router/shared';
 import {
   DEFAULT_REGISTRY,
-  projectConfigSchema,
   registriesFileSchema,
   serverConfigSchema,
   settingsFileSchema,
+  workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
 import { authDisabledByEnv } from '../auth.ts';
@@ -19,7 +19,7 @@ export interface ConfigState {
   settings: SettingsFile;
   registries: Registry[];
   servers: ServerConfig[];
-  projects: ProjectConfig[];
+  workspaces: WorkspaceConfig[];
 }
 
 const WATCH_DEBOUNCE_MS = 300;
@@ -34,12 +34,12 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   readonly dataDir: string;
   readonly configDir: string;
   readonly serversDir: string;
-  readonly projectsDir: string;
+  readonly workspacesDir: string;
 
   private settings: SettingsFile = settingsFileSchema.parse({});
   private registries: Registry[] = [];
   private servers = new Map<string, ServerConfig>();
-  private projects = new Map<string, ProjectConfig>();
+  private workspaces = new Map<string, WorkspaceConfig>();
   private watcher: FSWatcher | null = null;
   private watchDebounce: NodeJS.Timeout | null = null;
 
@@ -48,13 +48,13 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     this.dataDir = dataDir;
     this.configDir = path.join(dataDir, 'config');
     this.serversDir = path.join(this.configDir, 'servers');
-    this.projectsDir = path.join(this.configDir, 'projects');
+    this.workspacesDir = path.join(this.configDir, 'workspaces');
   }
 
   /** Create directories, seed defaults on first run and load everything. */
   async init(): Promise<void> {
     await mkdir(this.serversDir, { recursive: true });
-    await mkdir(this.projectsDir, { recursive: true });
+    await mkdir(this.workspacesDir, { recursive: true });
     await this.loadAll();
   }
 
@@ -101,7 +101,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       settings: this.settings,
       registries: this.registries,
       servers: this.getServers(),
-      projects: this.getProjects(),
+      workspaces: this.getWorkspaces(),
     };
   }
 
@@ -161,24 +161,24 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     await rm(this.serverFile(name), { force: true });
   }
 
-  getProjects(): ProjectConfig[] {
-    return [...this.projects.values()].sort((a, b) => a.name.localeCompare(b.name));
+  getWorkspaces(): WorkspaceConfig[] {
+    return [...this.workspaces.values()].sort((a, b) => a.name.localeCompare(b.name));
   }
 
-  getProject(slug: string): ProjectConfig | undefined {
-    return this.projects.get(slug);
+  getWorkspace(slug: string): WorkspaceConfig | undefined {
+    return this.workspaces.get(slug);
   }
 
-  async saveProject(config: ProjectConfig): Promise<ProjectConfig> {
-    const parsed = projectConfigSchema.parse(config);
-    this.projects.set(parsed.slug, parsed);
-    await this.writeJsonAtomic(this.projectFile(parsed.slug), parsed);
+  async saveWorkspace(config: WorkspaceConfig): Promise<WorkspaceConfig> {
+    const parsed = workspaceConfigSchema.parse(config);
+    this.workspaces.set(parsed.slug, parsed);
+    await this.writeJsonAtomic(this.workspaceFile(parsed.slug), parsed);
     return parsed;
   }
 
-  async deleteProject(slug: string): Promise<void> {
-    this.projects.delete(slug);
-    await rm(this.projectFile(slug), { force: true });
+  async deleteWorkspace(slug: string): Promise<void> {
+    this.workspaces.delete(slug);
+    await rm(this.workspaceFile(slug), { force: true });
   }
 
   private async writeRegistries(): Promise<void> {
@@ -190,15 +190,15 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     return path.join(this.serversDir, `${name}.json`);
   }
 
-  private projectFile(slug: string): string {
-    return path.join(this.projectsDir, `${slug}.json`);
+  private workspaceFile(slug: string): string {
+    return path.join(this.workspacesDir, `${slug}.json`);
   }
 
   private async loadAll(): Promise<void> {
     this.settings = await this.loadSettings();
     this.registries = await this.loadRegistries();
     this.servers = await this.loadServers();
-    this.projects = await this.loadProjects();
+    this.workspaces = await this.loadWorkspaces();
   }
 
   private async loadSettings(): Promise<SettingsFile> {
@@ -260,27 +260,27 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     return servers;
   }
 
-  private async loadProjects(): Promise<Map<string, ProjectConfig>> {
-    const projects = new Map<string, ProjectConfig>();
-    const files = (await readdir(this.projectsDir)).filter((f) => f.endsWith('.json'));
+  private async loadWorkspaces(): Promise<Map<string, WorkspaceConfig>> {
+    const workspaces = new Map<string, WorkspaceConfig>();
+    const files = (await readdir(this.workspacesDir)).filter((f) => f.endsWith('.json'));
     for (const file of files.sort()) {
-      const fullPath = path.join(this.projectsDir, file);
+      const fullPath = path.join(this.workspacesDir, file);
       try {
         const config = this.parseFile(
           fullPath,
           await readFile(fullPath, 'utf8'),
-          projectConfigSchema.parse.bind(projectConfigSchema),
+          workspaceConfigSchema.parse.bind(workspaceConfigSchema),
         );
         if (`${config.slug}.json` !== file) {
-          console.warn(`Project config ${fullPath} has slug "${config.slug}" that does not match its filename`);
+          console.warn(`Workspace config ${fullPath} has slug "${config.slug}" that does not match its filename`);
         }
-        projects.set(config.slug, config);
+        workspaces.set(config.slug, config);
       } catch (err) {
-        // A single broken (hand-edited) project file must not take the router down; report and skip it.
-        console.error(`Ignoring invalid project config ${fullPath}: ${errorMessage(err)}`);
+        // A single broken (hand-edited) workspace file must not take the router down; report and skip it.
+        console.error(`Ignoring invalid workspace config ${fullPath}: ${errorMessage(err)}`);
       }
     }
-    return projects;
+    return workspaces;
   }
 
   private parseFile<T>(file: string, raw: string, parse: (value: unknown) => T): T {

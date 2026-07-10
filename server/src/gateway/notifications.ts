@@ -7,7 +7,7 @@ const RESOURCE_UPDATED = 'notifications/resources/updated';
 
 /**
  * Re-target a downstream notification for an upstream session. On the aggregate
- * and project endpoints (`prefix` given) a `resources/updated` URI is namespaced
+ * and workspace endpoints (`prefix` given) a `resources/updated` URI is namespaced
  * so it matches the `<server>__`-prefixed URIs the client saw in
  * `resources/list`; list_changed and log messages carry nothing to rewrite.
  */

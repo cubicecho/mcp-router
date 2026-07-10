@@ -9,14 +9,19 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RegistriesRouteImport } from './routes/registries'
-import { Route as ProjectsRouteImport } from './routes/projects'
 import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as WorkspacesSlugRouteImport } from './routes/workspaces_.$slug'
 import { Route as ServersNameRouteImport } from './routes/servers.$name'
-import { Route as ProjectsSlugRouteImport } from './routes/projects_.$slug'
 
+const WorkspacesRoute = WorkspacesRouteImport.update({
+  id: '/workspaces',
+  path: '/workspaces',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const SettingsRoute = SettingsRouteImport.update({
   id: '/settings',
   path: '/settings',
@@ -25,11 +30,6 @@ const SettingsRoute = SettingsRouteImport.update({
 const RegistriesRoute = RegistriesRouteImport.update({
   id: '/registries',
   path: '/registries',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsRoute = ProjectsRouteImport.update({
-  id: '/projects',
-  path: '/projects',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrowseRoute = BrowseRouteImport.update({
@@ -42,87 +42,94 @@ const IndexRoute = IndexRouteImport.update({
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesSlugRoute = WorkspacesSlugRouteImport.update({
+  id: '/workspaces_/$slug',
+  path: '/workspaces/$slug',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ServersNameRoute = ServersNameRouteImport.update({
   id: '/servers/$name',
   path: '/servers/$name',
-  getParentRoute: () => rootRouteImport,
-} as any)
-const ProjectsSlugRoute = ProjectsSlugRouteImport.update({
-  id: '/projects_/$slug',
-  path: '/projects/$slug',
   getParentRoute: () => rootRouteImport,
 } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
-  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
-  '/projects/$slug': typeof ProjectsSlugRoute
+  '/workspaces': typeof WorkspacesRoute
   '/servers/$name': typeof ServersNameRoute
+  '/workspaces/$slug': typeof WorkspacesSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
-  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
-  '/projects/$slug': typeof ProjectsSlugRoute
+  '/workspaces': typeof WorkspacesRoute
   '/servers/$name': typeof ServersNameRoute
+  '/workspaces/$slug': typeof WorkspacesSlugRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
-  '/projects': typeof ProjectsRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
-  '/projects_/$slug': typeof ProjectsSlugRoute
+  '/workspaces': typeof WorkspacesRoute
   '/servers/$name': typeof ServersNameRoute
+  '/workspaces_/$slug': typeof WorkspacesSlugRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
   fullPaths:
     | '/'
     | '/browse'
-    | '/projects'
     | '/registries'
     | '/settings'
-    | '/projects/$slug'
+    | '/workspaces'
     | '/servers/$name'
+    | '/workspaces/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/browse'
-    | '/projects'
     | '/registries'
     | '/settings'
-    | '/projects/$slug'
+    | '/workspaces'
     | '/servers/$name'
+    | '/workspaces/$slug'
   id:
     | '__root__'
     | '/'
     | '/browse'
-    | '/projects'
     | '/registries'
     | '/settings'
-    | '/projects_/$slug'
+    | '/workspaces'
     | '/servers/$name'
+    | '/workspaces_/$slug'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrowseRoute: typeof BrowseRoute
-  ProjectsRoute: typeof ProjectsRoute
   RegistriesRoute: typeof RegistriesRoute
   SettingsRoute: typeof SettingsRoute
-  ProjectsSlugRoute: typeof ProjectsSlugRoute
+  WorkspacesRoute: typeof WorkspacesRoute
   ServersNameRoute: typeof ServersNameRoute
+  WorkspacesSlugRoute: typeof WorkspacesSlugRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/workspaces': {
+      id: '/workspaces'
+      path: '/workspaces'
+      fullPath: '/workspaces'
+      preLoaderRoute: typeof WorkspacesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/settings': {
       id: '/settings'
       path: '/settings'
@@ -135,13 +142,6 @@ declare module '@tanstack/react-router' {
       path: '/registries'
       fullPath: '/registries'
       preLoaderRoute: typeof RegistriesRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects': {
-      id: '/projects'
-      path: '/projects'
-      fullPath: '/projects'
-      preLoaderRoute: typeof ProjectsRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/browse': {
@@ -158,18 +158,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces_/$slug': {
+      id: '/workspaces_/$slug'
+      path: '/workspaces/$slug'
+      fullPath: '/workspaces/$slug'
+      preLoaderRoute: typeof WorkspacesSlugRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/servers/$name': {
       id: '/servers/$name'
       path: '/servers/$name'
       fullPath: '/servers/$name'
       preLoaderRoute: typeof ServersNameRouteImport
-      parentRoute: typeof rootRouteImport
-    }
-    '/projects_/$slug': {
-      id: '/projects_/$slug'
-      path: '/projects/$slug'
-      fullPath: '/projects/$slug'
-      preLoaderRoute: typeof ProjectsSlugRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
@@ -178,11 +178,11 @@ declare module '@tanstack/react-router' {
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrowseRoute: BrowseRoute,
-  ProjectsRoute: ProjectsRoute,
   RegistriesRoute: RegistriesRoute,
   SettingsRoute: SettingsRoute,
-  ProjectsSlugRoute: ProjectsSlugRoute,
+  WorkspacesRoute: WorkspacesRoute,
   ServersNameRoute: ServersNameRoute,
+  WorkspacesSlugRoute: WorkspacesSlugRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

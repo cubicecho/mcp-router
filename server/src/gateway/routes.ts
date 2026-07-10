@@ -7,7 +7,7 @@ import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
 import { BoundedEventStore } from './event-store.ts';
 import type { GatewayManager } from './manager.ts';
-import { projectInstanceKey } from './manager.ts';
+import { workspaceInstanceKey } from './manager.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
 import { createAggregateServer, createProxyServer } from './proxy.ts';
 
@@ -147,7 +147,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       () => createAggregateServer({ ...proxyDeps, serverNames }),
       (server) =>
         manager.onNotification((key, notification) => {
-          // enabledNames() lists only base keys, so project instances never match here.
+          // enabledNames() lists only base keys, so workspace instances never match here.
           if (serverNames().includes(key)) {
             pushNotification(server, namespaceNotification(notification, key));
           }
@@ -155,43 +155,44 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     );
   });
 
-  // Custom aggregate for a project: only its enabled members that still exist, run
-  // as project-scoped downstream instances. Registered before '/:name' so the two
+  // Custom aggregate for a workspace: only its enabled members that still exist, run
+  // as workspace-scoped downstream instances. Registered before '/:name' so the two
   // path segments never fall through to the per-server route.
-  router.all('/p/:slug', async (req, res) => {
+  router.all('/w/:slug', async (req, res) => {
     if (await resume(req, res)) {
       return;
     }
     const slug = req.params.slug;
-    const project = store.getProject(slug);
-    if (!project || !project.enabled) {
-      res.status(404).json({ error: `Unknown project "${slug}"` });
+    const workspace = store.getWorkspace(slug);
+    if (!workspace || !workspace.enabled) {
+      res.status(404).json({ error: `Unknown workspace "${slug}"` });
       return;
     }
     // Enabled members whose base server still exists, resolved fresh per request.
     const memberNames = (): string[] =>
-      Object.entries(project.members)
+      Object.entries(workspace.members)
         .filter(([name, member]) => (member.enabled ?? true) && store.getServer(name))
         .map(([name]) => name)
         .sort();
-    const projectDeps = {
-      getClient: (name: string) => manager.getClientForProject(slug, name),
-      recordToolCount: (name: string, count: number) => manager.recordToolCount(projectInstanceKey(slug, name), count),
-      // Activity is logged under the project-scoped instance key so it surfaces in
-      // the project's own Activity view, isolated from the base server's log.
+    const workspaceDeps = {
+      getClient: (name: string) => manager.getClientForWorkspace(slug, name),
+      recordToolCount: (name: string, count: number) =>
+        manager.recordToolCount(workspaceInstanceKey(slug, name), count),
+      // Activity is logged under the workspace-scoped instance key so it surfaces in
+      // the workspace's own Activity view, isolated from the base server's log.
       recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
-        manager.recordActivity(projectInstanceKey(slug, name), entry),
+        manager.recordActivity(workspaceInstanceKey(slug, name), entry),
       serverNames: memberNames,
     };
     await start(
       req,
       res,
-      () => createAggregateServer(projectDeps),
+      () => createAggregateServer(workspaceDeps),
       (server) =>
         manager.onNotification((key, notification) => {
-          // Downstream notifications arrive under the project instance key.
+          // Downstream notifications arrive under the workspace instance key.
           for (const name of memberNames()) {
-            if (key === projectInstanceKey(slug, name)) {
+            if (key === workspaceInstanceKey(slug, name)) {
               pushNotification(server, namespaceNotification(notification, name));
               return;
             }

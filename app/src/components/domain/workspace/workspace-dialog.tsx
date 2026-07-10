@@ -1,4 +1,4 @@
-import type { CreateProjectRequest, ProjectMember, ProjectStatus, ServerStatus } from '@mcp-router/shared';
+import type { CreateWorkspaceRequest, ServerStatus, WorkspaceMember, WorkspaceStatus } from '@mcp-router/shared';
 import { slugify } from '@mcp-router/shared';
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
 import { type FormEvent, useMemo, useState } from 'react';
@@ -18,10 +18,10 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
 import { Textarea } from '@/components/ui/textarea';
-import { useCreateProject, useServers, useUpdateProject } from '@/lib/queries';
+import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-/** Per-server override text held while editing; parsed into a ProjectMember on submit. */
+/** Per-server override text held while editing; parsed into a WorkspaceMember on submit. */
 interface OverrideText {
   env: string;
   args: string;
@@ -57,28 +57,28 @@ const linesToRecord = (text: string): Record<string, string> => {
 
 const textToArgs = (text: string): string[] => text.split('\n').filter((line) => line.trim().length > 0);
 
-interface ProjectDialogProps {
+interface WorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  /** Present when editing an existing project; omitted when creating. */
-  project?: ProjectStatus;
+  /** Present when editing an existing workspace; omitted when creating. */
+  workspace?: WorkspaceStatus;
 }
 
-export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProps) {
-  const isEdit = project !== undefined;
+export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
+  const isEdit = workspace !== undefined;
   const { data: servers } = useServers();
-  const create = useCreateProject();
-  const update = useUpdateProject();
+  const create = useCreateWorkspace();
+  const update = useUpdateWorkspace();
 
-  const [name, setName] = useState(project?.name ?? '');
-  const [enabled, setEnabled] = useState(project?.enabled ?? true);
-  const [description, setDescription] = useState(project?.description ?? '');
+  const [name, setName] = useState(workspace?.name ?? '');
+  const [enabled, setEnabled] = useState(workspace?.enabled ?? true);
+  const [description, setDescription] = useState(workspace?.description ?? '');
   const [members, setMembers] = useState<Set<string>>(
-    () => new Set(Object.keys(project?.members ?? {}).filter((key) => project?.members[key]?.enabled ?? true)),
+    () => new Set(Object.keys(workspace?.members ?? {}).filter((key) => workspace?.members[key]?.enabled ?? true)),
   );
   const [overrides, setOverrides] = useState<Record<string, OverrideText>>(() => {
     const initial: Record<string, OverrideText> = {};
-    for (const [server, member] of Object.entries(project?.members ?? {})) {
+    for (const [server, member] of Object.entries(workspace?.members ?? {})) {
       initial[server] = {
         env: recordToLines(member.env),
         args: (member.args ?? []).join('\n'),
@@ -92,7 +92,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
 
   // Auto-slug: renaming re-derives the URL. In edit mode the URL only moves once
   // the name actually changes, so show the stored slug until then.
-  const slug = isEdit && name === project.name ? project.slug : slugify(name);
+  const slug = isEdit && name === workspace.name ? workspace.slug : slugify(name);
   const slugValid = slug.length > 0;
 
   const toggleMember = (server: string, on: boolean) => {
@@ -108,7 +108,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
     });
     if (on) {
       // Seed the URL override for remote members with the base URL so "extending"
-      // it (e.g. appending a project path) is just editing the tail. Unchanged
+      // it (e.g. appending a workspace path) is just editing the tail. Unchanged
       // values are dropped on submit, so this never persists a redundant override.
       const config = servers?.find((s) => s.config.name === server)?.config;
       if (config?.transport.type === 'streamable-http') {
@@ -124,15 +124,15 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
     setOverrides((prev) => ({ ...prev, [server]: { ...emptyOverride(), ...prev[server], ...patch } }));
   };
 
-  const buildMembers = (): Record<string, ProjectMember> => {
-    const result: Record<string, ProjectMember> = {};
+  const buildMembers = (): Record<string, WorkspaceMember> => {
+    const result: Record<string, WorkspaceMember> = {};
     for (const server of servers ?? []) {
       const serverName = server.config.name;
       if (!members.has(serverName)) {
         continue;
       }
       const ov = overrides[serverName] ?? emptyOverride();
-      const member: ProjectMember = { enabled: true };
+      const member: WorkspaceMember = { enabled: true };
       if (server.config.transport.type === 'stdio') {
         const env = linesToRecord(ov.env);
         if (Object.keys(env).length > 0) {
@@ -162,10 +162,10 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
     event.preventDefault();
     const trimmedName = name.trim();
     if (!trimmedName || !slugValid) {
-      toast.error('Enter a project name that produces a valid URL slug');
+      toast.error('Enter a workspace name that produces a valid URL slug');
       return;
     }
-    const body: CreateProjectRequest = {
+    const body: CreateWorkspaceRequest = {
       name: trimmedName,
       enabled,
       description: description.trim() || undefined,
@@ -173,10 +173,10 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
     };
     if (isEdit) {
       update.mutate(
-        { slug: project.slug, ...body },
+        { slug: workspace.slug, ...body },
         {
           onSuccess: (updated) => {
-            toast.success(`Saved project ${updated.name}`);
+            toast.success(`Saved workspace ${updated.name}`);
             onOpenChange(false);
           },
           onError: toastApiError,
@@ -185,7 +185,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
     } else {
       create.mutate(body, {
         onSuccess: (created) => {
-          toast.success(`Created project ${created.name}`);
+          toast.success(`Created workspace ${created.name}`);
           onOpenChange(false);
         },
         onError: toastApiError,
@@ -194,50 +194,50 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
   };
 
   const pending = create.isPending || update.isPending;
-  const endpoint = useMemo(() => `${window.location.origin}/mcp/p/${project?.slug ?? ''}`, [project?.slug]);
+  const endpoint = useMemo(() => `${window.location.origin}/mcp/w/${workspace?.slug ?? ''}`, [workspace?.slug]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-h-[85vh] overflow-y-auto sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>{isEdit ? `Edit ${project.name}` : 'New project'}</DialogTitle>
+          <DialogTitle>{isEdit ? `Edit ${workspace.name}` : 'New workspace'}</DialogTitle>
           <DialogDescription>
-            A project exposes a custom aggregate of the servers you choose at its own URL, with optional per-project
-            parameter overrides. Each server runs isolated per project, independent of its global enabled state.
+            A workspace exposes a custom aggregate of the servers you choose at its own URL, with optional per-workspace
+            parameter overrides. Each server runs isolated per workspace, independent of its global enabled state.
           </DialogDescription>
         </DialogHeader>
 
         <form onSubmit={handleSubmit} className="flex flex-col gap-5">
           <div className="flex flex-col gap-2">
-            <Label htmlFor="project-name">Project name</Label>
+            <Label htmlFor="workspace-name">Workspace name</Label>
             <Input
-              id="project-name"
+              id="workspace-name"
               value={name}
               placeholder="Acme backend"
               onChange={(event) => setName(event.target.value)}
             />
             <p className="font-mono text-xs text-muted-foreground">
-              {slugValid ? `/mcp/p/${slug}` : 'Enter a name to generate the URL'}
-              {isEdit && slugValid && slug !== project.slug && ' — renaming moves the URL'}
+              {slugValid ? `/mcp/w/${slug}` : 'Enter a name to generate the URL'}
+              {isEdit && slugValid && slug !== workspace.slug && ' — renaming moves the URL'}
             </p>
           </div>
 
           <div className="flex flex-col gap-2">
-            <Label htmlFor="project-description">Description (optional)</Label>
+            <Label htmlFor="workspace-description">Description (optional)</Label>
             <Input
-              id="project-description"
+              id="workspace-description"
               value={description}
-              placeholder="What this project is for"
+              placeholder="What this workspace is for"
               onChange={(event) => setDescription(event.target.value)}
             />
           </div>
 
-          <label className="flex items-center gap-3 text-sm" htmlFor="project-enabled">
-            <Switch id="project-enabled" checked={enabled} onCheckedChange={setEnabled} />
+          <label className="flex items-center gap-3 text-sm" htmlFor="workspace-enabled">
+            <Switch id="workspace-enabled" checked={enabled} onCheckedChange={setEnabled} />
             <span>
               Enabled
               <span className="block text-xs text-muted-foreground">
-                When off, the project's endpoint returns 404 without deleting it.
+                When off, the workspace's endpoint returns 404 without deleting it.
               </span>
             </span>
           </label>
@@ -245,7 +245,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
           <div className="flex flex-col gap-2">
             <Label>Servers</Label>
             <p className="text-xs text-muted-foreground">
-              Choose which servers this project exposes. Expand a server to override its parameters for this project
+              Choose which servers this workspace exposes. Expand a server to override its parameters for this workspace
               only.
             </p>
             <div className="divide-y rounded-md border">
@@ -270,8 +270,8 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
           {isEdit && enabled && (
             <ConnectCard
               endpoint={endpoint}
-              label={project.slug}
-              description="Point an MCP client at this project's aggregate endpoint."
+              label={workspace.slug}
+              description="Point an MCP client at this workspace's aggregate endpoint."
             />
           )}
 
@@ -280,7 +280,7 @@ export function ProjectDialog({ open, onOpenChange, project }: ProjectDialogProp
               Cancel
             </Button>
             <Button type="submit" disabled={pending || !slugValid}>
-              {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create project'}
+              {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create workspace'}
             </Button>
           </DialogFooter>
         </form>
@@ -341,11 +341,11 @@ function MemberRow({
                   id={`env-${name}`}
                   rows={3}
                   className="resize-y font-mono text-xs"
-                  placeholder={'API_KEY=project-specific-value'}
+                  placeholder={'API_KEY=workspace-specific-value'}
                   value={override.env}
                   onChange={(event) => onOverrideChange({ env: event.target.value })}
                 />
-                <p className="text-xs text-muted-foreground">Merged over the server's env; project values win.</p>
+                <p className="text-xs text-muted-foreground">Merged over the server's env; workspace values win.</p>
               </div>
               <div className="flex flex-col gap-1.5">
                 <Label htmlFor={`args-${name}`} className="text-xs">
@@ -376,7 +376,7 @@ function MemberRow({
                   onChange={(event) => onOverrideChange({ url: event.target.value })}
                 />
                 <p className="text-xs text-muted-foreground">
-                  Replaces the server's URL for this project — e.g. append a path to scope a shared upstream. Leave as
+                  Replaces the server's URL for this workspace — e.g. append a path to scope a shared upstream. Leave as
                   the base URL to inherit it.
                 </p>
               </div>
@@ -388,7 +388,7 @@ function MemberRow({
                   id={`headers-${name}`}
                   rows={3}
                   className="resize-y font-mono text-xs"
-                  placeholder={'Authorization=Bearer project-token'}
+                  placeholder={'Authorization=Bearer workspace-token'}
                   value={override.headers}
                   onChange={(event) => onOverrideChange({ headers: event.target.value })}
                 />

@@ -76,7 +76,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
   const filtered = entries.filter(
     (entry) => (outcome === 'all' || (outcome === 'ok') === entry.ok) && (method === 'all' || entry.method === method),
   );
-  const endpoint = scope.kind === 'server' ? `/mcp/${scope.name}` : `/mcp/p/${scope.slug}`;
+  const endpoint = scope.kind === 'server' ? `/mcp/${scope.name}` : `/mcp/w/${scope.slug}`;
 
   const handleClear = () => {
     clear.mutate(undefined, {
@@ -107,7 +107,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
         <CardDescription>
           {scope.kind === 'server'
             ? 'Recent MCP calls proxied to this server (kept in memory; the newest 200 are retained).'
-            : "Recent MCP calls proxied through this project's members (kept in memory; the newest 200 per member are retained)."}
+            : "Recent MCP calls proxied through this workspace's members (kept in memory; the newest 200 per member are retained)."}
         </CardDescription>
       </CardHeader>
       <CardContent>

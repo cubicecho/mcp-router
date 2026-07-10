@@ -1,14 +1,14 @@
-import type { ProjectMember, ProjectStatus } from '@mcp-router/shared';
+import type { WorkspaceMember, WorkspaceStatus } from '@mcp-router/shared';
 import { toast } from 'sonner';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Switch } from '@/components/ui/switch';
-import { useServers, useUpdateProject } from '@/lib/queries';
+import { useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** Which overrides a member carries, for the "overrides" hint badges. */
-function overrideLabels(member: ProjectMember): string[] {
+function overrideLabels(member: WorkspaceMember): string[] {
   const labels: string[] = [];
   if (member.env && Object.keys(member.env).length > 0) {
     labels.push('env');
@@ -25,23 +25,23 @@ function overrideLabels(member: ProjectMember): string[] {
   return labels;
 }
 
-export function MembersCard({ project }: { project: ProjectStatus }) {
+export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
   const { data: servers } = useServers();
-  const update = useUpdateProject();
+  const update = useUpdateWorkspace();
 
-  const memberEntries = Object.entries(project.members);
+  const memberEntries = Object.entries(workspace.members);
 
-  const toggle = (name: string, member: ProjectMember, on: boolean) => {
+  const toggle = (name: string, member: WorkspaceMember, on: boolean) => {
     // members is a full replacement on update — resend the whole map with this
     // one member's enabled flag flipped, preserving every override.
-    const members: Record<string, ProjectMember> = {
-      ...project.members,
+    const members: Record<string, WorkspaceMember> = {
+      ...workspace.members,
       [name]: { ...member, enabled: on },
     };
     update.mutate(
-      { slug: project.slug, members },
+      { slug: workspace.slug, members },
       {
-        onSuccess: () => toast.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${project.name}`),
+        onSuccess: () => toast.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${workspace.name}`),
         onError: toastApiError,
       },
     );
@@ -52,13 +52,13 @@ export function MembersCard({ project }: { project: ProjectStatus }) {
       <CardHeader>
         <CardTitle>Servers</CardTitle>
         <CardDescription>
-          The servers this project exposes. Disable one to drop it from the aggregate without removing its overrides.
-          Edit the project to change membership or per-project parameters.
+          The servers this workspace exposes. Disable one to drop it from the aggregate without removing its overrides.
+          Edit the workspace to change membership or per-workspace parameters.
         </CardDescription>
       </CardHeader>
       <CardContent>
         {memberEntries.length === 0 ? (
-          <p className="text-sm text-muted-foreground">This project has no servers yet. Edit it to add some.</p>
+          <p className="text-sm text-muted-foreground">This workspace has no servers yet. Edit it to add some.</p>
         ) : (
           <ul className="flex flex-col divide-y">
             {memberEntries.map(([name, member]) => {
@@ -71,7 +71,7 @@ export function MembersCard({ project }: { project: ProjectStatus }) {
                   <Switch
                     checked={enabled}
                     disabled={update.isPending}
-                    aria-label={`Enable ${name} in project`}
+                    aria-label={`Enable ${name} in workspace`}
                     onCheckedChange={(on) => toggle(name, member, on)}
                   />
                   <div className="min-w-0 flex-1">

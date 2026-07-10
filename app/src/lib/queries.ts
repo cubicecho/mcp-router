@@ -1,9 +1,9 @@
 import type {
-  CreateProjectRequest,
   CreateRegistryRequest,
+  CreateWorkspaceRequest,
   InstallRequest,
-  UpdateProjectRequest,
   UpdateServerRequest,
+  UpdateWorkspaceRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CapabilityScope } from './api';
@@ -11,7 +11,7 @@ import * as api from './api';
 
 /** Root query key for a capability scope; capability keys hang off it. */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {
-  return scope.kind === 'server' ? ['servers', scope.name] : ['projects', scope.slug];
+  return scope.kind === 'server' ? ['servers', scope.name] : ['workspaces', scope.slug];
 }
 
 export const queryKeys = {
@@ -26,8 +26,8 @@ export const queryKeys = {
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
   registryServerDetail: (registry: string, serverName: string) =>
     ['registries', registry, 'servers', serverName] as const,
-  projects: ['projects'] as const,
-  project: (slug: string) => ['projects', slug] as const,
+  workspaces: ['workspaces'] as const,
+  workspace: (slug: string) => ['workspaces', slug] as const,
 };
 
 // --- queries ---
@@ -88,7 +88,7 @@ export function useCapabilityPrompts(scope: CapabilityScope) {
   });
 }
 
-/** Proxied call log for a server or project (in-memory on the server); polls while the tab is open. */
+/** Proxied call log for a server or workspace (in-memory on the server); polls while the tab is open. */
 export function useCapabilityActivity(scope: CapabilityScope) {
   return useQuery({
     queryKey: queryKeys.capabilityActivity(scope),
@@ -97,11 +97,11 @@ export function useCapabilityActivity(scope: CapabilityScope) {
   });
 }
 
-/** Single project detail; kept live so member/enabled changes reflect promptly. */
-export function useProject(slug: string) {
+/** Single workspace detail; kept live so member/enabled changes reflect promptly. */
+export function useWorkspace(slug: string) {
   return useQuery({
-    queryKey: queryKeys.project(slug),
-    queryFn: () => api.getProject(slug),
+    queryKey: queryKeys.workspace(slug),
+    queryFn: () => api.getWorkspace(slug),
     refetchInterval: 10_000,
   });
 }
@@ -124,10 +124,10 @@ export function useRegistrySearch(registry: string, search: string) {
   });
 }
 
-export function useProjects() {
+export function useWorkspaces() {
   return useQuery({
-    queryKey: queryKeys.projects,
-    queryFn: api.listProjects,
+    queryKey: queryKeys.workspaces,
+    queryFn: api.listWorkspaces,
   });
 }
 
@@ -234,27 +234,27 @@ export function useDeleteRegistry() {
   });
 }
 
-export function useCreateProject() {
+export function useCreateWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: CreateProjectRequest) => api.createProject(body),
-    onSuccess: () => invalidate(queryKeys.projects),
+    mutationFn: (body: CreateWorkspaceRequest) => api.createWorkspace(body),
+    onSuccess: () => invalidate(queryKeys.workspaces),
   });
 }
 
-export function useUpdateProject() {
+export function useUpdateWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ slug, ...body }: UpdateProjectRequest & { slug: string }) => api.updateProject(slug, body),
-    onSuccess: () => invalidate(queryKeys.projects),
+    mutationFn: ({ slug, ...body }: UpdateWorkspaceRequest & { slug: string }) => api.updateWorkspace(slug, body),
+    onSuccess: () => invalidate(queryKeys.workspaces),
   });
 }
 
-export function useDeleteProject() {
+export function useDeleteWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (slug: string) => api.deleteProject(slug),
-    onSuccess: () => invalidate(queryKeys.projects),
+    mutationFn: (slug: string) => api.deleteWorkspace(slug),
+    onSuccess: () => invalidate(queryKeys.workspaces),
   });
 }
 

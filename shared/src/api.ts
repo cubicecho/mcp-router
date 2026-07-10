@@ -1,11 +1,11 @@
 import { z } from 'zod';
 import {
-  projectConfigSchema,
-  projectMemberSchema,
   serverConfigSchema,
   serverNameSchema,
   serverSourceSchema,
   serverTransportSchema,
+  workspaceConfigSchema,
+  workspaceMemberSchema,
 } from './config.ts';
 
 /**
@@ -156,34 +156,34 @@ export const createRegistryRequestSchema = z.object({
 });
 export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
 
-// --- /api/projects ---
+// --- /api/workspaces ---
 
-/** A project as returned by the API: its stored config plus the derived endpoint path. */
-export const projectStatusSchema = projectConfigSchema.extend({
-  /** Endpoint path of the project aggregate, e.g. "/mcp/p/my-project". */
+/** A workspace as returned by the API: its stored config plus the derived endpoint path. */
+export const workspaceStatusSchema = workspaceConfigSchema.extend({
+  /** Endpoint path of the workspace aggregate, e.g. "/mcp/w/my-workspace". */
   path: z.string(),
 });
-export type ProjectStatus = z.infer<typeof projectStatusSchema>;
+export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
-export const createProjectRequestSchema = z.object({
+export const createWorkspaceRequestSchema = z.object({
   name: z.string().min(1).max(100),
   /** Slug for the URL; derived from `name` when omitted. */
   slug: serverNameSchema.optional(),
   enabled: z.boolean().optional(),
   description: z.string().optional(),
-  /** Members keyed by base server name; only listed servers are in the project. */
-  members: z.record(projectMemberSchema).optional(),
+  /** Members keyed by base server name; only listed servers are in the workspace. */
+  members: z.record(workspaceMemberSchema).optional(),
 });
-export type CreateProjectRequest = z.infer<typeof createProjectRequestSchema>;
+export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 
-export const updateProjectRequestSchema = z.object({
+export const updateWorkspaceRequestSchema = z.object({
   name: z.string().min(1).max(100).optional(),
   enabled: z.boolean().optional(),
   description: z.string().optional(),
   /** Full replacement of the members map when provided. */
-  members: z.record(projectMemberSchema).optional(),
+  members: z.record(workspaceMemberSchema).optional(),
 });
-export type UpdateProjectRequest = z.infer<typeof updateProjectRequestSchema>;
+export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
 // --- GET /api/status ---
 

@@ -21,7 +21,7 @@ import { isDark, setDark } from '@/lib/theme';
 const NAV_ITEMS = [
   { to: '/', label: 'Servers', icon: ServerIcon },
   { to: '/browse', label: 'Browse', icon: CompassIcon },
-  { to: '/projects', label: 'Projects', icon: LayersIcon },
+  { to: '/workspaces', label: 'Workspaces', icon: LayersIcon },
   { to: '/registries', label: 'Registries', icon: LibraryIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ] as const;

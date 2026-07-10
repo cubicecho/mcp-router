@@ -157,19 +157,19 @@ export type ServerTransport = z.infer<typeof serverTransportSchema>;
 export type EnvVarMeta = z.infer<typeof envVarMetaSchema>;
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 
-// --- projects/<slug>.json ---
+// --- workspaces/<slug>.json ---
 
 /**
- * A server's participation in a project, with optional per-project parameter
+ * A server's participation in a workspace, with optional per-workspace parameter
  * overrides. When any override is set the server runs as its own downstream
- * process for that project (keyed separately from the shared base instance);
- * with no overrides it still runs isolated under the project. Merge semantics:
- * `env` and `headers` are merged over the base server's values (project keys
+ * process for that workspace (keyed separately from the shared base instance);
+ * with no overrides it still runs isolated under the workspace. Merge semantics:
+ * `env` and `headers` are merged over the base server's values (workspace keys
  * win); `args` and `url` replace the base value entirely when present.
  */
-export const projectMemberSchema = z
+export const workspaceMemberSchema = z
   .object({
-    /** Include this server in the project aggregate. Absent members are not in the project. */
+    /** Include this server in the workspace aggregate. Absent members are not in the workspace. */
     enabled: z.boolean().default(true),
     /** Env vars merged over the base server's env (stdio children). */
     env: z.record(z.string()).optional(),
@@ -178,28 +178,28 @@ export const projectMemberSchema = z
     /** Headers merged over the base server's headers (remote streamable-http). */
     headers: z.record(z.string()).optional(),
     /** Replaces the base server's streamable-http URL entirely when set (remote members) —
-     *  e.g. to scope a shared upstream to a project-specific path. */
+     *  e.g. to scope a shared upstream to a workspace-specific path. */
     url: z.string().url().optional(),
   })
   .passthrough();
 
-/** A named custom aggregate exposing a chosen subset of servers at /mcp/p/<slug>. */
-export const projectConfigSchema = z
+/** A named custom aggregate exposing a chosen subset of servers at /mcp/w/<slug>. */
+export const workspaceConfigSchema = z
   .object({
     /** Human-facing display name. */
     name: z.string().min(1).max(100),
-    /** URL slug — the route segment at /mcp/p/<slug>, also the config filename. */
+    /** URL slug — the route segment at /mcp/w/<slug>, also the config filename. */
     slug: serverNameSchema,
-    /** Disable to 404 the project's endpoint without deleting it. */
+    /** Disable to 404 the workspace's endpoint without deleting it. */
     enabled: z.boolean().default(true),
     description: z.string().optional(),
-    /** Members keyed by base server name. Only listed servers are in the project. */
-    members: z.record(projectMemberSchema).default({}),
+    /** Members keyed by base server name. Only listed servers are in the workspace. */
+    members: z.record(workspaceMemberSchema).default({}),
   })
   .passthrough();
 
-export type ProjectMember = z.infer<typeof projectMemberSchema>;
-export type ProjectConfig = z.infer<typeof projectConfigSchema>;
+export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
+export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
 /** Derive a URL slug (a valid serverNameSchema value) from a display name. */
 export function slugify(name: string): string {

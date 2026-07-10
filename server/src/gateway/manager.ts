@@ -1,11 +1,11 @@
 import { isDeepStrictEqual } from 'node:util';
 import type {
   ActivityEntry,
-  ProjectConfig,
-  ProjectMember,
   ServerConfig,
   ServerStatus,
   SettingsFile,
+  WorkspaceConfig,
+  WorkspaceMember,
 } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
@@ -73,7 +73,7 @@ function snapshotValue(value: unknown): unknown {
 }
 
 interface ManagedServer {
-  /** Map key: the server name for base instances, `p:<slug>:<server>` for project-scoped ones. */
+  /** Map key: the server name for base instances, `w:<slug>:<server>` for workspace-scoped ones. */
   key: string;
   config: ServerConfig;
   client: Client | null;
@@ -108,25 +108,29 @@ function newEntry(key: string, config: ServerConfig): ManagedServer {
   };
 }
 
-/** Map key for a server instance scoped to a project. Contains ':' so it never collides with a base server name. */
-export function projectInstanceKey(slug: string, serverName: string): string {
-  return `p:${slug}:${serverName}`;
+/** Map key for a server instance scoped to a workspace. Contains ':' so it never collides with a base server name. */
+export function workspaceInstanceKey(slug: string, serverName: string): string {
+  return `w:${slug}:${serverName}`;
 }
 
-/** True for a project-scoped instance key (base keys are plain server names, which cannot contain ':'). */
-function isProjectKey(key: string): boolean {
+/** True for a workspace-scoped instance key (base keys are plain server names, which cannot contain ':'). */
+function isWorkspaceKey(key: string): boolean {
   return key.includes(':');
 }
 
 /**
- * Effective downstream config for a server as used by a project: the base
- * server config with per-project overrides applied. `env`/`headers` merge over
- * the base (project wins); `args` replaces the base stdio args and `url` replaces
+ * Effective downstream config for a server as used by a workspace: the base
+ * server config with per-workspace overrides applied. `env`/`headers` merge over
+ * the base (workspace wins); `args` replaces the base stdio args and `url` replaces
  * the base streamable-http URL. The config keeps the base server's `name` so
  * aggregate tool namespacing is unaffected; its `enabled` reflects both the
- * project and the member being on.
+ * workspace and the member being on.
  */
-export function resolveMemberConfig(base: ServerConfig, member: ProjectMember, project: ProjectConfig): ServerConfig {
+export function resolveMemberConfig(
+  base: ServerConfig,
+  member: WorkspaceMember,
+  workspace: WorkspaceConfig,
+): ServerConfig {
   let transport = base.transport;
   if (transport.type === 'stdio' && member.args) {
     transport = { ...transport, args: member.args };
@@ -139,7 +143,7 @@ export function resolveMemberConfig(base: ServerConfig, member: ProjectMember, p
   }
   return {
     ...base,
-    enabled: project.enabled && (member.enabled ?? true),
+    enabled: workspace.enabled && (member.enabled ?? true),
     transport,
     env: member.env ? { ...base.env, ...member.env } : base.env,
   };
@@ -185,22 +189,22 @@ export class GatewayManager {
   }
 
   /**
-   * Sync managed entries with the given server + project configs: drop removed,
+   * Sync managed entries with the given server + workspace configs: drop removed,
    * restart changed/disabled, add new. Base servers are keyed by name; each
-   * project member that references an existing server gets its own isolated
-   * downstream instance keyed `p:<slug>:<server>` with per-project overrides
-   * applied, so a project can run a server independently of its global state.
+   * workspace member that references an existing server gets its own isolated
+   * downstream instance keyed `w:<slug>:<server>` with per-workspace overrides
+   * applied, so a workspace can run a server independently of its global state.
    */
-  reconcile(configs: ServerConfig[], projects: ProjectConfig[] = []): void {
+  reconcile(configs: ServerConfig[], workspaces: WorkspaceConfig[] = []): void {
     const byName = new Map(configs.map((c) => [c.name, c]));
     const desired = new Map<string, ServerConfig>(byName);
-    for (const project of projects) {
-      for (const [serverName, member] of Object.entries(project.members)) {
+    for (const workspace of workspaces) {
+      for (const [serverName, member] of Object.entries(workspace.members)) {
         const base = byName.get(serverName);
         if (!base) {
           continue; // member references a server that no longer exists
         }
-        desired.set(projectInstanceKey(project.slug, serverName), resolveMemberConfig(base, member, project));
+        desired.set(workspaceInstanceKey(workspace.slug, serverName), resolveMemberConfig(base, member, workspace));
       }
     }
     for (const [key, entry] of this.entries) {
@@ -229,7 +233,7 @@ export class GatewayManager {
   /**
    * Connect (spawning if needed) and return the downstream client for the given
    * instance key. Resets the idle timer. For base servers the key is the server
-   * name; for project-scoped instances use {@link getClientForProject}.
+   * name; for workspace-scoped instances use {@link getClientForWorkspace}.
    */
   async getClient(name: string): Promise<Client> {
     const entry = this.entries.get(name);
@@ -253,9 +257,9 @@ export class GatewayManager {
     return connecting;
   }
 
-  /** Connect (spawning if needed) and return the project-scoped client for a server. */
-  getClientForProject(slug: string, serverName: string): Promise<Client> {
-    return this.getClient(projectInstanceKey(slug, serverName));
+  /** Connect (spawning if needed) and return the workspace-scoped client for a server. */
+  getClientForWorkspace(slug: string, serverName: string): Promise<Client> {
+    return this.getClient(workspaceInstanceKey(slug, serverName));
   }
 
   status(name: string): ServerStatus | undefined {
@@ -264,21 +268,21 @@ export class GatewayManager {
   }
 
   statusAll(): ServerStatus[] {
-    // Only base servers are exposed as "servers"; project-scoped instances are an internal detail.
+    // Only base servers are exposed as "servers"; workspace-scoped instances are an internal detail.
     return [...this.entries.values()]
-      .filter((e) => !isProjectKey(e.key))
+      .filter((e) => !isWorkspaceKey(e.key))
       .map(toStatus)
       .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
   runningCount(): number {
-    return [...this.entries.values()].filter((e) => !isProjectKey(e.key) && e.state === 'running').length;
+    return [...this.entries.values()].filter((e) => !isWorkspaceKey(e.key) && e.state === 'running').length;
   }
 
   /**
    * Subscribe to downstream server→client notifications. The listener is called
-   * with the instance key (base server name, or `p:<slug>:<server>` for a
-   * project instance) and the raw notification. Returns an unsubscribe function.
+   * with the instance key (base server name, or `w:<slug>:<server>` for a
+   * workspace instance) and the raw notification. Returns an unsubscribe function.
    * Used by MCP sessions to relay list_changed / resources/updated / log
    * messages to their upstream client; survives downstream respawns because the
    * handler is (re)installed on every {@link connect}.
@@ -349,7 +353,7 @@ export class GatewayManager {
   /** Names of all enabled base servers (for the global aggregate endpoint). */
   enabledNames(): string[] {
     return [...this.entries.values()]
-      .filter((e) => !isProjectKey(e.key) && e.config.enabled)
+      .filter((e) => !isWorkspaceKey(e.key) && e.config.enabled)
       .map((e) => e.config.name)
       .sort();
   }

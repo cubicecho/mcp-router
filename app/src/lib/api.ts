@@ -1,10 +1,9 @@
 import type {
   ActivityResponse,
   ApiError,
-  CreateProjectRequest,
   CreateRegistryRequest,
+  CreateWorkspaceRequest,
   InstallRequest,
-  ProjectStatus,
   PromptGetRequest,
   PromptGetResponse,
   Registry,
@@ -17,9 +16,10 @@ import type {
   ServerStatus,
   ToolCallRequest,
   ToolCallResponse,
-  UpdateProjectRequest,
   UpdateServerRequest,
   UpdateSettingsRequest,
+  UpdateWorkspaceRequest,
+  WorkspaceStatus,
 } from '@mcp-router/shared';
 import { getToken, requireAuth } from './auth';
 
@@ -116,16 +116,16 @@ export function restartServer(name: string): Promise<ServerStatus> {
 
 /**
  * A capability surface (tools/resources/prompts/activity + test calls) is served
- * for either a single server (`/api/servers/:name/…`) or a project aggregate
- * (`/api/projects/:slug/…`). The two share request/response shapes, so one set of
+ * for either a single server (`/api/servers/:name/…`) or a workspace aggregate
+ * (`/api/workspaces/:slug/…`). The two share request/response shapes, so one set of
  * functions/hooks/components serves both — pick the base path from the scope.
  */
-export type CapabilityScope = { kind: 'server'; name: string } | { kind: 'project'; slug: string };
+export type CapabilityScope = { kind: 'server'; name: string } | { kind: 'workspace'; slug: string };
 
 function scopeBase(scope: CapabilityScope): string {
   return scope.kind === 'server'
     ? `/api/servers/${encodeURIComponent(scope.name)}`
-    : `/api/projects/${encodeURIComponent(scope.slug)}`;
+    : `/api/workspaces/${encodeURIComponent(scope.slug)}`;
 }
 
 /** One tool of a downstream server, as reported by MCP tools/list. */
@@ -253,26 +253,26 @@ export async function getRegistryServerDetail(registry: string, serverName: stri
     : (data as RegistryServer);
 }
 
-// --- projects ---
+// --- workspaces ---
 
-export function listProjects(): Promise<ProjectStatus[]> {
-  return request('/api/projects');
+export function listWorkspaces(): Promise<WorkspaceStatus[]> {
+  return request('/api/workspaces');
 }
 
-export function getProject(slug: string): Promise<ProjectStatus> {
-  return request(`/api/projects/${encodeURIComponent(slug)}`);
+export function getWorkspace(slug: string): Promise<WorkspaceStatus> {
+  return request(`/api/workspaces/${encodeURIComponent(slug)}`);
 }
 
-export function createProject(body: CreateProjectRequest): Promise<ProjectStatus> {
-  return request('/api/projects', { method: 'POST', body });
+export function createWorkspace(body: CreateWorkspaceRequest): Promise<WorkspaceStatus> {
+  return request('/api/workspaces', { method: 'POST', body });
 }
 
-export function updateProject(slug: string, body: UpdateProjectRequest): Promise<ProjectStatus> {
-  return request(`/api/projects/${encodeURIComponent(slug)}`, { method: 'PATCH', body });
+export function updateWorkspace(slug: string, body: UpdateWorkspaceRequest): Promise<WorkspaceStatus> {
+  return request(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'PATCH', body });
 }
 
-export function deleteProject(slug: string): Promise<void> {
-  return request(`/api/projects/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+export function deleteWorkspace(slug: string): Promise<void> {
+  return request(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'DELETE' });
 }
 
 // --- config ---

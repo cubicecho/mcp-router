@@ -3,12 +3,12 @@ import { ArrowLeftIcon, CheckIcon, CopyIcon, PencilIcon, Trash2Icon } from 'luci
 import { type ReactNode, useState } from 'react';
 import { toast } from 'sonner';
 import { ConnectCard } from '@/components/domain/connect-card';
-import { MembersCard } from '@/components/domain/project/members-card';
-import { ProjectDialog } from '@/components/domain/project/project-dialog';
 import { ActivityCard } from '@/components/domain/server/activity-card';
 import { PromptsCard } from '@/components/domain/server/prompts-card';
 import { ResourcesCard } from '@/components/domain/server/resources-card';
 import { ToolsCard } from '@/components/domain/server/tools-card';
+import { MembersCard } from '@/components/domain/workspace/members-card';
+import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -26,11 +26,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useDeleteProject, useProject, useUpdateProject } from '@/lib/queries';
+import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-export const Route = createFileRoute('/projects_/$slug')({
-  component: ProjectDetailPage,
+export const Route = createFileRoute('/workspaces_/$slug')({
+  component: WorkspaceDetailPage,
 });
 
 function CopyButton({ text }: { text: string }) {
@@ -62,22 +62,22 @@ function OverviewRow({ label, children }: { label: string; children: ReactNode }
   );
 }
 
-function ProjectDetailPage() {
+function WorkspaceDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();
-  const { data: project, isPending, error } = useProject(slug);
-  const update = useUpdateProject();
-  const remove = useDeleteProject();
+  const { data: workspace, isPending, error } = useWorkspace(slug);
+  const update = useUpdateWorkspace();
+  const remove = useDeleteWorkspace();
   const [editOpen, setEditOpen] = useState(false);
 
-  const endpointUrl = `${window.location.origin}/mcp/p/${slug}`;
-  const scope = { kind: 'project', slug } as const;
+  const endpointUrl = `${window.location.origin}/mcp/w/${slug}`;
+  const scope = { kind: 'workspace', slug } as const;
 
   const handleDelete = () => {
     remove.mutate(slug, {
       onSuccess: () => {
-        toast.success(`Deleted project ${project?.name ?? slug}`);
-        navigate({ to: '/projects' });
+        toast.success(`Deleted workspace ${workspace?.name ?? slug}`);
+        navigate({ to: '/workspaces' });
       },
       onError: toastApiError,
     });
@@ -86,21 +86,21 @@ function ProjectDetailPage() {
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-center gap-3">
-        <Button asChild variant="ghost" size="icon-sm" aria-label="Back to projects">
-          <Link to="/projects">
+        <Button asChild variant="ghost" size="icon-sm" aria-label="Back to workspaces">
+          <Link to="/workspaces">
             <ArrowLeftIcon />
           </Link>
         </Button>
         <div>
-          <h1 className="text-2xl font-semibold">{project?.name ?? slug}</h1>
-          <p className="text-sm text-muted-foreground">{project?.description}</p>
+          <h1 className="text-2xl font-semibold">{workspace?.name ?? slug}</h1>
+          <p className="text-sm text-muted-foreground">{workspace?.description}</p>
         </div>
       </div>
 
       {isPending && <Skeleton className="h-64 w-full" />}
-      {error && <p className="text-sm text-destructive">Failed to load project: {error.message}</p>}
+      {error && <p className="text-sm text-destructive">Failed to load workspace: {error.message}</p>}
 
-      {project && (
+      {workspace && (
         <>
           <Card>
             <CardHeader>
@@ -118,9 +118,9 @@ function ProjectDetailPage() {
                     </AlertDialogTrigger>
                     <AlertDialogContent>
                       <AlertDialogHeader>
-                        <AlertDialogTitle>Delete project {project.name}?</AlertDialogTitle>
+                        <AlertDialogTitle>Delete workspace {workspace.name}?</AlertDialogTitle>
                         <AlertDialogDescription>
-                          The project's endpoint ({project.path}) stops responding. The underlying servers and their
+                          The workspace's endpoint ({workspace.path}) stops responding. The underlying servers and their
                           global configuration are not affected.
                         </AlertDialogDescription>
                       </AlertDialogHeader>
@@ -141,7 +141,7 @@ function ProjectDetailPage() {
                 </span>
               </OverviewRow>
               <OverviewRow label="Status">
-                {project.enabled ? (
+                {workspace.enabled ? (
                   <Badge variant="outline">Enabled</Badge>
                 ) : (
                   <Badge variant="secondary">Disabled</Badge>
@@ -149,14 +149,14 @@ function ProjectDetailPage() {
               </OverviewRow>
               <OverviewRow label="Enabled">
                 <Switch
-                  checked={project.enabled}
+                  checked={workspace.enabled}
                   disabled={update.isPending}
-                  aria-label={`Enable project ${slug}`}
+                  aria-label={`Enable workspace ${slug}`}
                   onCheckedChange={(enabled) =>
                     update.mutate(
                       { slug, enabled },
                       {
-                        onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${project.name}`),
+                        onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
                         onError: toastApiError,
                       },
                     )
@@ -166,7 +166,7 @@ function ProjectDetailPage() {
             </CardContent>
           </Card>
 
-          <MembersCard project={project} />
+          <MembersCard workspace={workspace} />
 
           <Tabs defaultValue="tools">
             <TabsList>
@@ -192,12 +192,12 @@ function ProjectDetailPage() {
               <ConnectCard
                 endpoint={endpointUrl}
                 label={slug}
-                description={`Point an MCP client at this project's aggregate endpoint (tools are <server>__-namespaced).`}
+                description={`Point an MCP client at this workspace's aggregate endpoint (tools are <server>__-namespaced).`}
               />
             </TabsContent>
           </Tabs>
 
-          {editOpen && <ProjectDialog key={slug} open project={project} onOpenChange={setEditOpen} />}
+          {editOpen && <WorkspaceDialog key={slug} open workspace={workspace} onOpenChange={setEditOpen} />}
         </>
       )}
     </div>

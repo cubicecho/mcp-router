@@ -1,7 +1,7 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { projectConfigSchema, serverConfigSchema, settingsFileSchema } from '@mcp-router/shared';
+import { serverConfigSchema, settingsFileSchema, workspaceConfigSchema } from '@mcp-router/shared';
 import { describe, expect, it } from 'vitest';
-import { GatewayManager, projectInstanceKey } from '../manager.ts';
+import { GatewayManager, workspaceInstanceKey } from '../manager.ts';
 
 const settings = settingsFileSchema.parse({});
 const remoteConfig = (name: string) =>
@@ -107,7 +107,7 @@ describe('GatewayManager activity log', () => {
   });
 });
 
-describe('GatewayManager projects', () => {
+describe('GatewayManager workspaces', () => {
   const stdioConfig = (name: string) =>
     serverConfigSchema.parse({
       name,
@@ -116,17 +116,17 @@ describe('GatewayManager projects', () => {
       env: { BASE: '1', SHARED: 'base' },
     });
 
-  const project = (members: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
-    projectConfigSchema.parse({ name: 'Acme', slug: 'acme', members, ...extra });
+  const workspace = (members: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
+    workspaceConfigSchema.parse({ name: 'Acme', slug: 'acme', members, ...extra });
 
-  it('creates a project-scoped instance with per-member overrides applied', () => {
+  it('creates a workspace-scoped instance with per-member overrides applied', () => {
     const manager = new GatewayManager(() => settings);
     manager.reconcile(
       [stdioConfig('gh')],
-      [project({ gh: { env: { SHARED: 'override', EXTRA: 'x' }, args: ['custom.js'] } })],
+      [workspace({ gh: { env: { SHARED: 'override', EXTRA: 'x' }, args: ['custom.js'] } })],
     );
 
-    const status = manager.status(projectInstanceKey('acme', 'gh'));
+    const status = manager.status(workspaceInstanceKey('acme', 'gh'));
     expect(status).toBeDefined();
     // Keeps the base name (for tool namespacing) but with overrides merged in.
     expect(status?.config.name).toBe('gh');
@@ -147,13 +147,17 @@ describe('GatewayManager projects', () => {
     });
     manager.reconcile(
       [remote],
-      [project({ api: { url: 'http://localhost:1001/mcp/p/something', headers: { Authorization: 'Bearer scoped' } } })],
+      [
+        workspace({
+          api: { url: 'http://localhost:1001/mcp/w/something', headers: { Authorization: 'Bearer scoped' } },
+        }),
+      ],
     );
 
-    const transport = manager.status(projectInstanceKey('acme', 'api'))?.config.transport;
+    const transport = manager.status(workspaceInstanceKey('acme', 'api'))?.config.transport;
     expect(transport).toMatchObject({
       type: 'streamable-http',
-      url: 'http://localhost:1001/mcp/p/something',
+      url: 'http://localhost:1001/mcp/w/something',
       headers: { 'X-Base': 'base', Authorization: 'Bearer scoped' },
     });
   });
@@ -165,54 +169,54 @@ describe('GatewayManager projects', () => {
       source: { type: 'remote' },
       transport: { type: 'streamable-http', url: 'http://localhost:1001/mcp' },
     });
-    manager.reconcile([remote], [project({ api: {} })]);
+    manager.reconcile([remote], [workspace({ api: {} })]);
 
-    expect(manager.status(projectInstanceKey('acme', 'api'))?.config.transport).toMatchObject({
+    expect(manager.status(workspaceInstanceKey('acme', 'api'))?.config.transport).toMatchObject({
       url: 'http://localhost:1001/mcp',
     });
   });
 
-  it('keeps project instances out of the base server views (statusAll / enabledNames)', () => {
+  it('keeps workspace instances out of the base server views (statusAll / enabledNames)', () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [project({ gh: {} })]);
+    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
 
     expect(manager.enabledNames()).toEqual(['gh']);
     expect(manager.statusAll().map((s) => s.config.name)).toEqual(['gh']);
   });
 
-  it('runs a project member even when its base server is globally disabled (independent scope)', () => {
+  it('runs a workspace member even when its base server is globally disabled (independent scope)', () => {
     const manager = new GatewayManager(() => settings);
     const disabledBase = serverConfigSchema.parse({ ...stdioConfig('gh'), enabled: false });
-    manager.reconcile([disabledBase], [project({ gh: {} })]);
+    manager.reconcile([disabledBase], [workspace({ gh: {} })]);
 
     // The base server is off globally...
     expect(manager.enabledNames()).toEqual([]);
-    // ...but its project-scoped instance is enabled and connectable.
-    expect(manager.status(projectInstanceKey('acme', 'gh'))?.config.enabled).toBe(true);
+    // ...but its workspace-scoped instance is enabled and connectable.
+    expect(manager.status(workspaceInstanceKey('acme', 'gh'))?.config.enabled).toBe(true);
   });
 
-  it('disables a project instance when the project itself is disabled', () => {
+  it('disables a workspace instance when the workspace itself is disabled', () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [project({ gh: {} }, { enabled: false })]);
+    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} }, { enabled: false })]);
 
-    expect(manager.status(projectInstanceKey('acme', 'gh'))?.config.enabled).toBe(false);
+    expect(manager.status(workspaceInstanceKey('acme', 'gh'))?.config.enabled).toBe(false);
   });
 
-  it('drops project instances whose base server no longer exists', () => {
+  it('drops workspace instances whose base server no longer exists', () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [project({ gh: {}, ghost: {} })]);
+    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {}, ghost: {} })]);
 
-    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeDefined();
-    expect(manager.status(projectInstanceKey('acme', 'ghost'))).toBeUndefined();
+    expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeDefined();
+    expect(manager.status(workspaceInstanceKey('acme', 'ghost'))).toBeUndefined();
   });
 
-  it('removes a project instance when the project is removed on a later reconcile', () => {
+  it('removes a workspace instance when the workspace is removed on a later reconcile', () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [project({ gh: {} })]);
-    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeDefined();
+    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
+    expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeDefined();
 
     manager.reconcile([stdioConfig('gh')], []);
-    expect(manager.status(projectInstanceKey('acme', 'gh'))).toBeUndefined();
+    expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeUndefined();
     // The base server survives.
     expect(manager.status('gh')).toBeDefined();
   });

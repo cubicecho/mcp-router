@@ -90,8 +90,8 @@ export function ToolsCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch, isRefetching } = useCapabilityTools(scope);
   const tools = data?.tools ?? [];
   const description =
-    scope.kind === 'project'
-      ? 'Tools exposed by the project aggregate, `<server>__`-namespaced, with per-project overrides applied. Expand one to run it with JSON arguments — runs show up in the Activity tab.'
+    scope.kind === 'workspace'
+      ? 'Tools exposed by the workspace aggregate, `<server>__`-namespaced, with per-workspace overrides applied. Expand one to run it with JSON arguments — runs show up in the Activity tab.'
       : 'Tools reported by the downstream server. Expand one to run it with JSON arguments — runs show up in the Activity tab.';
 
   return (

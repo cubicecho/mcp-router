@@ -1,9 +1,9 @@
-import type { ProjectStatus } from '@mcp-router/shared';
+import type { WorkspaceStatus } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { CheckIcon, CopyIcon, LayersIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ProjectDialog } from '@/components/domain/project/project-dialog';
+import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -20,15 +20,15 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Skeleton } from '@/components/ui/skeleton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
-import { useDeleteProject, useProjects } from '@/lib/queries';
+import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-export const Route = createFileRoute('/projects')({
-  component: ProjectsPage,
+export const Route = createFileRoute('/workspaces')({
+  component: WorkspacesPage,
 });
 
-/** create → the New button; edit → a specific project; null → closed. */
-type DialogState = { mode: 'create' } | { mode: 'edit'; project: ProjectStatus } | null;
+/** create → the New button; edit → a specific workspace; null → closed. */
+type DialogState = { mode: 'create' } | { mode: 'edit'; workspace: WorkspaceStatus } | null;
 
 function CopyUrlButton({ path }: { path: string }) {
   const [copied, setCopied] = useState(false);
@@ -48,42 +48,42 @@ function CopyUrlButton({ path }: { path: string }) {
   );
 }
 
-function ProjectsPage() {
-  const { data, isPending, error } = useProjects();
-  const remove = useDeleteProject();
+function WorkspacesPage() {
+  const { data, isPending, error } = useWorkspaces();
+  const remove = useDeleteWorkspace();
   const [dialog, setDialog] = useState<DialogState>(null);
 
   return (
     <div className="flex flex-col gap-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-semibold">Projects</h1>
+          <h1 className="text-2xl font-semibold">Workspaces</h1>
           <p className="text-sm text-muted-foreground">
-            Custom aggregates: expose a chosen subset of servers at their own URL, with optional per-project parameter
+            Custom aggregates: expose a chosen subset of servers at their own URL, with optional per-workspace parameter
             overrides.
           </p>
         </div>
         <Button onClick={() => setDialog({ mode: 'create' })}>
-          <PlusIcon /> New project
+          <PlusIcon /> New workspace
         </Button>
       </div>
 
       {isPending && <Skeleton className="h-32 w-full" />}
-      {error && <p className="text-sm text-destructive">Failed to load projects: {error.message}</p>}
+      {error && <p className="text-sm text-destructive">Failed to load workspaces: {error.message}</p>}
 
       {data && data.length === 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <LayersIcon className="size-5" /> No projects yet
+              <LayersIcon className="size-5" /> No workspaces yet
             </CardTitle>
             <CardDescription>
-              Create a project to expose a tailored aggregate endpoint for a specific client or workspace.
+              Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace.
             </CardDescription>
           </CardHeader>
           <CardContent>
             <Button onClick={() => setDialog({ mode: 'create' })}>
-              <PlusIcon /> New project
+              <PlusIcon /> New workspace
             </Button>
           </CardContent>
         </Card>
@@ -101,29 +101,29 @@ function ProjectsPage() {
             </TableRow>
           </TableHeader>
           <TableBody>
-            {data.map((project) => {
-              const memberCount = Object.values(project.members).filter((m) => m.enabled ?? true).length;
+            {data.map((workspace) => {
+              const memberCount = Object.values(workspace.members).filter((m) => m.enabled ?? true).length;
               return (
-                <TableRow key={project.slug}>
+                <TableRow key={workspace.slug}>
                   <TableCell className="font-medium">
-                    <Link to="/projects/$slug" params={{ slug: project.slug }} className="hover:underline">
-                      {project.name}
+                    <Link to="/workspaces/$slug" params={{ slug: workspace.slug }} className="hover:underline">
+                      {workspace.name}
                     </Link>
-                    {project.description && (
-                      <span className="block text-xs font-normal text-muted-foreground">{project.description}</span>
+                    {workspace.description && (
+                      <span className="block text-xs font-normal text-muted-foreground">{workspace.description}</span>
                     )}
                   </TableCell>
                   <TableCell>
                     <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
-                      {project.path}
-                      <CopyUrlButton path={project.path} />
+                      {workspace.path}
+                      <CopyUrlButton path={workspace.path} />
                     </span>
                   </TableCell>
                   <TableCell className="text-muted-foreground">
                     {memberCount} {memberCount === 1 ? 'server' : 'servers'}
                   </TableCell>
                   <TableCell>
-                    {project.enabled ? (
+                    {workspace.enabled ? (
                       <Badge variant="outline">Enabled</Badge>
                     ) : (
                       <Badge variant="secondary">Disabled</Badge>
@@ -133,31 +133,31 @@ function ProjectsPage() {
                     <Button
                       variant="ghost"
                       size="icon-sm"
-                      aria-label={`Edit ${project.name}`}
-                      onClick={() => setDialog({ mode: 'edit', project })}
+                      aria-label={`Edit ${workspace.name}`}
+                      onClick={() => setDialog({ mode: 'edit', workspace })}
                     >
                       <PencilIcon />
                     </Button>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
-                        <Button variant="ghost" size="icon-sm" aria-label={`Delete ${project.name}`}>
+                        <Button variant="ghost" size="icon-sm" aria-label={`Delete ${workspace.name}`}>
                           <Trash2Icon className="text-destructive" />
                         </Button>
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>Delete project {project.name}?</AlertDialogTitle>
+                          <AlertDialogTitle>Delete workspace {workspace.name}?</AlertDialogTitle>
                           <AlertDialogDescription>
-                            The project's endpoint ({project.path}) stops responding. The underlying servers and their
-                            global configuration are not affected.
+                            The workspace's endpoint ({workspace.path}) stops responding. The underlying servers and
+                            their global configuration are not affected.
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
                           <AlertDialogCancel>Cancel</AlertDialogCancel>
                           <AlertDialogAction
                             onClick={() =>
-                              remove.mutate(project.slug, {
-                                onSuccess: () => toast.success(`Deleted project ${project.name}`),
+                              remove.mutate(workspace.slug, {
+                                onSuccess: () => toast.success(`Deleted workspace ${workspace.name}`),
                                 onError: toastApiError,
                               })
                             }
@@ -176,11 +176,11 @@ function ProjectsPage() {
       )}
 
       {dialog && (
-        <ProjectDialog
-          key={dialog.mode === 'edit' ? dialog.project.slug : 'new'}
+        <WorkspaceDialog
+          key={dialog.mode === 'edit' ? dialog.workspace.slug : 'new'}
           open
           onOpenChange={(open) => !open && setDialog(null)}
-          project={dialog.mode === 'edit' ? dialog.project : undefined}
+          workspace={dialog.mode === 'edit' ? dialog.workspace : undefined}
         />
       )}
     </div>
