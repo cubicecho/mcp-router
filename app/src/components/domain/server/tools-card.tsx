@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import type { ServerTool } from '@/lib/api';
-import { useCallServerTool, useServerTools } from '@/lib/queries';
+import type { CapabilityScope, ServerTool } from '@/lib/api';
+import { useCallTool, useCapabilityTools } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
 /** Prefill the args editor from the tool's input schema: one key per property. */
@@ -29,11 +29,11 @@ function argsTemplate(inputSchema: unknown): string {
   return JSON.stringify(template, null, 2);
 }
 
-function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool }) {
+function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) {
   const schemaSig = JSON.stringify(tool.inputSchema);
   const [seededSig, setSeededSig] = useState(schemaSig);
   const [argsText, setArgsText] = useState(() => argsTemplate(tool.inputSchema));
-  const call = useCallServerTool(serverName);
+  const call = useCallTool(scope);
   const { result, run, pending } = useCapabilityRun(call);
 
   // A refetch that genuinely changes this tool's schema re-seeds the args editor
@@ -86,14 +86,18 @@ function ToolRow({ serverName, tool }: { serverName: string; tool: ServerTool })
   );
 }
 
-export function ToolsCard({ name }: { name: string }) {
-  const { data, isPending, error, refetch, isRefetching } = useServerTools(name);
+export function ToolsCard({ scope }: { scope: CapabilityScope }) {
+  const { data, isPending, error, refetch, isRefetching } = useCapabilityTools(scope);
   const tools = data?.tools ?? [];
+  const description =
+    scope.kind === 'project'
+      ? 'Tools exposed by the project aggregate, `<server>__`-namespaced, with per-project overrides applied. Expand one to run it with JSON arguments — runs show up in the Activity tab.'
+      : 'Tools reported by the downstream server. Expand one to run it with JSON arguments — runs show up in the Activity tab.';
 
   return (
     <CapabilityList
       title="Tools"
-      description="Tools reported by the downstream server. Expand one to run it with JSON arguments — runs show up in the Activity tab."
+      description={description}
       isPending={isPending}
       error={error}
       isRefetching={isRefetching}
@@ -103,7 +107,7 @@ export function ToolsCard({ name }: { name: string }) {
       emptyText="No tools reported."
     >
       {tools.map((tool) => (
-        <ToolRow key={tool.name} serverName={name} tool={tool} />
+        <ToolRow key={tool.name} scope={scope} tool={tool} />
       ))}
     </CapabilityList>
   );

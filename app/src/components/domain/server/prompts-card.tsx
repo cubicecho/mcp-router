@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import type { ServerPrompt } from '@/lib/api';
-import { useGetServerPrompt, useServerPrompts } from '@/lib/queries';
+import type { CapabilityScope, ServerPrompt } from '@/lib/api';
+import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
-function PromptRow({ serverName, prompt }: { serverName: string; prompt: ServerPrompt }) {
+function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
   const [args, setArgs] = useState<Record<string, string>>({});
-  const get = useGetServerPrompt(serverName);
+  const get = useGetPrompt(scope);
   const { result, run, pending } = useCapabilityRun(get);
   const declaredArgs = prompt.arguments ?? [];
 
@@ -51,14 +51,18 @@ function PromptRow({ serverName, prompt }: { serverName: string; prompt: ServerP
   );
 }
 
-export function PromptsCard({ name }: { name: string }) {
-  const { data, isPending, error, refetch, isRefetching } = useServerPrompts(name);
+export function PromptsCard({ scope }: { scope: CapabilityScope }) {
+  const { data, isPending, error, refetch, isRefetching } = useCapabilityPrompts(scope);
   const prompts = data?.prompts ?? [];
+  const description =
+    scope.kind === 'project'
+      ? 'Prompt templates exposed by the project aggregate, `<server>__`-namespaced. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.'
+      : 'Prompt templates exposed by the downstream server. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.';
 
   return (
     <CapabilityList
       title="Prompts"
-      description="Prompt templates exposed by the downstream server. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab."
+      description={description}
       isPending={isPending}
       error={error}
       isRefetching={isRefetching}
@@ -68,7 +72,7 @@ export function PromptsCard({ name }: { name: string }) {
       emptyText="No prompts reported."
     >
       {prompts.map((prompt) => (
-        <PromptRow key={prompt.name} serverName={name} prompt={prompt} />
+        <PromptRow key={prompt.name} scope={scope} prompt={prompt} />
       ))}
     </CapabilityList>
   );

@@ -19,6 +19,8 @@ import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
+import { projectInstanceKey } from '../gateway/manager.ts';
+import { namespaceName, splitNamespacedName } from '../gateway/naming.ts';
 import { listAll } from '../gateway/pagination.ts';
 import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
@@ -492,6 +494,200 @@ export function createApiRouter(deps: ApiDeps): Router {
     requireProject(req.params.slug);
     await store.deleteProject(req.params.slug);
     manager.reconcile(store.getServers(), store.getProjects());
+    res.status(204).end();
+  });
+
+  // --- project capabilities (tools/resources/prompts + activity) ---
+  //
+  // These mirror the per-server capability endpoints but run against each
+  // member's project-scoped downstream instance (so per-project param overrides
+  // apply), and present tools/resources/prompts exactly as the /mcp/p/:slug
+  // aggregate does — `<server>__`-namespaced. Test calls route by that namespace
+  // back to the owning member and record activity under its project instance key.
+
+  /** Enabled members whose base server still exists (what the aggregate exposes), sorted. */
+  const enabledMembers = (project: ProjectConfig): string[] =>
+    Object.entries(project.members)
+      .filter(([name, member]) => (member.enabled ?? true) && store.getServer(name))
+      .map(([name]) => name)
+      .sort();
+
+  /** All members whose base server still exists (enabled or not), sorted — used for activity history. */
+  const existingMembers = (project: ProjectConfig): string[] =>
+    Object.keys(project.members)
+      .filter((name) => store.getServer(name))
+      .sort();
+
+  // Fan a listing out over a project's enabled members, like the aggregate's
+  // collect(): a member that lacks the capability contributes nothing; any other
+  // failure is skipped (not fatal to the whole list) but recorded to that
+  // member's project activity log so the Activity view shows why it's missing.
+  const projectCollect = async <T>(
+    project: ProjectConfig,
+    method: string,
+    fn: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<T[]>,
+  ): Promise<T[]> => {
+    const results = await Promise.all(
+      enabledMembers(project).map(async (name) => {
+        const startedAt = Date.now();
+        try {
+          return await fn(await manager.getClientForProject(project.slug, name), name);
+        } catch (cause) {
+          if (!lacksCapability(cause)) {
+            console.warn(`Skipping member "${name}" of project "${project.slug}": ${errorMessage(cause)}`);
+            manager.recordActivity(projectInstanceKey(project.slug, name), {
+              at: new Date().toISOString(),
+              via: 'aggregate',
+              method,
+              ok: false,
+              durationMs: Date.now() - startedAt,
+              error: errorMessage(cause),
+            });
+          }
+          return [];
+        }
+      }),
+    );
+    return results.flat();
+  };
+
+  // Run one project tool/resource/prompt call from the UI: resolve the namespaced
+  // name to a member, then invoke + record activity against its project instance
+  // key (reusing runUiCall, whose `name` is any managed instance key).
+  const runProjectUiCall = async (
+    project: ProjectConfig,
+    full: string,
+    kind: string,
+    ctx: Omit<Parameters<typeof runUiCall>[1], 'target' | 'params'> & { params: unknown },
+    run: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<unknown>,
+  ): Promise<unknown> => {
+    const split = splitNamespacedName(full, enabledMembers(project));
+    if (!split) {
+      throw new HttpError(400, `Unknown ${kind} "${full}" (expected <server>__<name>)`);
+    }
+    const key = projectInstanceKey(project.slug, split.serverName);
+    return runUiCall(key, { ...ctx, target: split.name }, (client) => run(client, split.name));
+  };
+
+  router.get('/projects/:slug/tools', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const tools = await projectCollect(project, 'tools/list', async (client, name) => {
+      const all = await listAll(
+        (params) => client.listTools(params),
+        (result) => result.tools,
+      );
+      manager.recordToolCount(projectInstanceKey(project.slug, name), all.length);
+      return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
+    });
+    res.json({ tools });
+  });
+
+  router.get('/projects/:slug/resources', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const [resources, resourceTemplates] = await Promise.all([
+      projectCollect(project, 'resources/list', async (client, name) => {
+        const all = await emptyOnMissing(() =>
+          listAll(
+            (params) => client.listResources(params),
+            (result) => result.resources,
+          ),
+        );
+        return (all ?? []).map((resource) => ({
+          ...resource,
+          uri: namespaceName(name, resource.uri),
+          name: resource.name === undefined ? undefined : namespaceName(name, resource.name),
+        }));
+      }),
+      projectCollect(project, 'resources/templates/list', async (client, name) => {
+        const all = await emptyOnMissing(() =>
+          listAll(
+            (params) => client.listResourceTemplates(params),
+            (result) => result.resourceTemplates,
+          ),
+        );
+        return (all ?? []).map((template) => ({
+          ...template,
+          uriTemplate: namespaceName(name, template.uriTemplate),
+          name: template.name === undefined ? undefined : namespaceName(name, template.name),
+        }));
+      }),
+    ]);
+    res.json({ resources, resourceTemplates });
+  });
+
+  router.get('/projects/:slug/prompts', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const prompts = await projectCollect(project, 'prompts/list', async (client, name) => {
+      const all = await emptyOnMissing(() =>
+        listAll(
+          (params) => client.listPrompts(params),
+          (result) => result.prompts,
+        ),
+      );
+      return (all ?? []).map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
+    });
+    res.json({ prompts });
+  });
+
+  router.post('/projects/:slug/tools/call', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const body = toolCallRequestSchema.parse(req.body);
+    const result = await runProjectUiCall(
+      project,
+      body.name,
+      'tool',
+      {
+        method: 'tools/call',
+        params: body,
+        failLabel: `Tool "${body.name}" failed`,
+        detectFailure: (r) => (toolCallFailed(r) ? toolErrorText(r) : null),
+      },
+      (client, name) => client.callTool({ name, arguments: body.arguments }),
+    );
+    res.json(result);
+  });
+
+  router.post('/projects/:slug/resources/read', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const body = resourceReadRequestSchema.parse(req.body);
+    const result = await runProjectUiCall(
+      project,
+      body.uri,
+      'resource',
+      { method: 'resources/read', params: body, failLabel: `Resource "${body.uri}" failed to read` },
+      (client, uri) => client.readResource({ uri }),
+    );
+    res.json(result);
+  });
+
+  router.post('/projects/:slug/prompts/get', async (req, res) => {
+    const project = requireProject(req.params.slug);
+    const body = promptGetRequestSchema.parse(req.body);
+    const result = await runProjectUiCall(
+      project,
+      body.name,
+      'prompt',
+      { method: 'prompts/get', params: body, failLabel: `Prompt "${body.name}" failed` },
+      (client, name) => client.getPrompt({ name, arguments: body.arguments }),
+    );
+    res.json(result);
+  });
+
+  // Project activity merges every member instance's log, newest first. Ids are
+  // monotonic per process, so a descending id sort orders across members.
+  router.get('/projects/:slug/activity', (req, res) => {
+    const project = requireProject(req.params.slug);
+    const entries = existingMembers(project)
+      .flatMap((name) => manager.getActivity(projectInstanceKey(project.slug, name)))
+      .sort((a, b) => b.id - a.id);
+    res.json(activityResponseSchema.parse({ entries }));
+  });
+
+  router.delete('/projects/:slug/activity', (req, res) => {
+    const project = requireProject(req.params.slug);
+    for (const name of existingMembers(project)) {
+      manager.clearActivity(projectInstanceKey(project.slug, name));
+    }
     res.status(204).end();
   });
 

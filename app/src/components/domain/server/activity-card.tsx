@@ -7,25 +7,16 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Skeleton } from '@/components/ui/skeleton';
+import type { CapabilityScope } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/format';
-import { useClearServerActivity, useServerActivity } from '@/lib/queries';
+import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { DataBlock } from './json-view';
 
 function formatAbsoluteTime(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}
-
-function stringify(value: unknown): string {
-  if (typeof value === 'string') {
-    return value;
-  }
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
 }
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
@@ -66,27 +57,17 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
               <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">{entry.error}</pre>
             </div>
           )}
-          {entry.params !== undefined && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Request</p>
-              <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">{stringify(entry.params)}</pre>
-            </div>
-          )}
-          {entry.result !== undefined && (
-            <div>
-              <p className="text-xs font-medium text-muted-foreground">Response</p>
-              <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs">{stringify(entry.result)}</pre>
-            </div>
-          )}
+          {entry.params !== undefined && <DataBlock value={entry.params} label="Request" />}
+          {entry.result !== undefined && <DataBlock value={entry.result} label="Response" />}
         </div>
       )}
     </li>
   );
 }
 
-export function ActivityCard({ name }: { name: string }) {
-  const { data, isPending, error, refetch, isRefetching } = useServerActivity(name);
-  const clear = useClearServerActivity();
+export function ActivityCard({ scope }: { scope: CapabilityScope }) {
+  const { data, isPending, error, refetch, isRefetching } = useCapabilityActivity(scope);
+  const clear = useClearActivity(scope);
   const [outcome, setOutcome] = useState<'all' | 'ok' | 'error'>('all');
   const [method, setMethod] = useState('all');
 
@@ -95,9 +76,10 @@ export function ActivityCard({ name }: { name: string }) {
   const filtered = entries.filter(
     (entry) => (outcome === 'all' || (outcome === 'ok') === entry.ok) && (method === 'all' || entry.method === method),
   );
+  const endpoint = scope.kind === 'server' ? `/mcp/${scope.name}` : `/mcp/p/${scope.slug}`;
 
   const handleClear = () => {
-    clear.mutate(name, {
+    clear.mutate(undefined, {
       onSuccess: () => toast.success('Activity cleared'),
       onError: toastApiError,
     });
@@ -123,7 +105,9 @@ export function ActivityCard({ name }: { name: string }) {
           </span>
         </CardTitle>
         <CardDescription>
-          Recent MCP calls proxied to this server (kept in memory; the newest 200 are retained).
+          {scope.kind === 'server'
+            ? 'Recent MCP calls proxied to this server (kept in memory; the newest 200 are retained).'
+            : "Recent MCP calls proxied through this project's members (kept in memory; the newest 200 per member are retained)."}
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -136,8 +120,14 @@ export function ActivityCard({ name }: { name: string }) {
         {error && <p className="text-sm text-destructive">Failed to load activity: {error.message}</p>}
         {data && entries.length === 0 && (
           <p className="text-sm text-muted-foreground">
-            No activity yet. Calls made through <code className="font-mono">/mcp/{name}</code> or the aggregate{' '}
-            <code className="font-mono">/mcp</code> endpoint will appear here.
+            No activity yet. Calls made through <code className="font-mono">{endpoint}</code>
+            {scope.kind === 'server' && (
+              <>
+                {' '}
+                or the aggregate <code className="font-mono">/mcp</code> endpoint
+              </>
+            )}{' '}
+            will appear here.
           </p>
         )}
         {entries.length > 0 && (

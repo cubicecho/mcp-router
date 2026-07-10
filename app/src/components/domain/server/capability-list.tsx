@@ -6,6 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Skeleton } from '@/components/ui/skeleton';
 import { toastApiError } from '@/lib/toast';
 import { cn } from '@/lib/utils';
+import { DataBlock } from './json-view';
 
 interface CapabilityListProps {
   title: string;
@@ -127,21 +128,7 @@ export function useCapabilityRun<TData, TVariables>(mutation: UseMutationResult<
   return { result, run, pending: mutation.isPending };
 }
 
-/** Shared JSON result panel for a run/read/get invocation. */
+/** Shared JSON result panel for a run/read/get invocation, with a Text/JSON toggle. */
 export function ResultBlock({ result, isError, label }: { result: unknown; isError?: boolean; label?: string }) {
-  return (
-    <div>
-      <p className={cn('text-xs font-medium', isError ? 'text-destructive' : 'text-muted-foreground')}>
-        {label ?? (isError ? 'Returned an error' : 'Result')}
-      </p>
-      <pre
-        className={cn(
-          'mt-1 max-h-96 overflow-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap',
-          isError && 'border border-destructive/50',
-        )}
-      >
-        {JSON.stringify(result, null, 2)}
-      </pre>
-    </div>
-  );
+  return <DataBlock value={result} isError={isError} label={label ?? (isError ? 'Returned an error' : 'Result')} />;
 }

@@ -1,5 +1,5 @@
 import type { ProjectStatus } from '@mcp-router/shared';
-import { createFileRoute } from '@tanstack/react-router';
+import { createFileRoute, Link } from '@tanstack/react-router';
 import { CheckIcon, CopyIcon, LayersIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -106,7 +106,9 @@ function ProjectsPage() {
               return (
                 <TableRow key={project.slug}>
                   <TableCell className="font-medium">
-                    {project.name}
+                    <Link to="/projects/$slug" params={{ slug: project.slug }} className="hover:underline">
+                      {project.name}
+                    </Link>
                     {project.description && (
                       <span className="block text-xs font-normal text-muted-foreground">{project.description}</span>
                     )}

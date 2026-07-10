@@ -245,16 +245,16 @@ function ServerDetailPage() {
               <TabsTrigger value="connect">Connect</TabsTrigger>
             </TabsList>
             <TabsContent value="tools">
-              <ToolsCard name={name} />
+              <ToolsCard scope={{ kind: 'server', name }} />
             </TabsContent>
             <TabsContent value="resources">
-              <ResourcesCard name={name} />
+              <ResourcesCard scope={{ kind: 'server', name }} />
             </TabsContent>
             <TabsContent value="prompts">
-              <PromptsCard name={name} />
+              <PromptsCard scope={{ kind: 'server', name }} />
             </TabsContent>
             <TabsContent value="activity">
-              <ActivityCard name={name} />
+              <ActivityCard scope={{ kind: 'server', name }} />
             </TabsContent>
             <TabsContent value="connect">
               <ConnectCard

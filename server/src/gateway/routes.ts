@@ -125,9 +125,10 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const projectDeps = {
       getClient: (name: string) => manager.getClientForProject(slug, name),
       recordToolCount: (name: string, count: number) => manager.recordToolCount(projectInstanceKey(slug, name), count),
-      // Activity is logged under the base server's log (keyed by server name).
+      // Activity is logged under the project-scoped instance key so it surfaces in
+      // the project's own Activity view, isolated from the base server's log.
       recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
-        manager.recordActivity(name, entry),
+        manager.recordActivity(projectInstanceKey(slug, name), entry),
       serverNames: memberNames,
     };
     await start(

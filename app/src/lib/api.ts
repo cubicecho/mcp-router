@@ -114,6 +114,20 @@ export function restartServer(name: string): Promise<ServerStatus> {
   return request(`/api/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' });
 }
 
+/**
+ * A capability surface (tools/resources/prompts/activity + test calls) is served
+ * for either a single server (`/api/servers/:name/…`) or a project aggregate
+ * (`/api/projects/:slug/…`). The two share request/response shapes, so one set of
+ * functions/hooks/components serves both — pick the base path from the scope.
+ */
+export type CapabilityScope = { kind: 'server'; name: string } | { kind: 'project'; slug: string };
+
+function scopeBase(scope: CapabilityScope): string {
+  return scope.kind === 'server'
+    ? `/api/servers/${encodeURIComponent(scope.name)}`
+    : `/api/projects/${encodeURIComponent(scope.slug)}`;
+}
+
 /** One tool of a downstream server, as reported by MCP tools/list. */
 export interface ServerTool {
   name: string;
@@ -125,8 +139,8 @@ export interface ServerToolsResponse {
   tools: ServerTool[];
 }
 
-export function getServerTools(name: string): Promise<ServerToolsResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/tools`);
+export function getTools(scope: CapabilityScope): Promise<ServerToolsResponse> {
+  return request(`${scopeBase(scope)}/tools`);
 }
 
 /** One resource of a downstream server, as reported by MCP resources/list. */
@@ -150,12 +164,12 @@ export interface ServerResourcesResponse {
   resourceTemplates: ServerResourceTemplate[];
 }
 
-export function getServerResources(name: string): Promise<ServerResourcesResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/resources`);
+export function getResources(scope: CapabilityScope): Promise<ServerResourcesResponse> {
+  return request(`${scopeBase(scope)}/resources`);
 }
 
-export function readServerResource(name: string, body: ResourceReadRequest): Promise<ResourceReadResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/resources/read`, { method: 'POST', body });
+export function readResource(scope: CapabilityScope, body: ResourceReadRequest): Promise<ResourceReadResponse> {
+  return request(`${scopeBase(scope)}/resources/read`, { method: 'POST', body });
 }
 
 /** One prompt of a downstream server, as reported by MCP prompts/list. */
@@ -169,24 +183,24 @@ export interface ServerPromptsResponse {
   prompts: ServerPrompt[];
 }
 
-export function getServerPrompts(name: string): Promise<ServerPromptsResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/prompts`);
+export function getPrompts(scope: CapabilityScope): Promise<ServerPromptsResponse> {
+  return request(`${scopeBase(scope)}/prompts`);
 }
 
-export function getServerPrompt(name: string, body: PromptGetRequest): Promise<PromptGetResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/prompts/get`, { method: 'POST', body });
+export function getPrompt(scope: CapabilityScope, body: PromptGetRequest): Promise<PromptGetResponse> {
+  return request(`${scopeBase(scope)}/prompts/get`, { method: 'POST', body });
 }
 
-export function callServerTool(name: string, body: ToolCallRequest): Promise<ToolCallResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/tools/call`, { method: 'POST', body });
+export function callTool(scope: CapabilityScope, body: ToolCallRequest): Promise<ToolCallResponse> {
+  return request(`${scopeBase(scope)}/tools/call`, { method: 'POST', body });
 }
 
-export function getServerActivity(name: string): Promise<ActivityResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/activity`);
+export function getActivity(scope: CapabilityScope): Promise<ActivityResponse> {
+  return request(`${scopeBase(scope)}/activity`);
 }
 
-export function clearServerActivity(name: string): Promise<void> {
-  return request(`/api/servers/${encodeURIComponent(name)}/activity`, { method: 'DELETE' });
+export function clearActivity(scope: CapabilityScope): Promise<void> {
+  return request(`${scopeBase(scope)}/activity`, { method: 'DELETE' });
 }
 
 // --- registries ---

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Input } from '@/components/ui/input';
-import type { ServerResource, ServerResourceTemplate } from '@/lib/api';
-import { useReadServerResource, useServerResources } from '@/lib/queries';
+import type { CapabilityScope, ServerResource, ServerResourceTemplate } from '@/lib/api';
+import { useCapabilityResources, useReadResource } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
 /** A resource (concrete URI) or a template (an RFC 6570 URI to fill in). */
@@ -15,9 +15,9 @@ interface ResourceRowData {
   mimeType?: string;
 }
 
-function ResourceRow({ serverName, data }: { serverName: string; data: ResourceRowData }) {
+function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRowData }) {
   const [uri, setUri] = useState(data.uri);
-  const read = useReadServerResource(serverName);
+  const read = useReadResource(scope);
   const { result, run, pending } = useCapabilityRun(read);
 
   return (
@@ -76,14 +76,18 @@ function templateToRow(template: ServerResourceTemplate): ResourceRowData {
   };
 }
 
-export function ResourcesCard({ name }: { name: string }) {
-  const { data, isPending, error, refetch, isRefetching } = useServerResources(name);
+export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
+  const { data, isPending, error, refetch, isRefetching } = useCapabilityResources(scope);
   const rows = [...(data?.resources ?? []).map(toRow), ...(data?.resourceTemplates ?? []).map(templateToRow)];
+  const description =
+    scope.kind === 'project'
+      ? 'Resources and resource templates exposed by the project aggregate, `<server>__`-namespaced. Expand one to read it — reads show up in the Activity tab.'
+      : 'Resources and resource templates exposed by the downstream server. Expand one to read it — reads show up in the Activity tab.';
 
   return (
     <CapabilityList
       title="Resources"
-      description="Resources and resource templates exposed by the downstream server. Expand one to read it — reads show up in the Activity tab."
+      description={description}
       isPending={isPending}
       error={error}
       isRefetching={isRefetching}
@@ -93,7 +97,7 @@ export function ResourcesCard({ name }: { name: string }) {
       emptyText="No resources reported."
     >
       {rows.map((row) => (
-        <ResourceRow key={`${row.isTemplate ? 'tpl' : 'res'}:${row.uri}`} serverName={name} data={row} />
+        <ResourceRow key={`${row.isTemplate ? 'tpl' : 'res'}:${row.uri}`} scope={scope} data={row} />
       ))}
     </CapabilityList>
   );

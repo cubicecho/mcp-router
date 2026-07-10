@@ -6,16 +6,22 @@ import type {
   UpdateServerRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import type { CapabilityScope } from './api';
 import * as api from './api';
+
+/** Root query key for a capability scope; capability keys hang off it. */
+function scopeKey(scope: CapabilityScope): readonly [string, string] {
+  return scope.kind === 'server' ? ['servers', scope.name] : ['projects', scope.slug];
+}
 
 export const queryKeys = {
   status: ['status'] as const,
   servers: ['servers'] as const,
   server: (name: string) => ['servers', name] as const,
-  serverTools: (name: string) => ['servers', name, 'tools'] as const,
-  serverResources: (name: string) => ['servers', name, 'resources'] as const,
-  serverPrompts: (name: string) => ['servers', name, 'prompts'] as const,
-  serverActivity: (name: string) => ['servers', name, 'activity'] as const,
+  capabilityTools: (scope: CapabilityScope) => [...scopeKey(scope), 'tools'] as const,
+  capabilityResources: (scope: CapabilityScope) => [...scopeKey(scope), 'resources'] as const,
+  capabilityPrompts: (scope: CapabilityScope) => [...scopeKey(scope), 'prompts'] as const,
+  capabilityActivity: (scope: CapabilityScope) => [...scopeKey(scope), 'activity'] as const,
   registries: ['registries'] as const,
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
   registryServerDetail: (registry: string, serverName: string) =>
@@ -52,42 +58,51 @@ export function useServer(name: string) {
   });
 }
 
-/** Listing tools may spawn the downstream server — allow it to be slow, never auto-retry. */
-export function useServerTools(name: string) {
+/** Listing tools may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
+export function useCapabilityTools(scope: CapabilityScope) {
   return useQuery({
-    queryKey: queryKeys.serverTools(name),
-    queryFn: () => api.getServerTools(name),
+    queryKey: queryKeys.capabilityTools(scope),
+    queryFn: () => api.getTools(scope),
     retry: false,
     staleTime: 60_000,
   });
 }
 
-/** Listing resources may spawn the downstream server — allow it to be slow, never auto-retry. */
-export function useServerResources(name: string) {
+/** Listing resources may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
+export function useCapabilityResources(scope: CapabilityScope) {
   return useQuery({
-    queryKey: queryKeys.serverResources(name),
-    queryFn: () => api.getServerResources(name),
+    queryKey: queryKeys.capabilityResources(scope),
+    queryFn: () => api.getResources(scope),
     retry: false,
     staleTime: 60_000,
   });
 }
 
-/** Listing prompts may spawn the downstream server — allow it to be slow, never auto-retry. */
-export function useServerPrompts(name: string) {
+/** Listing prompts may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
+export function useCapabilityPrompts(scope: CapabilityScope) {
   return useQuery({
-    queryKey: queryKeys.serverPrompts(name),
-    queryFn: () => api.getServerPrompts(name),
+    queryKey: queryKeys.capabilityPrompts(scope),
+    queryFn: () => api.getPrompts(scope),
     retry: false,
     staleTime: 60_000,
   });
 }
 
-/** Per-server proxied call log (in-memory on the server); polls while the tab is open. */
-export function useServerActivity(name: string) {
+/** Proxied call log for a server or project (in-memory on the server); polls while the tab is open. */
+export function useCapabilityActivity(scope: CapabilityScope) {
   return useQuery({
-    queryKey: queryKeys.serverActivity(name),
-    queryFn: () => api.getServerActivity(name),
+    queryKey: queryKeys.capabilityActivity(scope),
+    queryFn: () => api.getActivity(scope),
     refetchInterval: 5_000,
+  });
+}
+
+/** Single project detail; kept live so member/enabled changes reflect promptly. */
+export function useProject(slug: string) {
+  return useQuery({
+    queryKey: queryKeys.project(slug),
+    queryFn: () => api.getProject(slug),
+    refetchInterval: 10_000,
   });
 }
 
@@ -163,43 +178,43 @@ export function useRestartServer() {
 export function useTestServerConnection() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (name: string) => api.getServerTools(name),
+    mutationFn: (name: string) => api.getTools({ kind: 'server', name }),
     onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
   });
 }
 
-/** Run one tool from the UI; the call also lands in the server's activity log. */
-export function useCallServerTool(name: string) {
+/** Run one tool from the UI; the call also lands in the scope's activity log. */
+export function useCallTool(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.callServerTool>[1]) => api.callServerTool(name, body),
-    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+    mutationFn: (body: Parameters<typeof api.callTool>[1]) => api.callTool(scope, body),
+    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
 
-/** Read one resource from the UI; the call also lands in the server's activity log. */
-export function useReadServerResource(name: string) {
+/** Read one resource from the UI; the call also lands in the scope's activity log. */
+export function useReadResource(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.readServerResource>[1]) => api.readServerResource(name, body),
-    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+    mutationFn: (body: Parameters<typeof api.readResource>[1]) => api.readResource(scope, body),
+    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
 
-/** Get one prompt from the UI; the call also lands in the server's activity log. */
-export function useGetServerPrompt(name: string) {
+/** Get one prompt from the UI; the call also lands in the scope's activity log. */
+export function useGetPrompt(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.getServerPrompt>[1]) => api.getServerPrompt(name, body),
-    onSuccess: () => invalidate(queryKeys.serverActivity(name), queryKeys.servers, queryKeys.status),
+    mutationFn: (body: Parameters<typeof api.getPrompt>[1]) => api.getPrompt(scope, body),
+    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
 
-export function useClearServerActivity() {
+export function useClearActivity(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (name: string) => api.clearServerActivity(name),
-    onSuccess: (_data, name) => invalidate(queryKeys.serverActivity(name)),
+    mutationFn: () => api.clearActivity(scope),
+    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope)),
   });
 }
 

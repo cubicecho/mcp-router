@@ -60,7 +60,7 @@ describe('ServerList test-connection button', () => {
   });
 
   it('lists the downstream tools when clicked and reports the count', async () => {
-    const toolsSpy = vi.spyOn(api, 'getServerTools').mockResolvedValue({
+    const toolsSpy = vi.spyOn(api, 'getTools').mockResolvedValue({
       tools: [
         { name: 'echo', description: '' },
         { name: 'add', description: '' },
@@ -74,7 +74,7 @@ describe('ServerList test-connection button', () => {
 
     await user.click(await screen.findByLabelText('Test connection to my-server'));
 
-    await waitFor(() => expect(toolsSpy).toHaveBeenCalledWith('my-server'));
+    await waitFor(() => expect(toolsSpy).toHaveBeenCalledWith({ kind: 'server', name: 'my-server' }));
     await waitFor(() => expect(successSpy).toHaveBeenCalledWith('my-server connected — 2 tools'));
   });
 });
