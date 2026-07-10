@@ -265,11 +265,14 @@ notifications, DELETE termination. These are the remaining items.
   Docker/LAN). Covered by `isLoopbackOrigin` + middleware tests in `auth.test.ts`;
   README settings block updated. Spec: servers SHOULD validate `Origin` and SHOULD
   bind localhost when local.
-- [ ] H3 **SSE resumability (`EventStore` / `Last-Event-ID`).** No `eventStore`
-  is passed, so notifications emitted while a client's GET stream is down are lost
-  and cannot be replayed on reconnect — spec-optional (client MAY resume via
-  `Last-Event-ID`), lower priority. Implement a bounded in-memory `EventStore`
-  (ring buffer per stream, mirrors the activity-log approach) and wire it into
-  each session's transport; drop it into the priming/replay path the SDK already
-  supports (`>= 2025-11-25`). Defer unless a client actually needs gap-free
-  notification delivery.
+- [x] H3 **SSE resumability (`EventStore` / `Last-Event-ID`).** Done — each
+  session's transport now gets a per-session `BoundedEventStore`
+  (`gateway/event-store.ts`): an insertion-ordered map capped at 256 events
+  (oldest evicted first) so memory stays bounded across long-lived sessions.
+  Event ids are `${streamId}_${zero-padded monotonic counter}`, so a single
+  forward pass replays exactly the same-stream events after the `Last-Event-ID`
+  anchor; a missing/aged-out anchor degrades gracefully to "nothing to replay".
+  The SDK drives priming/replay on GET streams for protocol `>= 2025-11-25`.
+  Covered by `gateway/__tests__/event-store.test.ts` (replay ordering,
+  cross-stream isolation, cap eviction, stream-id lookup). Spec: client MAY
+  resume a broken stream via `Last-Event-ID`; server SHOULD support it.

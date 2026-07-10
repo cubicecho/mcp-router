@@ -5,6 +5,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
+import { BoundedEventStore } from './event-store.ts';
 import type { GatewayManager } from './manager.ts';
 import { projectInstanceKey } from './manager.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
@@ -109,6 +110,9 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
+      // Per-session bounded buffer so a client whose GET SSE stream drops can reconnect
+      // with Last-Event-ID and replay missed notifications; reclaimed with the session.
+      eventStore: new BoundedEventStore(),
       onsessioninitialized: (id) => {
         sessions.set(id, { transport, lastActivity: Date.now() });
       },
