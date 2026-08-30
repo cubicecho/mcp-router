@@ -52,6 +52,21 @@ function curlSnippet({ endpoint, token }: SnippetInput): string {
   return lines.join('\n');
 }
 
+function opencodeSnippet({ endpoint, label, token }: SnippetInput): string {
+  return JSON.stringify(
+    {
+      mcpServers: {
+        [label]: {
+          url: endpoint,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+      },
+    },
+    null,
+    2,
+  );
+}
+
 function Snippet({ display, copyText }: { display: string; copyText: string }) {
   const [copied, setCopied] = useState(false);
 
@@ -109,6 +124,7 @@ export function ConnectCard({
   const snippets = [
     { value: 'claude-code', title: 'Claude Code', build: claudeCodeSnippet },
     { value: 'mcp-json', title: '.mcp.json', build: mcpJsonSnippet },
+    { value: 'opencode', title: 'OpenCode', build: opencodeSnippet },
     { value: 'curl', title: 'curl', build: curlSnippet },
   ];
 
