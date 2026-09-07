@@ -178,10 +178,15 @@ Two behaviours changed with the adoption, both accepted:
 `stop(name)` is gone. It had exactly two callers, delete and restart, and both
 are expressible without it: delete reconciles (which closes the child) *before*
 removing the install directory, and restart is `pool.reconnect`. The UI never
-had a standalone stop button. Upstream
+had a standalone stop button.
+
+Two upstream issues are open from this adoption, neither blocking:
 [#58](https://github.com/cubicecho/agent-mcp-pool/issues/58) asks for a
-`stop(id)` and for `reconnect` to be documented against a lazy pool; neither
-blocks anything here.
+`stop(id)` and for `reconnect` to be documented against a lazy pool, and
+[#60](https://github.com/cubicecho/agent-mcp-pool/issues/60) is why downstream
+servers now see `clientInfo.version` of `0.1.0` instead of this router's
+`SERVER_VERSION` — the pool takes a `clientName` but hardcodes the version
+beside it. Cosmetic, and only visible in a downstream server's own logs.
 
 **Namespacing stays here regardless.** The pool truncates `<slug>__<tool>` to 64
 characters for OpenAI's function-name limit and resolves by whole-string lookup,
