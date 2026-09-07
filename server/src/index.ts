@@ -2,6 +2,7 @@ import path from 'node:path';
 import { buildApp } from './app.ts';
 import { authDisabledByEnv } from './auth.ts';
 import { ConfigStore } from './config/store.ts';
+import { errorMessage } from './errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
 
 async function main(): Promise<void> {
@@ -10,10 +11,12 @@ async function main(): Promise<void> {
   await store.init();
 
   const manager = new GatewayManager(() => store.getSettings());
-  manager.reconcile(store.getServers(), store.getWorkspaces());
+  await manager.reconcile(store.getServers(), store.getWorkspaces());
   store.on('change', (state) => {
     console.log('Config changed on disk; reconciling servers');
-    manager.reconcile(state.servers, state.workspaces);
+    manager.reconcile(state.servers, state.workspaces).catch((err: unknown) => {
+      console.warn(`Reconcile after config change failed: ${errorMessage(err)}`);
+    });
   });
   store.startWatching();
 

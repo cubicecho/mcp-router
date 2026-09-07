@@ -3,6 +3,7 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { serverConfigSchema } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
@@ -27,7 +28,7 @@ describe('REST API', () => {
     await store.init();
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
-    manager.reconcile(store.getServers());
+    await manager.reconcile(store.getServers());
     app = buildApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
@@ -153,6 +154,35 @@ describe('REST API', () => {
     const bad = await authed(request(app).post('/api/servers/hosted/tools/call')).send({});
     expect(bad.status).toBe(400);
     expect(bad.body.error).toBe('Validation failed');
+  });
+
+  it('passes a connect failure and its backoff through with distinct statuses', async () => {
+    // Written straight to the store: POST /api/servers installs, and this one
+    // is a hand-written child that only has to fail.
+    await store.saveServer(
+      serverConfigSchema.parse({
+        name: 'boom',
+        source: { type: 'npm', package: 'none' },
+        transport: {
+          type: 'stdio',
+          command: process.execPath,
+          args: ['-e', "console.error('ModuleNotFoundError: no module named x'); process.exit(1)"],
+        },
+      }),
+    );
+    await manager.reconcile(store.getServers());
+
+    // A tried-and-failed connect is a 502 carrying the child's own stderr; the
+    // next one, still inside the crash backoff, is a 503 — the route must not
+    // collapse the two, because "try again later" and "it is broken" are
+    // different answers.
+    const failed = await authed(request(app).get('/api/servers/boom/tools'));
+    expect(failed.status).toBe(502);
+    expect(failed.body.detail).toContain('ModuleNotFoundError: no module named x');
+
+    const backedOff = await authed(request(app).get('/api/servers/boom/tools'));
+    expect(backedOff.status).toBe(503);
+    expect(backedOff.body.error).toMatch(/backed off/);
   });
 
   it('lists resources and prompts from a connected server', async () => {
@@ -351,7 +381,7 @@ describe('MCP session lifecycle', () => {
     await store.init();
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
-    manager.reconcile(store.getServers());
+    await manager.reconcile(store.getServers());
     app = buildApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
@@ -446,7 +476,7 @@ describe('MCP session lifecycle', () => {
       envMeta: {},
     });
     await store.saveWorkspace({ name: 'Later', slug: 'later', enabled: true, members: {} });
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
 
     const httpServer = createServer(app);
     await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
@@ -467,7 +497,7 @@ describe('MCP session lifecycle', () => {
         enabled: true,
         members: { unreachable: { enabled: true } },
       });
-      manager.reconcile(store.getServers(), store.getWorkspaces());
+      await manager.reconcile(store.getServers(), store.getWorkspaces());
 
       expect((await client.listTools()).tools).toEqual([]);
       expect(manager.getActivity(workspaceInstanceKey('later', 'unreachable'))).toMatchObject([

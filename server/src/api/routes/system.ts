@@ -27,12 +27,15 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
   router.patch('/settings', async (req, res) => {
     const patch = updateSettingsRequestSchema.parse(req.body);
     const next = await store.updateSettings(patch);
+    // The global idle timeout is resolved onto each server's row when the pool is
+    // reconciled, so an edited one only reaches the running children through one.
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.json({ idleTimeoutMs: next.idleTimeoutMs });
   });
 
   router.post('/reload', async (_req, res) => {
     const state = await store.reload();
-    manager.reconcile(state.servers, state.workspaces);
+    await manager.reconcile(state.servers, state.workspaces);
     res.json({ reloaded: true, serverCount: state.servers.length });
   });
 
