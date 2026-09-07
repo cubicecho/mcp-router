@@ -8,6 +8,7 @@ import type { ConfigStore } from '../config/store.ts';
 import { BoundedEventStore } from './event-store.ts';
 import type { GatewayManager } from './manager.ts';
 import { workspaceInstanceKey } from './manager.ts';
+import { enabledMembers } from './members.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
 import { createAggregateServer, createProxyServer } from './proxy.ts';
 
@@ -168,12 +169,14 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       res.status(404).json({ error: `Unknown workspace "${slug}"` });
       return;
     }
-    // Enabled members whose base server still exists, resolved fresh per request.
-    const memberNames = (): string[] =>
-      Object.entries(workspace.members)
-        .filter(([name, member]) => (member.enabled ?? true) && store.getServer(name))
-        .map(([name]) => name)
-        .sort();
+    // Re-read the workspace on every call rather than closing over the snapshot
+    // taken at initialize: a session outlives config edits, so a member added,
+    // removed or disabled afterwards must be reflected on the next tools/list.
+    // A workspace deleted or disabled mid-session simply exposes nothing.
+    const memberNames = (): string[] => {
+      const current = store.getWorkspace(slug);
+      return current?.enabled ? enabledMembers(current, store) : [];
+    };
     const workspaceDeps = {
       getClient: (name: string) => manager.getClientForWorkspace(slug, name),
       recordToolCount: (name: string, count: number) =>

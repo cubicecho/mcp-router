@@ -9,7 +9,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
-import { GatewayManager } from '../gateway/manager.ts';
+import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
 describe('REST API', () => {
@@ -431,6 +431,53 @@ describe('MCP session lifecycle', () => {
     asEventStream(authed(request(app).post('/mcp')))
       .set('mcp-session-id', id)
       .send({ jsonrpc: '2.0', id: 2, method: 'tools/list' });
+
+  it('picks up a workspace member added after the session was initialized', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    // Unreachable on purpose: the fan-out can't connect, and records that failure
+    // under the member's workspace instance — which is the observable proving the
+    // member was in the session's member set at all.
+    await store.saveServer({
+      name: 'unreachable',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'http://127.0.0.1:1/mcp', headers: {} },
+      enabled: true,
+      env: {},
+      envMeta: {},
+    });
+    await store.saveWorkspace({ name: 'Later', slug: 'later', enabled: true, members: {} });
+    manager.reconcile(store.getServers(), store.getWorkspaces());
+
+    const httpServer = createServer(app);
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { port } = httpServer.address() as AddressInfo;
+    const client = new Client({ name: 'test-client', version: '1.0.0' });
+    const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp/w/later`), {
+      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+    });
+    try {
+      await client.connect(transport);
+      expect((await client.listTools()).tools).toEqual([]);
+      expect(manager.getActivity(workspaceInstanceKey('later', 'unreachable'))).toEqual([]);
+
+      // Add the member mid-session, as an edit through the UI or the config file would.
+      await store.saveWorkspace({
+        name: 'Later',
+        slug: 'later',
+        enabled: true,
+        members: { unreachable: { enabled: true } },
+      });
+      manager.reconcile(store.getServers(), store.getWorkspaces());
+
+      expect((await client.listTools()).tools).toEqual([]);
+      expect(manager.getActivity(workspaceInstanceKey('later', 'unreachable'))).toMatchObject([
+        { method: 'tools/list', via: 'aggregate', ok: false },
+      ]);
+    } finally {
+      await client.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
+  });
 
   it('reclaims a session left idle past the configured TTL', async () => {
     await store.updateSettings({ sessionIdleTimeoutMs: 60_000 });
