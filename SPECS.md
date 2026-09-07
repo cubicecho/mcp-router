@@ -20,6 +20,7 @@ hand-editable flat config files.
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
 | Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
 | Deploy | Single Docker image: build app + server, Express serves `app/dist` statically; `docker-compose.yml` with a `data/` volume |
+| Shared agent packages | **Not adopted.** `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — see below. `@cubicecho/agent-mcp-pool` overlaps `GatewayManager`'s connection half but is blocked on upstream gaps ([#8](https://github.com/cubicecho/agent-mcp-pool/issues/8), [#9](https://github.com/cubicecho/agent-mcp-pool/issues/9), [#10](https://github.com/cubicecho/agent-mcp-pool/issues/10)); revisit when those land |
 
 ## Layout & contracts
 
@@ -106,6 +107,50 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
   before any MCP handling.
 
 ---
+
+## Why the `@cubicecho/agent-*` packages are not dependencies
+
+Reviewed 2026-09-06. Both were considered and neither is wired in.
+
+**`@cubicecho/agent-core` — wrong layer, closed.** It is the endpoint-agnostic
+half of an OpenAI-compatible agent loop: schema compatibility, on-demand tool
+loading, side tasks, a run-event bus, retry, and a pooled `OpenAI` client. This
+repo is a gateway. It makes no model calls and has no run to instrument, so
+there is nothing for any of that to attach to. The one module with a plausible
+home — `schema-compat`'s `sanitizeTools`/`relaxTools`, to normalize downstream
+tool schemas at the aggregate endpoint — is a *client* concern: a gateway should
+forward a server's schema faithfully and let the consumer decide what its
+inference endpoint will accept. Taking it would also pull the `openai >=6` peer
+dependency into `server/` for one function. Reopen this only if the router grows
+an agent of its own.
+
+**`@cubicecho/agent-mcp-pool` — right layer, blocked upstream.** It genuinely
+duplicates about half of `gateway/manager.ts`: reconciling configs against live
+clients, spawning stdio children, keeping a stderr tail, and backing crashes off
+on the same 5s constant. Four things stop it being usable here, all filed
+upstream rather than worked around locally:
+
+- **Lifecycle** ([#8](https://github.com/cubicecho/agent-mcp-pool/issues/8)) —
+  the pool connects eagerly on `sync()` and holds. The router spawns lazily on
+  first request and reaps after an idle timeout, which is a locked decision
+  above and the reason a gateway can carry dozens of installed servers.
+- **No raw `Client`** ([#9](https://github.com/cubicecho/agent-mcp-pool/issues/9))
+  — the pool's surface is `tools()` → OpenAI tool array and `call()` → `string`.
+  `gateway/proxy.ts` needs the live client for ten methods (resources, resource
+  templates, prompts, subscriptions, logging) and needs the full
+  `CallToolResult`; flattening to a string drops image and embedded-resource
+  content blocks and erases `isError`.
+- **`cwd` and notification relay**
+  ([#10](https://github.com/cubicecho/agent-mcp-pool/issues/10)) — the router
+  installs each server into its own directory, and it relays downstream
+  `list_changed` / `resources/updated` / `logging/message` to upstream sessions.
+
+**Namespacing stays here regardless.** The pool's own README says so: it
+truncates `<slug>__<tool>` to 64 characters for OpenAI's function-name limit and
+resolves by whole-string lookup, while `gateway/naming.ts` splits names a
+*foreign* MCP client invented, longest-prefix-first, and applies the same scheme
+to resource URIs and prompt names. Unifying on the truncation corrupts resource
+URIs. Even a full adoption of the pool would leave `naming.ts` untouched.
 
 ## Work items
 
