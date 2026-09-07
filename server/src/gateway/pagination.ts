@@ -1,3 +1,5 @@
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+
 /** Defensive cap for draining paginated lists, against a downstream that never stops returning cursors. */
 const MAX_LIST_PAGES = 100;
 
@@ -39,3 +41,33 @@ export function listAll<Page extends { nextCursor?: string }, T>(
     return { items: pick(page), nextCursor: page.nextCursor };
   });
 }
+
+/**
+ * Fully-drained variants of the four paginated MCP list calls. Every aggregate
+ * and UI listing needs all pages (a client cursor can neither be fanned out to
+ * N servers nor replayed across pages), so these fold the `list`/`pick` pair
+ * that would otherwise be repeated at each call site.
+ */
+export const listAllTools = (client: Client) =>
+  listAll(
+    (params) => client.listTools(params),
+    (result) => result.tools,
+  );
+
+export const listAllResources = (client: Client) =>
+  listAll(
+    (params) => client.listResources(params),
+    (result) => result.resources,
+  );
+
+export const listAllResourceTemplates = (client: Client) =>
+  listAll(
+    (params) => client.listResourceTemplates(params),
+    (result) => result.resourceTemplates,
+  );
+
+export const listAllPrompts = (client: Client) =>
+  listAll(
+    (params) => client.listPrompts(params),
+    (result) => result.prompts,
+  );

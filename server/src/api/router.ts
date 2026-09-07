@@ -18,26 +18,17 @@ import { Router } from 'express';
 import { authDisabledByEnv } from '../auth.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { errorMessage, HttpError } from '../errors.ts';
+import { emptyOnMissing } from '../gateway/capability.ts';
+import { collectFrom } from '../gateway/fan-out.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
 import { workspaceInstanceKey } from '../gateway/manager.ts';
+import { enabledMembers, existingMembers } from '../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../gateway/naming.ts';
-import { listAll } from '../gateway/pagination.ts';
-import { lacksCapability, toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
+import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '../gateway/pagination.ts';
+import { toolCallFailed, toolErrorText } from '../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../installer/installer.ts';
 import type { RegistryClient } from '../registry/client.ts';
 import { SERVER_VERSION } from '../version.ts';
-
-/** Run a downstream list call, mapping a "capability not supported" failure to null. */
-async function emptyOnMissing<T>(run: () => Promise<T>): Promise<T | null> {
-  try {
-    return await run();
-  } catch (cause) {
-    if (lacksCapability(cause)) {
-      return null;
-    }
-    throw cause;
-  }
-}
 
 export interface ApiDeps {
   store: ConfigStore;
@@ -233,29 +224,15 @@ export function createApiRouter(deps: ApiDeps): Router {
     if (!existing) {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
-    const update = updateServerRequestSchema.parse(req.body);
-    const next: ServerConfig = { ...existing };
-    if (update.displayName !== undefined) {
-      next.displayName = update.displayName;
-    }
-    if (update.description !== undefined) {
-      next.description = update.description;
-    }
-    if (update.enabled !== undefined) {
-      next.enabled = update.enabled;
-    }
-    if (update.env !== undefined) {
-      next.env = update.env;
-    }
-    if (update.transport !== undefined) {
-      next.transport = update.transport;
-    }
-    if (update.idleTimeoutMs !== undefined) {
-      if (update.idleTimeoutMs === null) {
-        delete next.idleTimeoutMs;
-      } else {
-        next.idleTimeoutMs = update.idleTimeoutMs;
-      }
+    // The request schema is a plain object, so an omitted field is an absent key
+    // (never an explicit undefined) and spreads as "leave it alone". Only
+    // idleTimeoutMs needs a hand: null means "clear the override", not "set null".
+    const { idleTimeoutMs, ...fields } = updateServerRequestSchema.parse(req.body);
+    const next: ServerConfig = { ...existing, ...fields };
+    if (idleTimeoutMs === null) {
+      delete next.idleTimeoutMs;
+    } else if (idleTimeoutMs !== undefined) {
+      next.idleTimeoutMs = idleTimeoutMs;
     }
     await store.saveServer(next);
     manager.reconcile(store.getServers(), store.getWorkspaces());
@@ -291,10 +268,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
-    const tools = await listAll(
-      (params) => client.listTools(params),
-      (result) => result.tools,
-    );
+    const tools = await listAllTools(client);
     manager.recordToolCount(name, tools.length);
     res.json({ tools });
   });
@@ -307,22 +281,12 @@ export function createApiRouter(deps: ApiDeps): Router {
     requireStatus(name);
     const client = await connect(name);
     const [resources, templates] = await Promise.all([
-      emptyOnMissing(() =>
-        listAll(
-          (params) => client.listResources(params),
-          (result) => result.resources,
-        ),
-      ),
+      emptyOnMissing(() => listAllResources(client)),
       // Templates are a supplementary sub-listing: a genuine failure here must not
       // discard a successful resources list, so it is best-effort (missing → null
       // via emptyOnMissing; any other error → warn + null) rather than fatal to the
       // whole endpoint.
-      emptyOnMissing(() =>
-        listAll(
-          (params) => client.listResourceTemplates(params),
-          (result) => result.resourceTemplates,
-        ),
-      ).catch((cause: unknown) => {
+      emptyOnMissing(() => listAllResourceTemplates(client)).catch((cause: unknown) => {
         console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
         return null;
       }),
@@ -337,12 +301,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     const name = req.params.name;
     requireStatus(name);
     const client = await connect(name);
-    const prompts = await emptyOnMissing(() =>
-      listAll(
-        (params) => client.listPrompts(params),
-        (result) => result.prompts,
-      ),
-    );
+    const prompts = await emptyOnMissing(() => listAllPrompts(client));
     res.json({ prompts: prompts ?? [] });
   });
 
@@ -508,51 +467,24 @@ export function createApiRouter(deps: ApiDeps): Router {
   // aggregate does — `<server>__`-namespaced. Test calls route by that namespace
   // back to the owning member and record activity under its workspace instance key.
 
-  /** Enabled members whose base server still exists (what the aggregate exposes), sorted. */
-  const enabledMembers = (workspace: WorkspaceConfig): string[] =>
-    Object.entries(workspace.members)
-      .filter(([name, member]) => (member.enabled ?? true) && store.getServer(name))
-      .map(([name]) => name)
-      .sort();
-
-  /** All members whose base server still exists (enabled or not), sorted — used for activity history. */
-  const existingMembers = (workspace: WorkspaceConfig): string[] =>
-    Object.keys(workspace.members)
-      .filter((name) => store.getServer(name))
-      .sort();
-
-  // Fan a listing out over a workspace's enabled members, like the aggregate's
-  // collect(): a member that lacks the capability contributes nothing; any other
-  // failure is skipped (not fatal to the whole list) but recorded to that
-  // member's workspace activity log so the Activity view shows why it's missing.
-  const workspaceCollect = async <T>(
+  // Fan a listing out over a workspace's enabled members, exactly as the
+  // /mcp/w/:slug aggregate does — same skip-and-record rules (see collectFrom),
+  // but against each member's workspace-scoped instance.
+  const workspaceCollect = <T>(
     workspace: WorkspaceConfig,
     method: string,
     fn: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<T[]>,
-  ): Promise<T[]> => {
-    const results = await Promise.all(
-      enabledMembers(workspace).map(async (name) => {
-        const startedAt = Date.now();
-        try {
-          return await fn(await manager.getClientForWorkspace(workspace.slug, name), name);
-        } catch (cause) {
-          if (!lacksCapability(cause)) {
-            console.warn(`Skipping member "${name}" of workspace "${workspace.slug}": ${errorMessage(cause)}`);
-            manager.recordActivity(workspaceInstanceKey(workspace.slug, name), {
-              at: new Date().toISOString(),
-              via: 'aggregate',
-              method,
-              ok: false,
-              durationMs: Date.now() - startedAt,
-              error: errorMessage(cause),
-            });
-          }
-          return [];
-        }
-      }),
+  ): Promise<T[]> =>
+    collectFrom(
+      enabledMembers(workspace, store),
+      method,
+      {
+        getClient: (name) => manager.getClientForWorkspace(workspace.slug, name),
+        recordActivity: (name, entry) => manager.recordActivity(workspaceInstanceKey(workspace.slug, name), entry),
+      },
+      fn,
+      (name) => `member "${name}" of workspace "${workspace.slug}"`,
     );
-    return results.flat();
-  };
 
   // Run one workspace tool/resource/prompt call from the UI: resolve the namespaced
   // name to a member, then invoke + record activity against its workspace instance
@@ -564,7 +496,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     ctx: Omit<Parameters<typeof runUiCall>[1], 'target' | 'params'> & { params: unknown },
     run: (client: Awaited<ReturnType<GatewayManager['getClient']>>, name: string) => Promise<unknown>,
   ): Promise<unknown> => {
-    const split = splitNamespacedName(full, enabledMembers(workspace));
+    const split = splitNamespacedName(full, enabledMembers(workspace, store));
     if (!split) {
       throw new HttpError(400, `Unknown ${kind} "${full}" (expected <server>__<name>)`);
     }
@@ -575,10 +507,7 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.get('/workspaces/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
-      const all = await listAll(
-        (params) => client.listTools(params),
-        (result) => result.tools,
-      );
+      const all = await listAllTools(client);
       manager.recordToolCount(workspaceInstanceKey(workspace.slug, name), all.length);
       return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
     });
@@ -589,12 +518,7 @@ export function createApiRouter(deps: ApiDeps): Router {
     const workspace = requireWorkspace(req.params.slug);
     const [resources, resourceTemplates] = await Promise.all([
       workspaceCollect(workspace, 'resources/list', async (client, name) => {
-        const all = await emptyOnMissing(() =>
-          listAll(
-            (params) => client.listResources(params),
-            (result) => result.resources,
-          ),
-        );
+        const all = await emptyOnMissing(() => listAllResources(client));
         return (all ?? []).map((resource) => ({
           ...resource,
           uri: namespaceName(name, resource.uri),
@@ -602,12 +526,7 @@ export function createApiRouter(deps: ApiDeps): Router {
         }));
       }),
       workspaceCollect(workspace, 'resources/templates/list', async (client, name) => {
-        const all = await emptyOnMissing(() =>
-          listAll(
-            (params) => client.listResourceTemplates(params),
-            (result) => result.resourceTemplates,
-          ),
-        );
+        const all = await emptyOnMissing(() => listAllResourceTemplates(client));
         return (all ?? []).map((template) => ({
           ...template,
           uriTemplate: namespaceName(name, template.uriTemplate),
@@ -621,12 +540,7 @@ export function createApiRouter(deps: ApiDeps): Router {
   router.get('/workspaces/:slug/prompts', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const prompts = await workspaceCollect(workspace, 'prompts/list', async (client, name) => {
-      const all = await emptyOnMissing(() =>
-        listAll(
-          (params) => client.listPrompts(params),
-          (result) => result.prompts,
-        ),
-      );
+      const all = await emptyOnMissing(() => listAllPrompts(client));
       return (all ?? []).map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
     res.json({ prompts });
@@ -680,7 +594,7 @@ export function createApiRouter(deps: ApiDeps): Router {
   // monotonic per process, so a descending id sort orders across members.
   router.get('/workspaces/:slug/activity', (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const entries = existingMembers(workspace)
+    const entries = existingMembers(workspace, store)
       .flatMap((name) => manager.getActivity(workspaceInstanceKey(workspace.slug, name)))
       .sort((a, b) => b.id - a.id);
     res.json(activityResponseSchema.parse({ entries }));
@@ -688,7 +602,7 @@ export function createApiRouter(deps: ApiDeps): Router {
 
   router.delete('/workspaces/:slug/activity', (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    for (const name of existingMembers(workspace)) {
+    for (const name of existingMembers(workspace, store)) {
       manager.clearActivity(workspaceInstanceKey(workspace.slug, name));
     }
     res.status(204).end();

@@ -17,10 +17,12 @@ import {
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { errorDetailMessage, errorMessage } from '../errors.ts';
+import { errorDetailMessage } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
+import { emptyOnMissing } from './capability.ts';
+import { collectFrom } from './fan-out.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
-import { listAll } from './pagination.ts';
+import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from './pagination.ts';
 
 const PROXY_CAPABILITIES = {
   capabilities: {
@@ -36,18 +38,6 @@ const PROXY_CAPABILITIES = {
 
 /** Empty completion result used when a downstream server has no completions capability. */
 const EMPTY_COMPLETION = { completion: { values: [], total: 0, hasMore: false } };
-
-/**
- * The downstream lacks the capability entirely: either it answered
- * "method not found" or our client-side capability assertion refused to send.
- * List endpoints treat this as an empty list.
- */
-export function lacksCapability(err: unknown): boolean {
-  if (err instanceof McpError && err.code === ErrorCode.MethodNotFound) {
-    return true;
-  }
-  return err instanceof Error && /does not support/i.test(err.message);
-}
 
 /** Propagate a downstream failure as a proper MCP error. */
 function toMcpError(err: unknown): McpError {
@@ -144,18 +134,12 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async (req) =>
     track(deps, name, { via: 'direct', method: 'tools/list', params: req.params, failuresOnly: true }, async () => {
-      try {
-        const result = await (await client()).listTools(req.params);
-        deps.recordToolCount(name, result.tools.length);
-        return result;
-      } catch (err) {
-        if (lacksCapability(err)) {
-          // Definitive "has no tools" — clear any count from a previous incarnation.
-          deps.recordToolCount(name, 0);
-          return { tools: [] };
-        }
-        throw err; // track() converts to an MCP error
-      }
+      // A missing capability is a definitive "has no tools" — clear any count
+      // from a previous incarnation; any other failure propagates, and track()
+      // converts it to an MCP error.
+      const result = await emptyOnMissing(async () => (await client()).listTools(req.params));
+      deps.recordToolCount(name, result?.tools.length ?? 0);
+      return result ?? { tools: [] };
     }),
   );
 
@@ -170,14 +154,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async (req) =>
     track(deps, name, { via: 'direct', method: 'resources/list', params: req.params, failuresOnly: true }, async () => {
-      try {
-        return await (await client()).listResources(req.params);
-      } catch (err) {
-        if (lacksCapability(err)) {
-          return { resources: [] };
-        }
-        throw err;
-      }
+      return (await emptyOnMissing(async () => (await client()).listResources(req.params))) ?? { resources: [] };
     }),
   );
 
@@ -187,14 +164,11 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
       name,
       { via: 'direct', method: 'resources/templates/list', params: req.params, failuresOnly: true },
       async () => {
-        try {
-          return await (await client()).listResourceTemplates(req.params);
-        } catch (err) {
-          if (lacksCapability(err)) {
-            return { resourceTemplates: [] };
+        return (
+          (await emptyOnMissing(async () => (await client()).listResourceTemplates(req.params))) ?? {
+            resourceTemplates: [],
           }
-          throw err;
-        }
+        );
       },
     ),
   );
@@ -207,14 +181,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
 
   server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
     track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params, failuresOnly: true }, async () => {
-      try {
-        return await (await client()).listPrompts(req.params);
-      } catch (err) {
-        if (lacksCapability(err)) {
-          return { prompts: [] };
-        }
-        throw err;
-      }
+      return (await emptyOnMissing(async () => (await client()).listPrompts(req.params))) ?? { prompts: [] };
     }),
   );
 
@@ -231,14 +198,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
       name,
       { via: 'direct', method: 'completion/complete', params: req.params, failuresOnly: true },
       async () => {
-        try {
-          return await (await client()).complete(req.params);
-        } catch (err) {
-          if (lacksCapability(err)) {
-            return EMPTY_COMPLETION;
-          }
-          throw err;
-        }
+        return (await emptyOnMissing(async () => (await client()).complete(req.params))) ?? EMPTY_COMPLETION;
       },
     ),
   );
@@ -267,13 +227,7 @@ export function createProxyServer(name: string, deps: ProxyDeps): Server {
       name,
       { via: 'direct', method: 'logging/setLevel', target: req.params.level, params: req.params },
       async () => {
-        try {
-          await (await client()).setLoggingLevel(req.params.level);
-        } catch (err) {
-          if (!lacksCapability(err)) {
-            throw err;
-          }
-        }
+        await emptyOnMissing(async () => (await client()).setLoggingLevel(req.params.level));
         return {};
       },
     ),
@@ -296,38 +250,11 @@ export interface AggregateDeps extends ProxyDeps {
 export function createAggregateServer(deps: AggregateDeps): Server {
   const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, PROXY_CAPABILITIES);
 
-  // Aggregate list ops fan out to every server on each client (re)connect and
-  // list_changed; like the direct list handlers, routine successes are NOT
-  // recorded to activity (they would flood each server's bounded log and evict
-  // the targeted calls the Activity tab exists to show), but a server that
-  // errors during the fan-out is — that failure is exactly the "why doesn't my
-  // server show up in /mcp" case the tab is for. Capability-less servers are
-  // skipped silently, as on the direct path.
-  const collect = async <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> => {
-    const names = deps.serverNames();
-    const results = await Promise.all(
-      names.map(async (name) => {
-        const startedAt = Date.now();
-        try {
-          return await fn(await deps.getClient(name), name);
-        } catch (err) {
-          if (!lacksCapability(err)) {
-            console.warn(`Skipping server "${name}" in aggregate: ${errorMessage(err)}`);
-            deps.recordActivity(name, {
-              at: new Date().toISOString(),
-              via: 'aggregate',
-              method,
-              ok: false,
-              durationMs: Date.now() - startedAt,
-              error: errorDetailMessage(err),
-            });
-          }
-          return [];
-        }
-      }),
-    );
-    return results.flat();
-  };
+  // Aggregate list ops fan out to every enabled server on each client
+  // (re)connect and list_changed; see collectFrom for what that does and does
+  // not record.
+  const collect = <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> =>
+    collectFrom(deps.serverNames(), method, deps, fn);
 
   const route = (full: string, kind: string) => {
     const split = splitNamespacedName(full, deps.serverNames());
@@ -339,21 +266,12 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await collect('tools/list', async (client, name) => {
-      try {
-        const all = await listAll(
-          (params) => client.listTools(params),
-          (result) => result.tools,
-        );
-        deps.recordToolCount(name, all.length);
-        return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
-      } catch (err) {
-        if (lacksCapability(err)) {
-          // Definitive "has no tools" — clear any count from a previous incarnation.
-          deps.recordToolCount(name, 0);
-          return [];
-        }
-        throw err; // collect() skips the server and records the failure
-      }
+      // A missing capability is a definitive "has no tools" — clear any count
+      // from a previous incarnation; any other failure lets collect() skip the
+      // server and record why.
+      const all = await emptyOnMissing(() => listAllTools(client));
+      deps.recordToolCount(name, all?.length ?? 0);
+      return (all ?? []).map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
     });
     return { tools };
   });
@@ -375,10 +293,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const resources = await collect('resources/list', async (client, name) => {
-      const all = await listAll(
-        (params) => client.listResources(params),
-        (result) => result.resources,
-      );
+      const all = await listAllResources(client);
       return all.map((resource) => ({
         ...resource,
         uri: namespaceName(name, resource.uri),
@@ -390,10 +305,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
     const resourceTemplates = await collect('resources/templates/list', async (client, name) => {
-      const all = await listAll(
-        (params) => client.listResourceTemplates(params),
-        (result) => result.resourceTemplates,
-      );
+      const all = await listAllResourceTemplates(client);
       // Namespace the URI template so a read of an expanded URI routes back to
       // this server, mirroring how plain resources namespace their `uri`.
       return all.map((template) => ({
@@ -415,10 +327,7 @@ export function createAggregateServer(deps: AggregateDeps): Server {
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     const prompts = await collect('prompts/list', async (client, name) => {
-      const all = await listAll(
-        (params) => client.listPrompts(params),
-        (result) => result.prompts,
-      );
+      const all = await listAllPrompts(client);
       return all.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
     return { prompts };
@@ -446,14 +355,9 @@ export function createAggregateServer(deps: AggregateDeps): Server {
       serverName,
       { via: 'aggregate', method: 'completion/complete', target: full, params, failuresOnly: true },
       async () => {
-        try {
-          return await (await deps.getClient(serverName)).complete(params);
-        } catch (err) {
-          if (lacksCapability(err)) {
-            return EMPTY_COMPLETION;
-          }
-          throw err;
-        }
+        return (
+          (await emptyOnMissing(async () => (await deps.getClient(serverName)).complete(params))) ?? EMPTY_COMPLETION
+        );
       },
     );
   });
