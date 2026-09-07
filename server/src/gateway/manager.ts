@@ -79,6 +79,17 @@ interface ServerMeta {
   config: ServerConfig;
   /** Tool count from the last proxied `tools/list`; cleared when the connection is restarted. */
   toolCount?: number;
+  /**
+   * The downstream's own `instructions`, as of the last connect.
+   *
+   * Kept because it is only ever knowable from a live connection — it arrives in
+   * the initialize result and nowhere else — while the proxy `Server` that has to
+   * re-emit it is constructed when a client initializes, which for the aggregate
+   * is long before most of its members have been spawned. Cleared with the config
+   * it was read under; a server whose command or env changed is a different
+   * server, and stale guidance is worse than none.
+   */
+  instructions?: string;
   /** Count of proxied calls recorded via recordActivity this process (reset on restart). */
   callCount: number;
   /** ISO timestamp of the most recent recorded call. */
@@ -260,9 +271,10 @@ export class GatewayManager {
         continue;
       }
       if (needsRestart(meta.config, next)) {
-        // The pool is about to replace the child; a count read from the old one
-        // stops being true at the same moment.
+        // The pool is about to replace the child; a count and an instructions
+        // string read from the old one stop being true at the same moment.
         meta.toolCount = undefined;
+        meta.instructions = undefined;
       }
       meta.config = next;
     }
@@ -281,11 +293,35 @@ export class GatewayManager {
    * name; for workspace-scoped instances use {@link getClientForWorkspace}.
    */
   async getClient(name: string): Promise<Client> {
+    let client: Client;
     try {
-      return await this.pool.client(name);
+      client = await this.pool.client(name);
     } catch (cause) {
       this.fail(name, cause);
     }
+    const meta = this.meta.get(name);
+    if (meta) {
+      // Read on every use rather than only on the connects: the SDK kept this
+      // from the initialize result, so it is a field access, and there is no
+      // event to hang it off — the pool reaps and respawns children on its own,
+      // and each respawn is a fresh handshake that may say something new.
+      meta.instructions = client.getInstructions();
+    }
+    return client;
+  }
+
+  /**
+   * The downstream's `instructions` as of its last connect, if it has ever
+   * connected in this process.
+   *
+   * Deliberately does not connect: the aggregate endpoint asks this for every
+   * member while a client is initializing, and spawning a dozen children to
+   * write a preamble the session may never act on is not a trade worth making.
+   * The 1:1 endpoint, which has exactly one server and is certain to use it,
+   * connects first and then asks.
+   */
+  instructions(name: string): string | undefined {
+    return this.meta.get(name)?.instructions;
   }
 
   /** Connect (spawning if needed) and return the workspace-scoped client for a server. */

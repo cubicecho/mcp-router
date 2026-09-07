@@ -10,6 +10,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
+import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
 import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
@@ -420,6 +421,52 @@ describe('MCP session lifecycle', () => {
       expect((await client.listTools()).tools).toEqual([]);
     } finally {
       await client.close();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
+  });
+
+  it("serves a downstream server's own instructions, 1:1 and merged into the aggregate", async () => {
+    await store.saveServer(
+      serverConfigSchema.parse({
+        name: 'echo',
+        source: { type: 'npm', package: 'none' },
+        transport: {
+          type: 'stdio',
+          command: process.execPath,
+          args: [path.join(import.meta.dirname, '../gateway/__tests__/fixtures/echo-server.ts')],
+        },
+      }),
+    );
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
+
+    const httpServer = createServer(app);
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { port } = httpServer.address() as AddressInfo;
+    const open = async (endpoint: string) => {
+      const client = new Client({ name: 'test-client', version: '1.0.0' });
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${endpoint}`), {
+          requestInit: { headers: { Authorization: `Bearer ${token}` } },
+        }),
+      );
+      return client;
+    };
+
+    const direct = await open('/mcp/echo');
+    const aggregate = await open('/mcp');
+    try {
+      // /mcp/echo connects the child during its own initialize, so the very first
+      // session on a cold router already carries the server's guidance.
+      expect(direct.getInstructions()).toBe(ECHO_INSTRUCTIONS);
+
+      // The aggregate reads what has already been said rather than spawning every
+      // member to ask — which the session above is what made available.
+      expect(aggregate.getInstructions()).toContain('## echo');
+      expect(aggregate.getInstructions()).toContain(ECHO_INSTRUCTIONS);
+      // ...along with the one thing no member can know: its names are prefixed here.
+      expect(aggregate.getInstructions()).toContain('`<server>__`');
+    } finally {
+      await Promise.all([direct.close(), aggregate.close()]);
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     }
   });

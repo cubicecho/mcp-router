@@ -3,6 +3,7 @@ import type { ActivityEntry } from '@mcp-router/shared';
 import { serverConfigSchema, settingsFileSchema, workspaceConfigSchema } from '@mcp-router/shared';
 import { describe, expect, it } from 'vitest';
 import { GatewayManager, workspaceInstanceKey } from '../manager.ts';
+import { ECHO_INSTRUCTIONS } from './fixtures/echo-instructions.ts';
 
 const settings = settingsFileSchema.parse({});
 const remoteConfig = (name: string) =>
@@ -329,6 +330,26 @@ describe('GatewayManager lifecycle over the pool', () => {
       expect(after).toBeGreaterThan(0);
       expect(after).not.toBe(before);
       expect(manager.status('echo')?.state).toBe('running');
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it("remembers the downstream's instructions from the connect, and forgets them on an edit", async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      // Nothing has handshaken yet, and `instructions` arrives nowhere but in the
+      // initialize result — so there is nothing to know and it does not go and find out.
+      expect(manager.instructions('echo')).toBeUndefined();
+      expect(manager.status('echo')?.state).toBe('stopped');
+
+      await manager.getClient('echo');
+      expect(manager.instructions('echo')).toBe(ECHO_INSTRUCTIONS);
+
+      // A changed command is a different server; its old guidance is not evidence about the new one.
+      await manager.reconcile([echoConfig('echo', { env: { CHANGED: '1' } })]);
+      expect(manager.instructions('echo')).toBeUndefined();
     } finally {
       await manager.stopAll();
     }

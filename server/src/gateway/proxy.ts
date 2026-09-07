@@ -39,6 +39,35 @@ const PROXY_CAPABILITIES = {
 /** Empty completion result used when a downstream server has no completions capability. */
 const EMPTY_COMPLETION = { completion: { values: [], total: 0, hasMore: false } };
 
+/**
+ * Head of the aggregate's instructions, explaining the one thing that is true of
+ * this endpoint and of no server behind it: the names are prefixed. Without it a
+ * member's own guidance ("call `resolve-library-id` first") names tools the
+ * client was never offered.
+ */
+const AGGREGATE_INSTRUCTIONS_PREAMBLE =
+  'This endpoint merges several MCP servers. Every tool name, prompt name and resource URI is ' +
+  "prefixed with `<server>__`. Each section below is one server's own instructions; read the " +
+  "names in it as carrying that section's prefix.";
+
+/**
+ * The aggregate's `instructions`: every member's own, under a heading naming the
+ * server whose prefix they belong to. Servers with nothing to say are left out
+ * entirely, and if none of them has anything the whole field is absent rather
+ * than a lone preamble explaining a scheme with no content under it.
+ *
+ * @param members `[server name, its instructions]` in the order they should read.
+ */
+export function mergeInstructions(members: [name: string, instructions: string | undefined][]): string | undefined {
+  const sections = members
+    .filter((member): member is [string, string] => Boolean(member[1]?.trim()))
+    .map(([name, text]) => `## ${name}\n\n${text.trim()}`);
+  if (sections.length === 0) {
+    return undefined;
+  }
+  return [AGGREGATE_INSTRUCTIONS_PREAMBLE, ...sections].join('\n\n');
+}
+
 /** Propagate a downstream failure as a proper MCP error. */
 function toMcpError(err: unknown): McpError {
   if (err instanceof McpError) {
@@ -127,9 +156,18 @@ async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: (
   }
 }
 
-/** MCP server proxying a single downstream server 1:1 (used for /mcp/:name). */
-export function createProxyServer(name: string, deps: ProxyDeps): Server {
-  const server = new Server({ name: `mcp-router/${name}`, version: SERVER_VERSION }, PROXY_CAPABILITIES);
+/**
+ * MCP server proxying a single downstream server 1:1 (used for /mcp/:name).
+ *
+ * @param instructions The downstream's own, forwarded unchanged — nothing is
+ *   renamed on this endpoint, so its guidance is true of it as written. Absent
+ *   when the server has none, or has not connected yet.
+ */
+export function createProxyServer(name: string, deps: ProxyDeps, instructions?: string): Server {
+  const server = new Server(
+    { name: `mcp-router/${name}`, version: SERVER_VERSION },
+    { ...PROXY_CAPABILITIES, instructions },
+  );
   const client = () => deps.getClient(name);
 
   server.setRequestHandler(ListToolsRequestSchema, async (req) =>
@@ -246,9 +284,13 @@ export interface AggregateDeps extends ProxyDeps {
  * Tool/prompt names and resource URIs are prefixed `<server>__`; calls strip
  * the prefix and route to the owning client. Downstream servers that fail to
  * connect (or lack a capability) are skipped, not fatal.
+ *
+ * @param instructions The merged member instructions — see `mergeInstructions`.
+ *   Fixed for the life of the session, because `instructions` travels only in
+ *   the initialize result.
  */
-export function createAggregateServer(deps: AggregateDeps): Server {
-  const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, PROXY_CAPABILITIES);
+export function createAggregateServer(deps: AggregateDeps, instructions?: string): Server {
+  const server = new Server({ name: 'mcp-router', version: SERVER_VERSION }, { ...PROXY_CAPABILITIES, instructions });
 
   // Aggregate list ops fan out to every enabled server on each client
   // (re)connect and list_changed; see collectFrom for what that does and does
