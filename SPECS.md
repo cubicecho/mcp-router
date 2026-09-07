@@ -118,8 +118,8 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 
 ## How the `@cubicecho/agent-*` packages are used
 
-Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.2` and
-`agent-mcp-pool@2.4.2`.
+Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.3` and
+`agent-mcp-pool@2.4.3`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
@@ -223,20 +223,31 @@ neither now throws). It never bit this repo, which always passes `configs`; it
 was a trap for the next caller.
 
 The two issues raised on the pool since, both from other consumers, are both
-about a code path this repo does not take. `2.4.2` closed
-[#66](https://github.com/cubicecho/agent-mcp-pool/issues/66) — the exported
-standalone `probe` dropped the row's `connectTimeoutMs` that `2.4.0` widened
-`McpConnection` to carry — and
-[#67](https://github.com/cubicecho/agent-mcp-pool/issues/67) is open: the
-timeout bounds each *request* rather than the connect, so a paginated
-`tools/list` on a cold connect multiplies it by the page count.
+closed now, and both were about a code path this repo does not take. `2.4.2`
+closed [#66](https://github.com/cubicecho/agent-mcp-pool/issues/66) — the
+exported standalone `probe` dropped the row's `connectTimeoutMs` that `2.4.0`
+widened `McpConnection` to carry — and `2.4.3` closed
+[#67](https://github.com/cubicecho/agent-mcp-pool/issues/67): the timeout
+bounded each *request* rather than the connect, so a paginated `tools/list` on
+a cold connect multiplied it by the page count. A `requestBudget` countdown is
+now shared by `initialize` and every page, and the exported `listAllTools`
+reads its `timeout` as the budget for the whole walk.
 
-Neither reaches the router, for the same two reasons. It calls no probe of
+Neither reached the router, for the same two reasons. It calls no probe of
 either kind — "Test connection" goes through `manager.getClient`, so it is
 dialled by the pool on the row's own patience — and `indexTools: false` means
-there is no `tools/list` drain on a connect to multiply. `connectTimeoutMs`
+there was no `tools/list` drain on a connect to multiply. `connectTimeoutMs`
 here bounds spawn plus `initialize` and nothing else, which is what the setting
-claims.
+claims, and after `2.4.3` that is what it would bound even with the drain on.
+The router's own `gateway/pagination.ts` is what walks a paginated `tools/list`
+here, on a proxied request rather than on a connect, so the pool's export is
+not in the path either.
+
+**Nothing is open upstream on either package.** `agent-core@2.2.3` is three
+patches of agent-loop accounting — token counting per content part, a produced
+latch read off the chunk, model names in negotiation notices — all of it inside
+the run loop this repo does not have, so the "wrong layer" finding above is
+unchanged by it.
 
 The pool does not surface a downstream's `instructions`, and does not need to:
 it hands back the real SDK `Client`, which carries `getInstructions()` from its
