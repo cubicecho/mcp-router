@@ -1,4 +1,5 @@
 import { isDeepStrictEqual } from 'node:util';
+import { createTransport, type McpConnection, MINIMAL_CHILD_ENV, readStderrTail } from '@cubicecho/agent-mcp-pool';
 import type {
   ActivityEntry,
   ServerConfig,
@@ -9,24 +10,11 @@ import type {
 } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { errorMessage, HttpError } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 
-const ENV_ALLOWLIST = [
-  'PATH',
-  'HOME',
-  'NODE_ENV',
-  'LANG',
-  'TERM',
-  // uv/uvx (pypi servers): let the router's cache/python-install locations
-  // reach the child so downloads persist across spawns instead of re-fetching.
-  'UV_CACHE_DIR',
-  'UV_PYTHON_INSTALL_DIR',
-] as const;
 const CRASH_BACKOFF_MS = 5_000;
-const STDERR_TAIL_CHARS = 4_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
 const ACTIVITY_LIMIT = 200;
 /** Serialized params/result (and error/target strings) larger than this are truncated before storing. */
@@ -88,7 +76,8 @@ interface ManagedServer {
   /** ISO timestamp of the most recent recorded call. */
   lastCalledAt?: string;
   idleTimer: NodeJS.Timeout | null;
-  stderrTail: string;
+  /** Reads the child's stderr tail; replaced per connect, and empty before the first one. */
+  stderrTail: () => string;
   lastCrashAt: number;
   stopping: boolean;
 }
@@ -102,7 +91,7 @@ function newEntry(key: string, config: ServerConfig): ManagedServer {
     state: 'stopped',
     callCount: 0,
     idleTimer: null,
-    stderrTail: '',
+    stderrTail: () => '',
     lastCrashAt: 0,
     stopping: false,
   };
@@ -149,16 +138,22 @@ export function resolveMemberConfig(
   };
 }
 
-/** Env passed to stdio children: a small allowlist of the router's env plus the server's configured env. */
-export function buildChildEnv(configEnv: Record<string, string>): Record<string, string> {
-  const env: Record<string, string> = {};
-  for (const key of ENV_ALLOWLIST) {
-    const value = process.env[key];
-    if (value !== undefined) {
-      env[key] = value;
-    }
-  }
-  return { ...env, ...configEnv };
+/**
+ * A server config as `@cubicecho/agent-mcp-pool`'s transport layer wants it: one
+ * flat row rather than this repo's discriminated union. Only the connection half
+ * is needed — identity, naming and lifecycle stay here.
+ */
+export function toConnection(config: ServerConfig): McpConnection {
+  const { transport } = config;
+  return {
+    transport: transport.type === 'stdio' ? 'stdio' : 'http',
+    command: transport.type === 'stdio' ? transport.command : '',
+    args: transport.type === 'stdio' ? transport.args : null,
+    cwd: transport.type === 'stdio' ? transport.cwd : null,
+    env: config.env,
+    url: transport.type === 'streamable-http' ? transport.url : '',
+    headers: transport.type === 'streamable-http' ? transport.headers : null,
+  };
 }
 
 /** True when two configs differ in a way that requires restarting the downstream connection. */
@@ -394,7 +389,7 @@ export class GatewayManager {
     }
     entry.state = 'starting';
     entry.stopping = false;
-    entry.stderrTail = '';
+    entry.stderrTail = () => '';
     const client = new Client({ name: 'mcp-router', version: SERVER_VERSION });
     // Relay any notification the SDK doesn't handle itself (list_changed,
     // resources/updated, logging/message) out to subscribed MCP sessions.
@@ -402,29 +397,17 @@ export class GatewayManager {
       this.emitNotification(entry.key, notification);
       return Promise.resolve();
     };
-    let transport: StdioClientTransport | StreamableHTTPClientTransport;
-    if (config.transport.type === 'stdio') {
-      const stdioTransport = new StdioClientTransport({
-        command: config.transport.command,
-        args: config.transport.args,
-        cwd: config.transport.cwd,
-        env: buildChildEnv(config.env),
-        stderr: 'pipe',
-      });
-      stdioTransport.stderr?.on('data', (chunk: Buffer) => {
-        entry.stderrTail = (entry.stderrTail + chunk.toString()).slice(-STDERR_TAIL_CHARS);
-      });
-      transport = stdioTransport;
-    } else {
-      transport = new StreamableHTTPClientTransport(new URL(config.transport.url), {
-        requestInit: { headers: config.transport.headers },
-      });
-    }
+    // MINIMAL_CHILD_ENV is the same allowlist this file used to keep: a stdio child
+    // gets it plus the server's own env, never the router's full process.env.
+    const transport = createTransport(toConnection(config), { childEnv: MINIMAL_CHILD_ENV });
+    // Attached before connect(), because a server that dies during startup says
+    // whatever it has to say then — and it keeps the stderr pipe drained.
+    entry.stderrTail = readStderrTail(transport);
     try {
       await client.connect(transport);
     } catch (cause) {
       entry.state = 'error';
-      entry.lastError = entry.stderrTail.trim() || errorMessage(cause);
+      entry.lastError = entry.stderrTail() || errorMessage(cause);
       if (config.transport.type === 'stdio') {
         entry.lastCrashAt = Date.now();
       }
@@ -450,7 +433,7 @@ export class GatewayManager {
       } else {
         // Unexpected exit: surface the stderr tail and back off respawns briefly.
         entry.state = 'error';
-        entry.lastError = entry.stderrTail.trim() || 'process exited unexpectedly';
+        entry.lastError = entry.stderrTail() || 'process exited unexpectedly';
         entry.lastCrashAt = Date.now();
         console.warn(`Server "${config.name}" exited unexpectedly: ${entry.lastError.split('\n').at(-1)}`);
       }
