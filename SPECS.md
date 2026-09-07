@@ -118,8 +118,8 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 
 ## How the `@cubicecho/agent-*` packages are used
 
-Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.0` and
-`agent-mcp-pool@2.2.0`.
+Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.1` and
+`agent-mcp-pool@2.3.0`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
@@ -206,15 +206,21 @@ edit needs a router restart — see
 [#62](https://github.com/cubicecho/agent-mcp-pool/issues/62), which asks for it
 per row and re-resolvable the way `idleTimeoutMs` already is.
 
-Three upstream issues are open from this adoption, none blocking: #62 above,
-[#63](https://github.com/cubicecho/agent-mcp-pool/issues/63) (`sync()` or
+**`2.3.0` closed [#60](https://github.com/cubicecho/agent-mcp-pool/issues/60)**,
+the hardcoded `clientInfo.version` of `0.1.0`. The pool now takes a
+`clientVersion` beside its `clientName`, and the router passes `SERVER_VERSION`
+— so `clientInfo`, which is the whole of what a dialled server learns about its
+caller and the only thing it can log or gate on, is now true in both halves
+rather than one. A manager test calls a fixture tool that reads
+`getClientVersion()` back out of the child.
+
+Two upstream issues stay open from this adoption, neither blocking: #62 above
+(tracked for implementation as
+[#64](https://github.com/cubicecho/agent-mcp-pool/issues/64)), and
+[#63](https://github.com/cubicecho/agent-mcp-pool/issues/63) — `sync()` or
 `reconnect()` with no `configs`, on a pool built without `load()`, silently
-closes and forgets every server — this repo always passes `configs`, so it is
-only a trap for the next caller), and
-[#60](https://github.com/cubicecho/agent-mcp-pool/issues/60), why downstream
-servers see `clientInfo.version` of `0.1.0` instead of this router's
-`SERVER_VERSION` — the pool takes a `clientName` but hardcodes the version
-beside it. Cosmetic, and only visible in a downstream server's own logs.
+closes and forgets every server. This repo always passes `configs`, so #63 is a
+trap for the next caller rather than a live bug here.
 
 The pool does not surface a downstream's `instructions`, and does not need to:
 it hands back the real SDK `Client`, which carries `getInstructions()` from its
