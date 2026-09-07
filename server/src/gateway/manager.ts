@@ -20,6 +20,7 @@ import type {
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
+import { SERVER_VERSION } from '../version.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
@@ -221,6 +222,11 @@ export class GatewayManager {
     this.getSettings = getSettings;
     this.pool = new McpPool({
       clientName: 'mcp-router',
+      // The other half of `clientInfo`, which is the whole of what a dialled server
+      // learns about its caller. The pool used to fill this in with a constant
+      // `0.1.0` (upstream agent-mcp-pool#60, fixed in 2.3.0), so downstream logs
+      // named a version of nothing beside a name that was ours.
+      clientVersion: SERVER_VERSION,
       // Spawn on the first request that needs a server rather than at boot: the
       // router carries dozens of installed servers, most idle most of the time.
       lazy: true,

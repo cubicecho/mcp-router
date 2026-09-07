@@ -2,6 +2,7 @@ import path from 'node:path';
 import type { ActivityEntry } from '@mcp-router/shared';
 import { serverConfigSchema, settingsFileSchema, workspaceConfigSchema } from '@mcp-router/shared';
 import { describe, expect, it } from 'vitest';
+import { SERVER_VERSION } from '../../version.ts';
 import { GatewayManager, workspaceInstanceKey } from '../manager.ts';
 import { ECHO_INSTRUCTIONS } from './fixtures/echo-instructions.ts';
 
@@ -304,7 +305,7 @@ describe('GatewayManager lifecycle over the pool', () => {
       expect(manager.runningCount()).toBe(0);
 
       const client = await manager.getClient('echo');
-      expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['pid']);
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['pid', 'caller']);
 
       const status = manager.status('echo');
       expect(status?.state).toBe('running');
@@ -330,6 +331,24 @@ describe('GatewayManager lifecycle over the pool', () => {
       expect(after).toBeGreaterThan(0);
       expect(after).not.toBe(before);
       expect(manager.status('echo')?.state).toBe('running');
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it('introduces the router to the downstream by its own name and version', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      const client = await manager.getClient('echo');
+      const result = await client.callTool({ name: 'caller', arguments: {} });
+
+      // `clientInfo` is the whole of what a dialled server learns about its caller, and it
+      // ends up in that server's own logs — so both halves have to be true. The pool used to
+      // fill the version in with a constant `0.1.0` (upstream agent-mcp-pool#60).
+      expect(result).toMatchObject({
+        content: [{ type: 'text', text: `mcp-router ${SERVER_VERSION}` }],
+      });
     } finally {
       await manager.stopAll();
     }
