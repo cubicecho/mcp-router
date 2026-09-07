@@ -134,7 +134,13 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   // Sessions normally end on a client DELETE; this bounds abandoned ones.
   "sessionIdleTimeoutMs": 1800000,
   // Hard cap on concurrent live MCP sessions; least-recently-active evicted past it.
-  "maxSessions": 1000
+  "maxSessions": 1000,
+  // How long a downstream connect (spawn + MCP initialize) may take before the
+  // router gives up on it, in milliseconds. Bounds a server that starts and then
+  // never speaks. Generous by default because a first `uvx`/`npx` spawn may
+  // download the package before it says anything. Unlike the others here, this
+  // one is read at startup: editing it needs a router restart.
+  "connectTimeoutMs": 60000
 }
 ```
 
@@ -294,6 +300,14 @@ JSON config shape:
 Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server,
 or `http://localhost:3000/mcp/w/<slug>` for a workspace's custom aggregate.
 
+**Instructions come through.** A server that ships `instructions` in its
+initialize result has them handed to your client verbatim on `/mcp/<name>`. The
+aggregates concatenate what their members have said into one document, each
+under a `## <server>` heading and prefaced by a note that every name is
+`<server>__`-prefixed. An aggregate never spawns a server just to read them, so
+a member that has not run yet in this router process contributes nothing until
+it does — reconnect after it wakes to pick it up.
+
 ## API reference
 
 Management REST API under `/api`, bearer auth, JSON in/out. Errors are non-2xx
@@ -333,6 +347,9 @@ MCP endpoints (streamable HTTP):
 | `POST/GET/DELETE /mcp/<name>` | Proxy 1:1 to that server (tools, resources, prompts) |
 | `POST/GET/DELETE /mcp` | Aggregate of all enabled servers, `<server>__` name prefix |
 | `POST/GET/DELETE /mcp/w/<slug>` | A workspace's custom aggregate — same `<server>__` prefix, over its members only |
+
+All three forward downstream `instructions` — see [Connecting MCP
+clients](#connecting-mcp-clients).
 
 ## Security notes
 
