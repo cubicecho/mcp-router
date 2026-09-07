@@ -118,8 +118,8 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 
 ## How the `@cubicecho/agent-*` packages are used
 
-Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.1` and
-`agent-mcp-pool@2.3.0`.
+Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.2` and
+`agent-mcp-pool@2.4.1`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
@@ -200,11 +200,12 @@ never speaks used to hold its request open forever — the MCP SDK's own 60s
 applies to the `initialize` *request*, which such a child never gets far enough
 to answer. `settings.connectTimeoutMs` (default 60s, generous because a first
 `uvx`/`npx` spawn may resolve and download a package before it says anything)
-is passed to the pool at construction, and a wedged child now fails the request
-that woke it. Alone among the timeouts here it is read once at startup, so an
-edit needs a router restart — see
-[#62](https://github.com/cubicecho/agent-mcp-pool/issues/62), which asks for it
-per row and re-resolvable the way `idleTimeoutMs` already is.
+resolves per row in `toPoolConfig` beside `idleTimeoutMs`, and a wedged child
+now fails the request that woke it. It was constructor-only when it landed,
+which meant a restart to change it; `2.4.0` closed
+[#62](https://github.com/cubicecho/agent-mcp-pool/issues/62)/[#64](https://github.com/cubicecho/agent-mcp-pool/issues/64)
+and the pool re-reads it on every reconcile, applying it at the next connect —
+an edited timeout is no reason to bounce a running child.
 
 **`2.3.0` closed [#60](https://github.com/cubicecho/agent-mcp-pool/issues/60)**,
 the hardcoded `clientInfo.version` of `0.1.0`. The pool now takes a
@@ -214,13 +215,20 @@ caller and the only thing it can log or gate on, is now true in both halves
 rather than one. A manager test calls a fixture tool that reads
 `getClientVersion()` back out of the child.
 
-Two upstream issues stay open from this adoption, neither blocking: #62 above
-(tracked for implementation as
-[#64](https://github.com/cubicecho/agent-mcp-pool/issues/64)), and
+**Nothing is left open upstream from this adoption.** The last one,
 [#63](https://github.com/cubicecho/agent-mcp-pool/issues/63) — `sync()` or
 `reconnect()` with no `configs`, on a pool built without `load()`, silently
-closes and forgets every server. This repo always passes `configs`, so #63 is a
-trap for the next caller rather than a live bug here.
+closing and forgetting every server — is fixed in `2.4.1` (a reconcile with
+neither now throws). It never bit this repo, which always passes `configs`; it
+was a trap for the next caller.
+
+The one issue open on the pool,
+[#66](https://github.com/cubicecho/agent-mcp-pool/issues/66), came from a
+different consumer and cannot reach this one: the exported standalone `probe`
+drops the row's `connectTimeoutMs` that `2.4.0` widened `McpConnection` to
+carry. `McpPool.probe` honours it, and this repo calls neither — "Test
+connection" here goes through `manager.getClient`, so it is dialled by the pool
+on the row's own patience.
 
 The pool does not surface a downstream's `instructions`, and does not need to:
 it hands back the real SDK `Client`, which carries `getInstructions()` from its
