@@ -138,8 +138,8 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   // How long a downstream connect (spawn + MCP initialize) may take before the
   // router gives up on it, in milliseconds. Bounds a server that starts and then
   // never speaks. Generous by default because a first `uvx`/`npx` spawn may
-  // download the package before it says anything. Unlike the others here, this
-  // one is read at startup: editing it needs a router restart.
+  // download the package before it says anything. Takes effect on the next
+  // connect after a reload; a running child is not bounced for it.
   "connectTimeoutMs": 60000
 }
 ```

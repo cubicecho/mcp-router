@@ -276,6 +276,24 @@ describe('GatewayManager stdio failures', () => {
     await manager.stopAll();
   });
 
+  it('honours an edited connect timeout on the next reconcile, without a restart', async () => {
+    // Starts patient, so a manager that captured the timeout at construction would sit on
+    // the default 60s below and fail this test by timing out rather than by asserting.
+    let current = settings;
+    const manager = new GatewayManager(() => current);
+    await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);
+
+    // The operator edits settings.json and the config watcher reconciles. The row is
+    // re-read, so the new patience applies at the next connect.
+    current = settingsFileSchema.parse({ connectTimeoutMs: 300 });
+    await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);
+
+    const startedAt = Date.now();
+    await expect(manager.getClient('wedged')).rejects.toThrow(/Failed to connect to server "wedged"/);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    await manager.stopAll();
+  });
+
   it('backs off a second connect after a crash, without spawning again', async () => {
     const manager = new GatewayManager(() => settings);
     await manager.reconcile([crashingConfig('flaky', 'process.exit(1)')]);

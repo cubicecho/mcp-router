@@ -169,12 +169,21 @@ function toPoolConfig(key: string, config: ServerConfig, settings: SettingsFile)
     id: key,
     label: config.displayName ?? config.name,
     enabled: config.enabled,
+    ...toConnection(config),
+    // After the spread, not before: `connectTimeoutMs` is a field of `McpConnection`
+    // as of pool 2.4.0, so a `toConnection` that ever fills it in would otherwise win
+    // over the setting resolved here without anything failing to compile.
+    //
     // Only a stdio child is worth reaping — it is a process holding memory. A
     // remote connection costs nothing to keep, and 0 is the pool's "never reap".
     // Resolved per row rather than passed to the pool once, because the global
     // default is a setting an operator can edit while the router is running.
     idleTimeoutMs: stdio ? (config.idleTimeoutMs ?? settings.idleTimeoutMs) : 0,
-    ...toConnection(config),
+    // Same reason, and the pool re-reads it on every reconcile: bounds spawn plus the
+    // MCP initialize handshake, so a server that starts and then never speaks fails the
+    // request that woke it instead of holding it open forever. (The SDK's own 60s applies
+    // to the initialize *request*, which such a server never gets far enough to answer.)
+    connectTimeoutMs: settings.connectTimeoutMs,
   };
 }
 
@@ -238,12 +247,6 @@ export class GatewayManager {
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
       crashBackoffMs: CRASH_BACKOFF_MS,
-      // Bounds spawn + initialize, so a child that starts and never speaks fails
-      // the request that woke it instead of holding it open forever. Read from
-      // settings once, here, because the pool takes it at construction — the one
-      // timeout it does not resolve per row (upstream agent-mcp-pool#62); an
-      // operator editing it therefore needs a router restart.
-      connectTimeoutMs: getSettings().connectTimeoutMs,
     });
   }
 

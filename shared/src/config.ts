@@ -76,8 +76,9 @@ export const settingsFileSchema = z
      *  the router gives up and reports the server as failed. Bounds a child that starts and then
      *  never speaks; the MCP SDK's own 60s applies to the initialize *request*, which such a child
      *  never gets far enough to answer. Generous by default because a first `uvx`/`npx` spawn may
-     *  resolve and download the package before it says anything. Unlike `idleTimeoutMs` this one
-     *  is read once at startup, so an edit needs a router restart. */
+     *  resolve and download the package before it says anything. Like `idleTimeoutMs` it is
+     *  re-read on every reconcile, and applies at the next connect — an edited timeout is no
+     *  reason to bounce a running child. */
     connectTimeoutMs: z
       .number()
       .int()
