@@ -55,10 +55,13 @@ function curlSnippet({ endpoint, token }: SnippetInput): string {
 function opencodeSnippet({ endpoint, label, token }: SnippetInput): string {
   return JSON.stringify(
     {
-      mcpServers: {
+      $schema: 'https://opencode.ai/config.json',
+      mcp: {
         [label]: {
+          type: 'remote',
           url: endpoint,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          enabled: true,
+          ...(token ? { headers: { Authorization: `Bearer ${token}` } } : {}),
         },
       },
     },
