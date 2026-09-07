@@ -221,3 +221,35 @@ describe('GatewayManager workspaces', () => {
     expect(manager.status('gh')).toBeDefined();
   });
 });
+
+describe('GatewayManager stdio failures', () => {
+  const crashingConfig = (name: string, script: string) =>
+    serverConfigSchema.parse({
+      name,
+      source: { type: 'npm', package: 'none' },
+      transport: { type: 'stdio', command: process.execPath, args: ['-e', script] },
+    });
+
+  it("reports the child's stderr rather than the transport's own close message", async () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([
+      crashingConfig('boom', "console.error('ModuleNotFoundError: no module named x'); process.exit(1)"),
+    ]);
+
+    await expect(manager.getClient('boom')).rejects.toThrow(/Failed to connect to server "boom"/);
+    const status = manager.status('boom');
+    expect(status?.state).toBe('error');
+    // The point of piping stderr: "MCP error -32000: Connection closed" explains nothing.
+    expect(status?.lastError).toContain('ModuleNotFoundError: no module named x');
+    await manager.stopAll();
+  });
+
+  it('backs off a second connect after a crash, without spawning again', async () => {
+    const manager = new GatewayManager(() => settings);
+    manager.reconcile([crashingConfig('flaky', 'process.exit(1)')]);
+
+    await expect(manager.getClient('flaky')).rejects.toThrow();
+    await expect(manager.getClient('flaky')).rejects.toThrow(/crashed recently; retrying is backed off/);
+    await manager.stopAll();
+  });
+});
