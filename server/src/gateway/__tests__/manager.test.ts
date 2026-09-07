@@ -245,6 +245,35 @@ describe('GatewayManager stdio failures', () => {
     await manager.stopAll();
   });
 
+  it('clears a standing backoff on restart, so the retry dials and reports why it failed', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([crashingConfig('boom', "console.error('nope'); process.exit(1)")]);
+
+    // First use dials and fails: 502, carrying what the child said.
+    await expect(manager.getClient('boom')).rejects.toMatchObject({ status: 502, detail: /nope/ });
+    // Inside the backoff window an ordinary use is refused without dialling at all.
+    await expect(manager.getClient('boom')).rejects.toMatchObject({ status: 503 });
+    // Restart is an explicit "try it again now", so it dials through the backoff
+    // and answers with the failure rather than with the backoff it just cleared.
+    await expect(manager.restart('boom')).rejects.toMatchObject({ status: 502, detail: /nope/ });
+    await manager.stopAll();
+  });
+
+  it('gives up on a child that spawns and never speaks, instead of waiting on it forever', async () => {
+    // Small enough that a hang fails the test by timing out rather than by passing slowly.
+    const impatient = settingsFileSchema.parse({ connectTimeoutMs: 300 });
+    const manager = new GatewayManager(() => impatient);
+    // Holds the event loop open and says nothing: no stdout, no exit, no stderr.
+    // The SDK's own 60s bounds the initialize *request*, which this never answers.
+    await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);
+
+    const startedAt = Date.now();
+    await expect(manager.getClient('wedged')).rejects.toThrow(/Failed to connect to server "wedged"/);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(manager.status('wedged')?.state).toBe('error');
+    await manager.stopAll();
+  });
+
   it('backs off a second connect after a crash, without spawning again', async () => {
     const manager = new GatewayManager(() => settings);
     await manager.reconcile([crashingConfig('flaky', 'process.exit(1)')]);

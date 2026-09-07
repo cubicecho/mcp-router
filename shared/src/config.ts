@@ -72,6 +72,17 @@ export const settingsFileSchema = z
       .default(30 * 60 * 1000),
     /** Hard cap on concurrent live MCP sessions; the least-recently-active are evicted past it. */
     maxSessions: z.number().int().positive().default(1000),
+    /** How long a downstream connect — spawn plus the MCP initialize handshake — may take before
+     *  the router gives up and reports the server as failed. Bounds a child that starts and then
+     *  never speaks; the MCP SDK's own 60s applies to the initialize *request*, which such a child
+     *  never gets far enough to answer. Generous by default because a first `uvx`/`npx` spawn may
+     *  resolve and download the package before it says anything. Unlike `idleTimeoutMs` this one
+     *  is read once at startup, so an edit needs a router restart. */
+    connectTimeoutMs: z
+      .number()
+      .int()
+      .positive()
+      .default(60 * 1000),
   })
   .passthrough();
 

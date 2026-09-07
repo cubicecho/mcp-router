@@ -202,8 +202,6 @@ export class GatewayManager {
   private readonly pool: McpPool;
   private readonly getSettings: () => SettingsFile;
   private readonly meta = new Map<string, ServerMeta>();
-  /** The rows the pool was last reconciled against. `reconnect` has to be handed them again. */
-  private rows: McpServerConfig[] = [];
   /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
   private readonly activity = new Map<string, ActivityEntry[]>();
   private activitySeq = 0;
@@ -223,6 +221,12 @@ export class GatewayManager {
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
       crashBackoffMs: CRASH_BACKOFF_MS,
+      // Bounds spawn + initialize, so a child that starts and never speaks fails
+      // the request that woke it instead of holding it open forever. Read from
+      // settings once, here, because the pool takes it at construction — the one
+      // timeout it does not resolve per row (upstream agent-mcp-pool#62); an
+      // operator editing it therefore needs a router restart.
+      connectTimeoutMs: getSettings().connectTimeoutMs,
     });
   }
 
@@ -268,8 +272,7 @@ export class GatewayManager {
       }
     }
     const settings = this.getSettings();
-    this.rows = [...desired].map(([key, config]) => toPoolConfig(key, config, settings));
-    await this.pool.sync(this.rows);
+    await this.pool.sync([...desired].map(([key, config]) => toPoolConfig(key, config, settings)));
   }
 
   /**
@@ -293,12 +296,17 @@ export class GatewayManager {
   /**
    * Drop an instance's connection and dial it again.
    *
-   * `reconnect` closes the child and re-registers the row, which under a lazy
-   * pool leaves it idle — so the `getClient` is what redials, and it is also what
-   * reports a restart that failed as a 502 carrying the child's stderr.
+   * `stop` rather than `reconnect`, though both close the child: `stop` leaves
+   * the row idle with its `error`/`failedAt` cleared, so the `getClient` below is
+   * the dial, and a restart that fails reports as a 502 carrying the child's
+   * stderr. `reconnect` dials the child itself (pool 2.2.0), which lands a failed
+   * restart inside a backoff it started a millisecond earlier — the same call
+   * would then answer 503 "crashed recently", naming a crash the operator just
+   * asked to be retried. Clearing that backoff is what pressing Restart on a
+   * crash-looping server is for.
    */
   async restart(name: string): Promise<Client> {
-    await this.pool.reconnect(name, this.rows);
+    await this.pool.stop(name);
     return this.getClient(name);
   }
 
