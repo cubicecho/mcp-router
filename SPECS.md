@@ -119,7 +119,7 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 ## How the `@cubicecho/agent-*` packages are used
 
 Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.2` and
-`agent-mcp-pool@2.4.1`.
+`agent-mcp-pool@2.4.2`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
@@ -222,13 +222,21 @@ closing and forgetting every server — is fixed in `2.4.1` (a reconcile with
 neither now throws). It never bit this repo, which always passes `configs`; it
 was a trap for the next caller.
 
-The one issue open on the pool,
-[#66](https://github.com/cubicecho/agent-mcp-pool/issues/66), came from a
-different consumer and cannot reach this one: the exported standalone `probe`
-drops the row's `connectTimeoutMs` that `2.4.0` widened `McpConnection` to
-carry. `McpPool.probe` honours it, and this repo calls neither — "Test
-connection" here goes through `manager.getClient`, so it is dialled by the pool
-on the row's own patience.
+The two issues raised on the pool since, both from other consumers, are both
+about a code path this repo does not take. `2.4.2` closed
+[#66](https://github.com/cubicecho/agent-mcp-pool/issues/66) — the exported
+standalone `probe` dropped the row's `connectTimeoutMs` that `2.4.0` widened
+`McpConnection` to carry — and
+[#67](https://github.com/cubicecho/agent-mcp-pool/issues/67) is open: the
+timeout bounds each *request* rather than the connect, so a paginated
+`tools/list` on a cold connect multiplies it by the page count.
+
+Neither reaches the router, for the same two reasons. It calls no probe of
+either kind — "Test connection" goes through `manager.getClient`, so it is
+dialled by the pool on the row's own patience — and `indexTools: false` means
+there is no `tools/list` drain on a connect to multiply. `connectTimeoutMs`
+here bounds spawn plus `initialize` and nothing else, which is what the setting
+claims.
 
 The pool does not surface a downstream's `instructions`, and does not need to:
 it hands back the real SDK `Client`, which carries `getInstructions()` from its
