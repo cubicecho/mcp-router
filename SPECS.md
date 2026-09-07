@@ -20,7 +20,7 @@ hand-editable flat config files.
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
 | Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
 | Deploy | Single Docker image: build app + server, Express serves `app/dist` statically; `docker-compose.yml` with a `data/` volume |
-| Shared agent packages | **Partly adopted.** `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below. `@cubicecho/agent-mcp-pool`'s *transport* layer (`createTransport`, `readStderrTail`, `MINIMAL_CHILD_ENV`) is a dependency of `server/`; its `McpPool` is not, blocked on [#49](https://github.com/cubicecho/agent-mcp-pool/issues/49) and [#50](https://github.com/cubicecho/agent-mcp-pool/issues/50) |
+| Shared agent packages | **Partly adopted.** `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below. `@cubicecho/agent-mcp-pool`'s *transport* layer (`createTransport`, `readStderrTail`, `MINIMAL_CHILD_ENV`) is a dependency of `server/`; its `McpPool` is not, now blocked only on [#56](https://github.com/cubicecho/agent-mcp-pool/issues/56) |
 
 ## Layout & contracts
 
@@ -110,8 +110,8 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 
 ## How the `@cubicecho/agent-*` packages are used
 
-Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.0.1` and
-`agent-mcp-pool@0.10.0`.
+Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.0.6` and
+`agent-mcp-pool@2.0.0`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
@@ -139,24 +139,24 @@ same two transports including the `cwd ?? undefined` nuance the SDK needs.
 `MINIMAL_CHILD_ENV`, and `toConnection()` adapts this repo's discriminated-union
 config to the flat row they take.
 
-What was **not** adopted is `McpPool` itself, on two counts, both filed:
+What was **not** adopted is `McpPool` itself. Four of the five objections to it
+were fixed upstream in `2.0.0`: `McpPoolError` now carries a discriminated code,
+`retryAt` and the child's stderr, so the router's 404 / 409 / 503 / 502 mapping
+is expressible ([#50](https://github.com/cubicecho/agent-mcp-pool/issues/50));
+`state()` reports `pid` and `startedAt`, which the server detail page renders
+([#49](https://github.com/cubicecho/agent-mcp-pool/issues/49)); `tools/list` is
+drained across pages ([#47](https://github.com/cubicecho/agent-mcp-pool/issues/47));
+and `openai` is no longer a dependency at all, which is why this repo's lockfile
+lost 24 MB ([#48](https://github.com/cubicecho/agent-mcp-pool/issues/48)).
 
-- **`state()` cannot describe a running child**
-  ([#49](https://github.com/cubicecho/agent-mcp-pool/issues/49)) — no pid, no
-  start time. The server detail page renders both, and once the pool owns the
-  transport neither is recoverable.
-- **Bare `Error`s** ([#50](https://github.com/cubicecho/agent-mcp-pool/issues/50))
-  — `client()` throws the same shape whether a server is unknown, disabled, in
-  crash backoff, or just failed to dial. The router maps those to 404 / 409 /
-  503 / 502, which it cannot do by matching on message text.
-
-Two further upstream bugs were found while reviewing and do not block anything
-here, since the router drives the transport itself:
-[#47](https://github.com/cubicecho/agent-mcp-pool/issues/47) (`tools/list` is
-read one page deep, so a paginated server's later tools become uncallable) and
-[#48](https://github.com/cubicecho/agent-mcp-pool/issues/48) (`openai` is a
-required peer dependency for two type-only imports — 24 MB for a consumer that
-makes no model calls; this repo pays it today).
+One is left ([#56](https://github.com/cubicecho/agent-mcp-pool/issues/56)):
+`connect()` always drains the full tool list before an entry goes `ready`, with
+no opt-out. That is right for an agent — the index is what `tools()` and `call()`
+are for — and wrong for this repo, which proxies `tools/list` straight through
+from the client that asked and never reads the index. Since servers are spawned
+lazily on the first request that needs one, adopting the pool today would put a
+full paginated `tools/list` in front of every user-facing cold request, and hold
+a second copy of every tool for every server. Revisit when that is optional.
 
 **Namespacing stays here regardless.** The pool truncates `<slug>__<tool>` to 64
 characters for OpenAI's function-name limit and resolves by whole-string lookup,
