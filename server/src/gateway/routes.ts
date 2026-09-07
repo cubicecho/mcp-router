@@ -10,7 +10,7 @@ import type { GatewayManager } from './manager.ts';
 import { workspaceInstanceKey } from './manager.ts';
 import { enabledMembers } from './members.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
-import { createAggregateServer, createProxyServer } from './proxy.ts';
+import { createAggregateServer, createProxyServer, mergeInstructions } from './proxy.ts';
 
 export interface McpRouterDeps {
   store: ConfigStore;
@@ -100,14 +100,25 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     return true;
   };
 
-  /** Start a new session for an initialize request; anything else without a session id is a 400. */
-  const start = async (req: Request, res: Response, buildServer: () => Server, wire: WireRelay): Promise<void> => {
+  /**
+   * Start a new session for an initialize request; anything else without a session id is a 400.
+   *
+   * `buildServer` may be async because a proxy Server's `instructions` are the downstream's own,
+   * and reading them can mean connecting first. It runs after the initialize check, so a
+   * malformed request never spawns anything.
+   */
+  const start = async (
+    req: Request,
+    res: Response,
+    buildServer: () => Server | Promise<Server>,
+    wire: WireRelay,
+  ): Promise<void> => {
     if (!isInitializeRequest(req.body)) {
       res.status(400).json({ error: 'Missing or expired mcp-session-id' });
       return;
     }
     enforceCap();
-    const server = buildServer();
+    const server = await buildServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
@@ -137,6 +148,32 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       manager.recordActivity(name, entry),
   };
 
+  /**
+   * The downstream's instructions for a 1:1 session, connecting first to get them.
+   *
+   * `instructions` travels only in the initialize result, so this is the one chance to have
+   * them — and this endpoint is a client that asked for exactly this server, so the spawn it
+   * costs is one the session was going to pay anyway. A downstream that will not connect still
+   * gets its session: the failure belongs on the first request that needs the server, where it
+   * carries its own status and the child's stderr, not on initialize.
+   */
+  const proxyInstructions = async (name: string): Promise<string | undefined> => {
+    await manager.getClient(name).catch(() => {});
+    return manager.instructions(name);
+  };
+
+  /**
+   * The merged instructions for an aggregate session, from whatever its members have already
+   * said. Never connects: spawning every member to write a preamble the session may never act
+   * on is the trade this endpoint exists to avoid, so a member not yet spawned in this process
+   * contributes nothing and is picked up by the next session to initialize after it wakes.
+   *
+   * @param members Instance keys to read, each with the name it is exposed under (they differ
+   *   for a workspace, whose members are keyed `w:<slug>:<server>`).
+   */
+  const aggregateInstructions = (members: [name: string, key: string][]): string | undefined =>
+    mergeInstructions(members.map(([name, key]) => [name, manager.instructions(key)]));
+
   router.all('/', async (req, res) => {
     if (await resume(req, res)) {
       return;
@@ -145,7 +182,11 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await start(
       req,
       res,
-      () => createAggregateServer({ ...proxyDeps, serverNames }),
+      () =>
+        createAggregateServer(
+          { ...proxyDeps, serverNames },
+          aggregateInstructions(serverNames().map((name) => [name, name])),
+        ),
       (server) =>
         manager.onNotification((key, notification) => {
           // enabledNames() lists only base keys, so workspace instances never match here.
@@ -190,7 +231,11 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await start(
       req,
       res,
-      () => createAggregateServer(workspaceDeps),
+      () =>
+        createAggregateServer(
+          workspaceDeps,
+          aggregateInstructions(memberNames().map((name) => [name, workspaceInstanceKey(slug, name)])),
+        ),
       (server) =>
         manager.onNotification((key, notification) => {
           // Downstream notifications arrive under the workspace instance key.
@@ -217,7 +262,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await start(
       req,
       res,
-      () => createProxyServer(name, proxyDeps),
+      async () => createProxyServer(name, proxyDeps, await proxyInstructions(name)),
       // 1:1 endpoint: no namespacing, forward the owning server's notifications as-is.
       (server) =>
         manager.onNotification((key, notification) => {

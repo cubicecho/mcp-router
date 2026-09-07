@@ -1,7 +1,9 @@
+import path from 'node:path';
 import type { ActivityEntry } from '@mcp-router/shared';
 import { serverConfigSchema, settingsFileSchema, workspaceConfigSchema } from '@mcp-router/shared';
 import { describe, expect, it } from 'vitest';
 import { GatewayManager, workspaceInstanceKey } from '../manager.ts';
+import { ECHO_INSTRUCTIONS } from './fixtures/echo-instructions.ts';
 
 const settings = settingsFileSchema.parse({});
 const remoteConfig = (name: string) =>
@@ -11,9 +13,9 @@ const remoteConfig = (name: string) =>
     transport: { type: 'streamable-http', url: 'https://example.com/mcp' },
   });
 
-function newManager(names: string[]): GatewayManager {
+async function newManager(names: string[]): Promise<GatewayManager> {
   const manager = new GatewayManager(() => settings);
-  manager.reconcile(names.map(remoteConfig));
+  await manager.reconcile(names.map(remoteConfig));
   return manager;
 }
 
@@ -26,8 +28,8 @@ const baseEntry: Omit<ActivityEntry, 'id'> = {
 };
 
 describe('GatewayManager activity log', () => {
-  it('stores a detached clone of result, immune to later mutation of the caller value', () => {
-    const manager = newManager(['a']);
+  it('stores a detached clone of result, immune to later mutation of the caller value', async () => {
+    const manager = await newManager(['a']);
     const result = { text: 'hi', nested: { count: 1 } };
     manager.recordActivity('a', { ...baseEntry, result });
     result.text = 'MUTATED';
@@ -35,15 +37,15 @@ describe('GatewayManager activity log', () => {
     expect(manager.getActivity('a')[0]?.result).toEqual({ text: 'hi', nested: { count: 1 } });
   });
 
-  it('drops activity for a server that is not currently managed', () => {
-    const manager = newManager(['a']);
+  it('drops activity for a server that is not currently managed', async () => {
+    const manager = await newManager(['a']);
     manager.recordActivity('ghost', { ...baseEntry });
     expect(manager.getActivity('ghost')).toEqual([]);
     expect(manager.getActivity('a')).toEqual([]);
   });
 
-  it('counts recorded calls and stamps the last-called time on the status', () => {
-    const manager = newManager(['a']);
+  it('counts recorded calls and stamps the last-called time on the status', async () => {
+    const manager = await newManager(['a']);
     expect(manager.status('a')?.callCount).toBe(0);
     expect(manager.status('a')?.lastCalledAt).toBeUndefined();
 
@@ -54,15 +56,15 @@ describe('GatewayManager activity log', () => {
     expect(manager.status('a')?.lastCalledAt).toBe('2026-01-01T00:05:00.000Z');
   });
 
-  it('does not count activity for an unmanaged server', () => {
-    const manager = newManager(['a']);
+  it('does not count activity for an unmanaged server', async () => {
+    const manager = await newManager(['a']);
     manager.recordActivity('ghost', { ...baseEntry });
     expect(manager.status('ghost')).toBeUndefined();
     expect(manager.status('a')?.callCount).toBe(0);
   });
 
-  it('bounds the log to the newest 200 entries, newest first', () => {
-    const manager = newManager(['a']);
+  it('bounds the log to the newest 200 entries, newest first', async () => {
+    const manager = await newManager(['a']);
     for (let i = 0; i < 250; i += 1) {
       manager.recordActivity('a', { ...baseEntry, target: `t${i}` });
     }
@@ -72,16 +74,16 @@ describe('GatewayManager activity log', () => {
     expect(log[199]?.target).toBe('t50');
   });
 
-  it('truncates an over-large payload to a marker string', () => {
-    const manager = newManager(['a']);
+  it('truncates an over-large payload to a marker string', async () => {
+    const manager = await newManager(['a']);
     manager.recordActivity('a', { ...baseEntry, result: { big: 'x'.repeat(20_000) } });
     const stored = manager.getActivity('a')[0]?.result;
     expect(typeof stored).toBe('string');
     expect(stored).toContain('[truncated');
   });
 
-  it('bounds over-large error and target strings too', () => {
-    const manager = newManager(['a']);
+  it('bounds over-large error and target strings too', async () => {
+    const manager = await newManager(['a']);
     manager.recordActivity('a', {
       ...baseEntry,
       ok: false,
@@ -95,8 +97,8 @@ describe('GatewayManager activity log', () => {
     expect(entry?.target).toContain('[truncated');
   });
 
-  it('never truncates in the middle of a surrogate pair', () => {
-    const manager = newManager(['a']);
+  it('never truncates in the middle of a surrogate pair', async () => {
+    const manager = await newManager(['a']);
     // Serialized form is `{"big":"…"}` — the 8-char prefix puts the emoji's high
     // surrogate exactly at the truncation index.
     manager.recordActivity('a', { ...baseEntry, result: { big: `${'x'.repeat(7_991)}😀${'y'.repeat(100)}` } });
@@ -119,9 +121,9 @@ describe('GatewayManager workspaces', () => {
   const workspace = (members: Record<string, unknown>, extra: Record<string, unknown> = {}) =>
     workspaceConfigSchema.parse({ name: 'Acme', slug: 'acme', members, ...extra });
 
-  it('creates a workspace-scoped instance with per-member overrides applied', () => {
+  it('creates a workspace-scoped instance with per-member overrides applied', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile(
+    await manager.reconcile(
       [stdioConfig('gh')],
       [workspace({ gh: { env: { SHARED: 'override', EXTRA: 'x' }, args: ['custom.js'] } })],
     );
@@ -134,7 +136,7 @@ describe('GatewayManager workspaces', () => {
     expect(status?.config.transport).toMatchObject({ type: 'stdio', args: ['custom.js'] });
   });
 
-  it('overrides a remote member URL while merging headers over the base', () => {
+  it('overrides a remote member URL while merging headers over the base', async () => {
     const manager = new GatewayManager(() => settings);
     const remote = serverConfigSchema.parse({
       name: 'api',
@@ -145,7 +147,7 @@ describe('GatewayManager workspaces', () => {
         headers: { 'X-Base': 'base' },
       },
     });
-    manager.reconcile(
+    await manager.reconcile(
       [remote],
       [
         workspace({
@@ -162,32 +164,32 @@ describe('GatewayManager workspaces', () => {
     });
   });
 
-  it('leaves a remote member URL untouched when no url override is set', () => {
+  it('leaves a remote member URL untouched when no url override is set', async () => {
     const manager = new GatewayManager(() => settings);
     const remote = serverConfigSchema.parse({
       name: 'api',
       source: { type: 'remote' },
       transport: { type: 'streamable-http', url: 'http://localhost:1001/mcp' },
     });
-    manager.reconcile([remote], [workspace({ api: {} })]);
+    await manager.reconcile([remote], [workspace({ api: {} })]);
 
     expect(manager.status(workspaceInstanceKey('acme', 'api'))?.config.transport).toMatchObject({
       url: 'http://localhost:1001/mcp',
     });
   });
 
-  it('keeps workspace instances out of the base server views (statusAll / enabledNames)', () => {
+  it('keeps workspace instances out of the base server views (statusAll / enabledNames)', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
+    await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
 
     expect(manager.enabledNames()).toEqual(['gh']);
     expect(manager.statusAll().map((s) => s.config.name)).toEqual(['gh']);
   });
 
-  it('runs a workspace member even when its base server is globally disabled (independent scope)', () => {
+  it('runs a workspace member even when its base server is globally disabled (independent scope)', async () => {
     const manager = new GatewayManager(() => settings);
     const disabledBase = serverConfigSchema.parse({ ...stdioConfig('gh'), enabled: false });
-    manager.reconcile([disabledBase], [workspace({ gh: {} })]);
+    await manager.reconcile([disabledBase], [workspace({ gh: {} })]);
 
     // The base server is off globally...
     expect(manager.enabledNames()).toEqual([]);
@@ -195,27 +197,27 @@ describe('GatewayManager workspaces', () => {
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))?.config.enabled).toBe(true);
   });
 
-  it('disables a workspace instance when the workspace itself is disabled', () => {
+  it('disables a workspace instance when the workspace itself is disabled', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} }, { enabled: false })]);
+    await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} }, { enabled: false })]);
 
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))?.config.enabled).toBe(false);
   });
 
-  it('drops workspace instances whose base server no longer exists', () => {
+  it('drops workspace instances whose base server no longer exists', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {}, ghost: {} })]);
+    await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {}, ghost: {} })]);
 
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeDefined();
     expect(manager.status(workspaceInstanceKey('acme', 'ghost'))).toBeUndefined();
   });
 
-  it('removes a workspace instance when the workspace is removed on a later reconcile', () => {
+  it('removes a workspace instance when the workspace is removed on a later reconcile', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
+    await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} })]);
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeDefined();
 
-    manager.reconcile([stdioConfig('gh')], []);
+    await manager.reconcile([stdioConfig('gh')], []);
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))).toBeUndefined();
     // The base server survives.
     expect(manager.status('gh')).toBeDefined();
@@ -232,7 +234,7 @@ describe('GatewayManager stdio failures', () => {
 
   it("reports the child's stderr rather than the transport's own close message", async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([
+    await manager.reconcile([
       crashingConfig('boom', "console.error('ModuleNotFoundError: no module named x'); process.exit(1)"),
     ]);
 
@@ -244,12 +246,167 @@ describe('GatewayManager stdio failures', () => {
     await manager.stopAll();
   });
 
+  it('clears a standing backoff on restart, so the retry dials and reports why it failed', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([crashingConfig('boom', "console.error('nope'); process.exit(1)")]);
+
+    // First use dials and fails: 502, carrying what the child said.
+    await expect(manager.getClient('boom')).rejects.toMatchObject({ status: 502, detail: /nope/ });
+    // Inside the backoff window an ordinary use is refused without dialling at all.
+    await expect(manager.getClient('boom')).rejects.toMatchObject({ status: 503 });
+    // Restart is an explicit "try it again now", so it dials through the backoff
+    // and answers with the failure rather than with the backoff it just cleared.
+    await expect(manager.restart('boom')).rejects.toMatchObject({ status: 502, detail: /nope/ });
+    await manager.stopAll();
+  });
+
+  it('gives up on a child that spawns and never speaks, instead of waiting on it forever', async () => {
+    // Small enough that a hang fails the test by timing out rather than by passing slowly.
+    const impatient = settingsFileSchema.parse({ connectTimeoutMs: 300 });
+    const manager = new GatewayManager(() => impatient);
+    // Holds the event loop open and says nothing: no stdout, no exit, no stderr.
+    // The SDK's own 60s bounds the initialize *request*, which this never answers.
+    await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);
+
+    const startedAt = Date.now();
+    await expect(manager.getClient('wedged')).rejects.toThrow(/Failed to connect to server "wedged"/);
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+    expect(manager.status('wedged')?.state).toBe('error');
+    await manager.stopAll();
+  });
+
   it('backs off a second connect after a crash, without spawning again', async () => {
     const manager = new GatewayManager(() => settings);
-    manager.reconcile([crashingConfig('flaky', 'process.exit(1)')]);
+    await manager.reconcile([crashingConfig('flaky', 'process.exit(1)')]);
 
     await expect(manager.getClient('flaky')).rejects.toThrow();
     await expect(manager.getClient('flaky')).rejects.toThrow(/crashed recently; retrying is backed off/);
     await manager.stopAll();
+  });
+});
+
+describe('GatewayManager lifecycle over the pool', () => {
+  const echoServer = path.join(import.meta.dirname, 'fixtures/echo-server.ts');
+  const echoConfig = (name: string, overrides: Record<string, unknown> = {}) =>
+    serverConfigSchema.parse({
+      name,
+      source: { type: 'npm', package: 'none' },
+      transport: { type: 'stdio', command: process.execPath, args: [echoServer] },
+      ...overrides,
+    });
+
+  it('registers a server without spawning it, and spawns on the first use', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      // Registered, but lazily: no child yet, and nothing is wrong with that.
+      expect(manager.status('echo')).toMatchObject({ state: 'stopped', pid: undefined });
+      expect(manager.runningCount()).toBe(0);
+
+      const client = await manager.getClient('echo');
+      expect((await client.listTools()).tools.map((t) => t.name)).toEqual(['pid']);
+
+      const status = manager.status('echo');
+      expect(status?.state).toBe('running');
+      expect(status?.pid).toBeGreaterThan(0);
+      expect(status?.startedAt).toBeTruthy();
+      expect(manager.runningCount()).toBe(1);
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it('restart replaces the child with a new process', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      await manager.getClient('echo');
+      const before = manager.status('echo')?.pid;
+
+      await manager.restart('echo');
+      const after = manager.status('echo')?.pid;
+
+      expect(before).toBeGreaterThan(0);
+      expect(after).toBeGreaterThan(0);
+      expect(after).not.toBe(before);
+      expect(manager.status('echo')?.state).toBe('running');
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it("remembers the downstream's instructions from the connect, and forgets them on an edit", async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      // Nothing has handshaken yet, and `instructions` arrives nowhere but in the
+      // initialize result — so there is nothing to know and it does not go and find out.
+      expect(manager.instructions('echo')).toBeUndefined();
+      expect(manager.status('echo')?.state).toBe('stopped');
+
+      await manager.getClient('echo');
+      expect(manager.instructions('echo')).toBe(ECHO_INSTRUCTIONS);
+
+      // A changed command is a different server; its old guidance is not evidence about the new one.
+      await manager.reconcile([echoConfig('echo', { env: { CHANGED: '1' } })]);
+      expect(manager.instructions('echo')).toBeUndefined();
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it('closes the child when the server is disabled, and drops it from the aggregate', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    try {
+      await manager.getClient('echo');
+      expect(manager.enabledNames()).toEqual(['echo']);
+
+      await manager.reconcile([echoConfig('echo', { enabled: false })]);
+
+      expect(manager.status('echo')).toMatchObject({ state: 'stopped', pid: undefined });
+      expect(manager.enabledNames()).toEqual([]);
+      await expect(manager.getClient('echo')).rejects.toMatchObject({
+        status: 404,
+        message: 'Server "echo" is disabled',
+      });
+    } finally {
+      await manager.stopAll();
+    }
+  });
+
+  it('404s an instance key nothing is configured for', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([echoConfig('echo')]);
+    await expect(manager.getClient('ghost')).rejects.toMatchObject({
+      status: 404,
+      message: 'Unknown server "ghost"',
+    });
+    await manager.stopAll();
+  });
+
+  it('gives a workspace member its own child, independent of the base server', async () => {
+    const manager = new GatewayManager(() => settings);
+    const workspace = workspaceConfigSchema.parse({
+      name: 'Acme',
+      slug: 'acme',
+      members: { echo: {} },
+    });
+    await manager.reconcile([echoConfig('echo')], [workspace]);
+    try {
+      await manager.getClient('echo');
+      await manager.getClientForWorkspace('acme', 'echo');
+
+      const base = manager.status('echo')?.pid;
+      const scoped = manager.status(workspaceInstanceKey('acme', 'echo'))?.pid;
+      expect(base).toBeGreaterThan(0);
+      expect(scoped).toBeGreaterThan(0);
+      expect(scoped).not.toBe(base);
+      // Two children, but only the base server is a "server" to the API.
+      expect(manager.runningCount()).toBe(1);
+      expect(manager.statusAll().map((s) => s.config.name)).toEqual(['echo']);
+    } finally {
+      await manager.stopAll();
+    }
   });
 });

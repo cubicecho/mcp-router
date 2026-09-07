@@ -57,7 +57,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.status(201).json(requireStatus(config.name));
   });
 
@@ -82,7 +82,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
       next.idleTimeoutMs = idleTimeoutMs;
     }
     await store.saveServer(next);
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.json(requireStatus(name));
   });
 
@@ -91,9 +91,11 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     if (!store.getServer(name)) {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
-    await manager.stop(name);
     await store.deleteServer(name);
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    // Before the uninstall, not after: the reconcile is what closes the child,
+    // and removing its install directory out from under a live process is how a
+    // half-deleted server with a file still open happens.
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     await uninstall(dataDir, name);
     res.status(204).end();
   });
@@ -103,8 +105,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     if (!store.getServer(name)) {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
-    await manager.stop(name);
-    await manager.getClient(name);
+    await manager.restart(name);
     res.json(requireStatus(name));
   });
 

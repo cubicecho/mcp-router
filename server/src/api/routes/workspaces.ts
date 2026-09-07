@@ -76,7 +76,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
       members: request.members ?? {},
     });
     await store.saveWorkspace(config);
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.status(201).json(toWorkspaceStatus(config));
   });
 
@@ -107,14 +107,14 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     if (slug !== existing.slug) {
       await store.deleteWorkspace(existing.slug);
     }
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.json(toWorkspaceStatus(next));
   });
 
   router.delete('/:slug', async (req, res) => {
     requireWorkspace(req.params.slug);
     await store.deleteWorkspace(req.params.slug);
-    manager.reconcile(store.getServers(), store.getWorkspaces());
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     res.status(204).end();
   });
 

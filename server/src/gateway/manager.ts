@@ -1,18 +1,25 @@
 import { isDeepStrictEqual } from 'node:util';
-import { createTransport, type McpConnection, MINIMAL_CHILD_ENV, readStderrTail } from '@cubicecho/agent-mcp-pool';
+import {
+  type McpConnection,
+  McpPool,
+  McpPoolError,
+  type McpServerConfig,
+  type McpServerState,
+  type McpStatus,
+  MINIMAL_CHILD_ENV,
+} from '@cubicecho/agent-mcp-pool';
 import type {
   ActivityEntry,
   ServerConfig,
+  ServerRuntimeState,
   ServerStatus,
   SettingsFile,
   WorkspaceConfig,
   WorkspaceMember,
 } from '@mcp-router/shared';
-import { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
-import { errorMessage, HttpError } from '../errors.ts';
-import { SERVER_VERSION } from '../version.ts';
+import { HttpError } from '../errors.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
@@ -60,41 +67,33 @@ function snapshotValue(value: unknown): unknown {
   return JSON.parse(serialized);
 }
 
-interface ManagedServer {
-  /** Map key: the server name for base instances, `w:<slug>:<server>` for workspace-scoped ones. */
-  key: string;
+/**
+ * What the router keeps per managed instance, beside what the pool holds.
+ *
+ * The pool's own `state()` row is the connection: status, pid, start time, the
+ * last error. None of this is — `config` is this repo's discriminated-union
+ * shape rather than the flat row the pool was handed, and the call bookkeeping
+ * is counted from proxied traffic the pool never sees.
+ */
+interface ServerMeta {
   config: ServerConfig;
-  client: Client | null;
-  connecting: Promise<Client> | null;
-  state: ServerStatus['state'];
-  pid?: number;
-  startedAt?: string;
-  lastError?: string;
+  /** Tool count from the last proxied `tools/list`; cleared when the connection is restarted. */
   toolCount?: number;
+  /**
+   * The downstream's own `instructions`, as of the last connect.
+   *
+   * Kept because it is only ever knowable from a live connection — it arrives in
+   * the initialize result and nowhere else — while the proxy `Server` that has to
+   * re-emit it is constructed when a client initializes, which for the aggregate
+   * is long before most of its members have been spawned. Cleared with the config
+   * it was read under; a server whose command or env changed is a different
+   * server, and stale guidance is worse than none.
+   */
+  instructions?: string;
   /** Count of proxied calls recorded via recordActivity this process (reset on restart). */
   callCount: number;
   /** ISO timestamp of the most recent recorded call. */
   lastCalledAt?: string;
-  idleTimer: NodeJS.Timeout | null;
-  /** Reads the child's stderr tail; replaced per connect, and empty before the first one. */
-  stderrTail: () => string;
-  lastCrashAt: number;
-  stopping: boolean;
-}
-
-function newEntry(key: string, config: ServerConfig): ManagedServer {
-  return {
-    key,
-    config,
-    client: null,
-    connecting: null,
-    state: 'stopped',
-    callCount: 0,
-    idleTimer: null,
-    stderrTail: () => '',
-    lastCrashAt: 0,
-    stopping: false,
-  };
 }
 
 /** Map key for a server instance scoped to a workspace. Contains ':' so it never collides with a base server name. */
@@ -139,9 +138,8 @@ export function resolveMemberConfig(
 }
 
 /**
- * A server config as `@cubicecho/agent-mcp-pool`'s transport layer wants it: one
- * flat row rather than this repo's discriminated union. Only the connection half
- * is needed — identity, naming and lifecycle stay here.
+ * The connection half of a server config as the pool wants it: one flat row
+ * rather than this repo's discriminated union.
  */
 export function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
@@ -156,41 +154,104 @@ export function toConnection(config: ServerConfig): McpConnection {
   };
 }
 
-/** True when two configs differ in a way that requires restarting the downstream connection. */
-export function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
-  return !isDeepStrictEqual(
-    { transport: a.transport, env: a.env, idleTimeoutMs: a.idleTimeoutMs },
-    { transport: b.transport, env: b.env, idleTimeoutMs: b.idleTimeoutMs },
-  );
+/**
+ * One managed instance as a pool row.
+ *
+ * The instance key is the row's id — a base server's name, or `w:<slug>:<server>`
+ * — so a workspace member is an entry of its own with its own child, independent
+ * of the base server's. `slug` is left unset and never read: the pool indexes no
+ * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
+ */
+function toPoolConfig(key: string, config: ServerConfig, settings: SettingsFile): McpServerConfig {
+  const stdio = config.transport.type === 'stdio';
+  return {
+    id: key,
+    label: config.displayName ?? config.name,
+    enabled: config.enabled,
+    // Only a stdio child is worth reaping — it is a process holding memory. A
+    // remote connection costs nothing to keep, and 0 is the pool's "never reap".
+    // Resolved per row rather than passed to the pool once, because the global
+    // default is a setting an operator can edit while the router is running.
+    idleTimeoutMs: stdio ? (config.idleTimeoutMs ?? settings.idleTimeoutMs) : 0,
+    ...toConnection(config),
+  };
 }
 
 /**
- * One downstream MCP Client per server. stdio servers are spawned lazily on
- * first use and killed after an idle timeout; remote servers get a
- * streamable-http client connection. Crashes flip the state to 'error' with a
- * stderr tail and are retried (with a short backoff) on the next request.
+ * True when two configs differ in a way that restarts the downstream connection.
+ *
+ * Mirrors the pool's own `sameConnection` — which decides the restart — for the
+ * one piece of derived state the router keeps across a reconcile: a tool count
+ * read from the old child is not true of a new one.
+ */
+export function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
+  return !isDeepStrictEqual(
+    { transport: a.transport, env: a.env, enabled: a.enabled },
+    { transport: b.transport, env: b.env, enabled: b.enabled },
+  );
+}
+
+/** How the pool's connection status reads on this API. `disabled` and `idle` are both "no child, nothing wrong". */
+const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
+  disabled: 'stopped',
+  idle: 'stopped',
+  connecting: 'starting',
+  ready: 'running',
+  error: 'error',
+};
+
+/**
+ * One downstream MCP client per managed instance, over `@cubicecho/agent-mcp-pool`.
+ *
+ * The pool owns the lifecycle — reconciling rows against live children, lazy
+ * spawn on first use, idle reap, crash backoff, and the notification relay. What
+ * stays here is what the pool has no view of: this repo's config shape, the
+ * workspace-scoped instance keys, the proxied-call activity log, and the HTTP
+ * status codes the router answers a refusal with.
  */
 export class GatewayManager {
-  private readonly entries = new Map<string, ManagedServer>();
+  private readonly pool: McpPool;
   private readonly getSettings: () => SettingsFile;
+  private readonly meta = new Map<string, ServerMeta>();
   /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
   private readonly activity = new Map<string, ActivityEntry[]>();
   private activitySeq = 0;
-  /** Listeners for downstream server→client notifications (list_changed, resources/updated, log messages). */
-  private readonly notificationListeners = new Set<(key: string, notification: Notification) => void>();
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
+    this.pool = new McpPool({
+      clientName: 'mcp-router',
+      // Spawn on the first request that needs a server rather than at boot: the
+      // router carries dozens of installed servers, most idle most of the time.
+      lazy: true,
+      // The router proxies `tools/list` through from the client that asked and
+      // never reads the pool's index, so draining it on every cold connect would
+      // be a round trip per page in front of a user-facing request, for nobody.
+      indexTools: false,
+      // A stdio child gets this allowlist plus the server's own env, never the
+      // router's full process.env — an MCP server is third-party code.
+      childEnv: MINIMAL_CHILD_ENV,
+      crashBackoffMs: CRASH_BACKOFF_MS,
+      // Bounds spawn + initialize, so a child that starts and never speaks fails
+      // the request that woke it instead of holding it open forever. Read from
+      // settings once, here, because the pool takes it at construction — the one
+      // timeout it does not resolve per row (upstream agent-mcp-pool#62); an
+      // operator editing it therefore needs a router restart.
+      connectTimeoutMs: getSettings().connectTimeoutMs,
+    });
   }
 
   /**
-   * Sync managed entries with the given server + workspace configs: drop removed,
+   * Sync managed instances with the given server + workspace configs: drop removed,
    * restart changed/disabled, add new. Base servers are keyed by name; each
    * workspace member that references an existing server gets its own isolated
    * downstream instance keyed `w:<slug>:<server>` with per-workspace overrides
    * applied, so a workspace can run a server independently of its global state.
+   *
+   * Awaiting it is what makes a write visible to the read that follows — the pool
+   * serializes reconciles behind whatever it is already doing.
    */
-  reconcile(configs: ServerConfig[], workspaces: WorkspaceConfig[] = []): void {
+  async reconcile(configs: ServerConfig[], workspaces: WorkspaceConfig[] = []): Promise<void> {
     const byName = new Map(configs.map((c) => [c.name, c]));
     const desired = new Map<string, ServerConfig>(byName);
     for (const workspace of workspaces) {
@@ -202,27 +263,28 @@ export class GatewayManager {
         desired.set(workspaceInstanceKey(workspace.slug, serverName), resolveMemberConfig(base, member, workspace));
       }
     }
-    for (const [key, entry] of this.entries) {
+    for (const [key, meta] of this.meta) {
       const next = desired.get(key);
       if (!next) {
-        void this.stop(key);
-        this.entries.delete(key);
+        this.meta.delete(key);
         this.activity.delete(key);
         continue;
       }
-      if (needsRestart(entry.config, next)) {
-        void this.stop(key);
-        entry.toolCount = undefined;
-      } else if (!next.enabled && entry.config.enabled) {
-        void this.stop(key);
+      if (needsRestart(meta.config, next)) {
+        // The pool is about to replace the child; a count and an instructions
+        // string read from the old one stop being true at the same moment.
+        meta.toolCount = undefined;
+        meta.instructions = undefined;
       }
-      entry.config = next;
+      meta.config = next;
     }
     for (const [key, config] of desired) {
-      if (!this.entries.has(key)) {
-        this.entries.set(key, newEntry(key, config));
+      if (!this.meta.has(key)) {
+        this.meta.set(key, { config, callCount: 0 });
       }
     }
+    const settings = this.getSettings();
+    await this.pool.sync([...desired].map(([key, config]) => toPoolConfig(key, config, settings)));
   }
 
   /**
@@ -231,25 +293,35 @@ export class GatewayManager {
    * name; for workspace-scoped instances use {@link getClientForWorkspace}.
    */
   async getClient(name: string): Promise<Client> {
-    const entry = this.entries.get(name);
-    if (!entry) {
-      throw new HttpError(404, `Unknown server "${name}"`);
+    let client: Client;
+    try {
+      client = await this.pool.client(name);
+    } catch (cause) {
+      this.fail(name, cause);
     }
-    if (!entry.config.enabled) {
-      throw new HttpError(404, `Server "${name}" is disabled`);
+    const meta = this.meta.get(name);
+    if (meta) {
+      // Read on every use rather than only on the connects: the SDK kept this
+      // from the initialize result, so it is a field access, and there is no
+      // event to hang it off — the pool reaps and respawns children on its own,
+      // and each respawn is a fresh handshake that may say something new.
+      meta.instructions = client.getInstructions();
     }
-    if (entry.client) {
-      this.touch(entry);
-      return entry.client;
-    }
-    if (entry.connecting) {
-      return entry.connecting;
-    }
-    const connecting = this.connect(entry).finally(() => {
-      entry.connecting = null;
-    });
-    entry.connecting = connecting;
-    return connecting;
+    return client;
+  }
+
+  /**
+   * The downstream's `instructions` as of its last connect, if it has ever
+   * connected in this process.
+   *
+   * Deliberately does not connect: the aggregate endpoint asks this for every
+   * member while a client is initializing, and spawning a dozen children to
+   * write a preamble the session may never act on is not a trade worth making.
+   * The 1:1 endpoint, which has exactly one server and is certain to use it,
+   * connects first and then asks.
+   */
+  instructions(name: string): string | undefined {
+    return this.meta.get(name)?.instructions;
   }
 
   /** Connect (spawning if needed) and return the workspace-scoped client for a server. */
@@ -257,21 +329,69 @@ export class GatewayManager {
     return this.getClient(workspaceInstanceKey(slug, serverName));
   }
 
+  /**
+   * Drop an instance's connection and dial it again.
+   *
+   * `stop` rather than `reconnect`, though both close the child: `stop` leaves
+   * the row idle with its `error`/`failedAt` cleared, so the `getClient` below is
+   * the dial, and a restart that fails reports as a 502 carrying the child's
+   * stderr. `reconnect` dials the child itself (pool 2.2.0), which lands a failed
+   * restart inside a backoff it started a millisecond earlier — the same call
+   * would then answer 503 "crashed recently", naming a crash the operator just
+   * asked to be retried. Clearing that backoff is what pressing Restart on a
+   * crash-looping server is for.
+   */
+  async restart(name: string): Promise<Client> {
+    await this.pool.stop(name);
+    return this.getClient(name);
+  }
+
+  /**
+   * Re-throw one of the pool's refusals as the status this API answers it with.
+   *
+   * The wording stays the router's own: these strings are part of the REST
+   * contract and are read by the UI, while the pool's are written for an agent.
+   * `backoff` and `connect-failed` are the pair worth keeping apart — the first
+   * means the pool declined to dial, the second that it dialled and could not.
+   */
+  private fail(key: string, cause: unknown): never {
+    if (!(cause instanceof McpPoolError)) {
+      throw cause;
+    }
+    const name = this.meta.get(key)?.config.name ?? key;
+    switch (cause.code) {
+      case 'unknown-server':
+        throw new HttpError(404, `Unknown server "${key}"`, undefined, { cause });
+      case 'disabled':
+        throw new HttpError(404, `Server "${key}" is disabled`, undefined, { cause });
+      case 'backoff':
+        throw new HttpError(503, `Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
+      default:
+        throw new HttpError(502, `Failed to connect to server "${name}"`, cause.detail, { cause });
+    }
+  }
+
+  /** The pool's connection rows by instance key. Secrets are left out: nothing here reads the row's config. */
+  private connectionState(): Map<string, McpServerState> {
+    return new Map(this.pool.state().map((row) => [row.id, row]));
+  }
+
   status(name: string): ServerStatus | undefined {
-    const entry = this.entries.get(name);
-    return entry ? toStatus(entry) : undefined;
+    const meta = this.meta.get(name);
+    return meta ? toStatus(meta, this.connectionState().get(name)) : undefined;
   }
 
   statusAll(): ServerStatus[] {
+    const state = this.connectionState();
     // Only base servers are exposed as "servers"; workspace-scoped instances are an internal detail.
-    return [...this.entries.values()]
-      .filter((e) => !isWorkspaceKey(e.key))
-      .map(toStatus)
+    return [...this.meta]
+      .filter(([key]) => !isWorkspaceKey(key))
+      .map(([key, meta]) => toStatus(meta, state.get(key)))
       .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
   runningCount(): number {
-    return [...this.entries.values()].filter((e) => !isWorkspaceKey(e.key) && e.state === 'running').length;
+    return this.pool.state().filter((row) => !isWorkspaceKey(row.id) && row.status === 'ready').length;
   }
 
   /**
@@ -280,29 +400,16 @@ export class GatewayManager {
    * workspace instance) and the raw notification. Returns an unsubscribe function.
    * Used by MCP sessions to relay list_changed / resources/updated / log
    * messages to their upstream client; survives downstream respawns because the
-   * handler is (re)installed on every {@link connect}.
+   * pool re-installs the handler on every connect.
    */
   onNotification(listener: (key: string, notification: Notification) => void): () => void {
-    this.notificationListeners.add(listener);
-    return () => {
-      this.notificationListeners.delete(listener);
-    };
-  }
-
-  private emitNotification(key: string, notification: Notification): void {
-    for (const listener of this.notificationListeners) {
-      try {
-        listener(key, notification);
-      } catch (err) {
-        console.warn(`Notification listener for "${key}" threw: ${errorMessage(err)}`);
-      }
-    }
+    return this.pool.onNotification(listener);
   }
 
   recordToolCount(name: string, count: number): void {
-    const entry = this.entries.get(name);
-    if (entry) {
-      entry.toolCount = count;
+    const meta = this.meta.get(name);
+    if (meta) {
+      meta.toolCount = count;
     }
   }
 
@@ -313,12 +420,12 @@ export class GatewayManager {
     // resurrect a stray activity entry that then leaks forever. A call that
     // completes right after a Clear legitimately re-populates the log — the
     // server still exists, so that is new activity, not a leak.
-    const managed = this.entries.get(name);
-    if (!managed) {
+    const meta = this.meta.get(name);
+    if (!meta) {
       return;
     }
-    managed.callCount += 1;
-    managed.lastCalledAt = entry.at;
+    meta.callCount += 1;
+    meta.lastCalledAt = entry.at;
     const log = this.activity.get(name) ?? [];
     log.push({
       ...entry,
@@ -347,129 +454,28 @@ export class GatewayManager {
 
   /** Names of all enabled base servers (for the global aggregate endpoint). */
   enabledNames(): string[] {
-    return [...this.entries.values()]
-      .filter((e) => !isWorkspaceKey(e.key) && e.config.enabled)
-      .map((e) => e.config.name)
+    return [...this.meta]
+      .filter(([key, meta]) => !isWorkspaceKey(key) && meta.config.enabled)
+      .map(([, meta]) => meta.config.name)
       .sort();
   }
 
-  /** Close the downstream client / kill the child process. Safe to call when already stopped. */
-  async stop(name: string): Promise<void> {
-    const entry = this.entries.get(name);
-    if (!entry) {
-      return;
-    }
-    entry.stopping = true;
-    if (entry.idleTimer) {
-      clearTimeout(entry.idleTimer);
-      entry.idleTimer = null;
-    }
-    const client = entry.client ?? (await entry.connecting?.catch(() => null)) ?? null;
-    entry.client = null;
-    entry.pid = undefined;
-    entry.startedAt = undefined;
-    entry.state = 'stopped';
-    if (client) {
-      try {
-        await client.close();
-      } catch (err) {
-        console.warn(`Error closing client for "${name}": ${errorMessage(err)}`);
-      }
-    }
-  }
-
+  /** Close every downstream client / kill every child process. The manager stays usable. */
   async stopAll(): Promise<void> {
-    await Promise.all([...this.entries.keys()].map((name) => this.stop(name)));
-  }
-
-  private async connect(entry: ManagedServer): Promise<Client> {
-    const { config } = entry;
-    if (config.transport.type === 'stdio' && Date.now() - entry.lastCrashAt < CRASH_BACKOFF_MS) {
-      throw new HttpError(503, `Server "${config.name}" crashed recently; retrying is backed off`, entry.lastError);
-    }
-    entry.state = 'starting';
-    entry.stopping = false;
-    entry.stderrTail = () => '';
-    const client = new Client({ name: 'mcp-router', version: SERVER_VERSION });
-    // Relay any notification the SDK doesn't handle itself (list_changed,
-    // resources/updated, logging/message) out to subscribed MCP sessions.
-    client.fallbackNotificationHandler = (notification) => {
-      this.emitNotification(entry.key, notification);
-      return Promise.resolve();
-    };
-    // MINIMAL_CHILD_ENV is the same allowlist this file used to keep: a stdio child
-    // gets it plus the server's own env, never the router's full process.env.
-    const transport = createTransport(toConnection(config), { childEnv: MINIMAL_CHILD_ENV });
-    // Attached before connect(), because a server that dies during startup says
-    // whatever it has to say then — and it keeps the stderr pipe drained.
-    entry.stderrTail = readStderrTail(transport);
-    try {
-      await client.connect(transport);
-    } catch (cause) {
-      entry.state = 'error';
-      entry.lastError = entry.stderrTail() || errorMessage(cause);
-      if (config.transport.type === 'stdio') {
-        entry.lastCrashAt = Date.now();
-      }
-      throw new HttpError(502, `Failed to connect to server "${config.name}"`, entry.lastError, { cause });
-    }
-    entry.client = client;
-    entry.state = 'running';
-    entry.startedAt = new Date().toISOString();
-    entry.pid = transport instanceof StdioClientTransport ? (transport.pid ?? undefined) : undefined;
-    client.onclose = () => {
-      if (entry.client !== client) {
-        return;
-      }
-      entry.client = null;
-      entry.pid = undefined;
-      entry.startedAt = undefined;
-      if (entry.idleTimer) {
-        clearTimeout(entry.idleTimer);
-        entry.idleTimer = null;
-      }
-      if (entry.stopping) {
-        entry.state = 'stopped';
-      } else {
-        // Unexpected exit: surface the stderr tail and back off respawns briefly.
-        entry.state = 'error';
-        entry.lastError = entry.stderrTail() || 'process exited unexpectedly';
-        entry.lastCrashAt = Date.now();
-        console.warn(`Server "${config.name}" exited unexpectedly: ${entry.lastError.split('\n').at(-1)}`);
-      }
-    };
-    this.touch(entry);
-    return client;
-  }
-
-  /** Reset the idle shutdown timer (stdio servers only). */
-  private touch(entry: ManagedServer): void {
-    if (entry.config.transport.type !== 'stdio') {
-      return;
-    }
-    if (entry.idleTimer) {
-      clearTimeout(entry.idleTimer);
-    }
-    const timeoutMs = entry.config.idleTimeoutMs ?? this.getSettings().idleTimeoutMs;
-    entry.idleTimer = setTimeout(() => {
-      entry.idleTimer = null;
-      this.stop(entry.key).catch((err: unknown) => {
-        console.warn(`Idle shutdown of "${entry.config.name}" failed: ${errorMessage(err)}`);
-      });
-    }, timeoutMs);
-    entry.idleTimer.unref();
+    await this.pool.shutdown();
   }
 }
 
-function toStatus(entry: ManagedServer): ServerStatus {
+function toStatus(meta: ServerMeta, state: McpServerState | undefined): ServerStatus {
   return {
-    config: entry.config,
-    state: entry.state,
-    pid: entry.pid,
-    startedAt: entry.startedAt,
-    lastError: entry.lastError,
-    toolCount: entry.toolCount,
-    callCount: entry.callCount,
-    lastCalledAt: entry.lastCalledAt,
+    config: meta.config,
+    state: state ? RUNTIME_STATE[state.status] : 'stopped',
+    pid: state?.pid,
+    startedAt: state?.startedAt,
+    // The pool reports "no error" as an empty string; this API reports it as absent.
+    lastError: state?.error || undefined,
+    toolCount: meta.toolCount,
+    callCount: meta.callCount,
+    lastCalledAt: meta.lastCalledAt,
   };
 }

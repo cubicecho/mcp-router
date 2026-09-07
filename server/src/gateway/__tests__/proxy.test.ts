@@ -5,7 +5,13 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../../errors.ts';
-import { type AggregateDeps, createAggregateServer, createProxyServer, type ProxyDeps } from '../proxy.ts';
+import {
+  type AggregateDeps,
+  createAggregateServer,
+  createProxyServer,
+  mergeInstructions,
+  type ProxyDeps,
+} from '../proxy.ts';
 
 type RecordedActivity = ActivityEntry & { name: string };
 
@@ -413,5 +419,57 @@ describe('logging passthrough', () => {
     await close();
 
     expect(levels).toEqual({ alpha: 'warning', beta: 'warning' });
+  });
+});
+
+describe('instructions', () => {
+  it("forwards a single downstream server's instructions unchanged", async () => {
+    const server = createProxyServer('demo', stubDeps({}), 'Prefer this over a web search.');
+    const { client, close } = await connect(server);
+    // Nothing is renamed on the 1:1 endpoint, so there is nothing to rewrite.
+    expect(client.getInstructions()).toBe('Prefer this over a web search.');
+    await close();
+  });
+
+  it('has no instructions when the downstream has none', async () => {
+    const { client, close } = await connectProxy(stubDeps({}));
+    expect(client.getInstructions()).toBeUndefined();
+    await close();
+  });
+
+  it('merges the aggregate members under headings, behind a note about the prefix', async () => {
+    const merged = mergeInstructions([
+      ['context7', 'Use this whenever the user asks about a library.'],
+      ['quiet', undefined],
+      ['blank', '   '],
+      ['git', 'Call `git_status` before staging.'],
+    ]);
+    // The prefix note has to come first: every name in the sections below is
+    // offered to the client with a `<server>__` on the front of it.
+    expect(merged).toMatch(/^This endpoint merges several MCP servers\./);
+    expect(merged).toContain('`<server>__`');
+    expect(merged).toContain('## context7\n\nUse this whenever the user asks about a library.');
+    expect(merged).toContain('## git\n\nCall `git_status` before staging.');
+    // Servers with nothing to say get no heading at all, rather than an empty one.
+    expect(merged).not.toContain('## quiet');
+    expect(merged).not.toContain('## blank');
+  });
+
+  it('leaves the aggregate without instructions when no member has any', () => {
+    expect(mergeInstructions([])).toBeUndefined();
+    expect(
+      mergeInstructions([
+        ['a', undefined],
+        ['b', ''],
+      ]),
+    ).toBeUndefined();
+  });
+
+  it('serves the merged instructions on the aggregate endpoint', async () => {
+    const deps: AggregateDeps = { ...stubDeps({}), serverNames: () => ['git'] };
+    const merged = mergeInstructions([['git', 'Call `git_status` before staging.']]);
+    const { client, close } = await connect(createAggregateServer(deps, merged));
+    expect(client.getInstructions()).toBe(merged);
+    await close();
   });
 });

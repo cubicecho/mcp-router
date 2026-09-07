@@ -20,7 +20,7 @@ hand-editable flat config files.
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
 | Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
 | Deploy | Single Docker image: build app + server, Express serves `app/dist` statically; `docker-compose.yml` with a `data/` volume |
-| Shared agent packages | **Partly adopted.** `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below. `@cubicecho/agent-mcp-pool`'s *transport* layer (`createTransport`, `readStderrTail`, `MINIMAL_CHILD_ENV`) is a dependency of `server/`; its `McpPool` is not, now blocked only on [#56](https://github.com/cubicecho/agent-mcp-pool/issues/56) |
+| Shared agent packages | **`@cubicecho/agent-mcp-pool` adopted.** `gateway/manager.ts` is an adapter over its `McpPool`; `gateway/naming.ts` stays local. `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below |
 
 ## Layout & contracts
 
@@ -38,7 +38,8 @@ mcp-router/
 
 ### Flat config files (`DATA_DIR/config`, default `./data/config`)
 
-- `settings.json` — port, authToken, authEnabled, default idleTimeoutMs
+- `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
+  connectTimeoutMs, session TTL/cap
 - `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
 - `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
@@ -97,6 +98,13 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 - `POST/GET/DELETE /mcp/w/<slug>` — a workspace's custom aggregate: same
   `<server>__` namespacing, but only over that workspace's enabled members, each
   served by its own isolated (override-applied) downstream instance
+- **`instructions` forwarded.** A 1:1 endpoint serves the downstream's own
+  `instructions` verbatim; an aggregate serves a merged document — a preamble
+  naming the `<server>__` prefix, then one `## <server>` section per member that
+  has any. `instructions` travels only in the initialize result, so a 1:1
+  session connects before it constructs its proxy `Server` (a spawn that
+  endpoint was going to pay anyway); an aggregate never does, and reads only
+  what its members have already said in this process
 - **Stateful sessions:** `initialize` mints an `Mcp-Session-Id` reused across the
   session's requests and its GET SSE stream (which carries relayed
   notifications); a non-initialize request with no session id → 400, an
@@ -110,60 +118,116 @@ Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas
 
 ## How the `@cubicecho/agent-*` packages are used
 
-Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.0.6` and
-`agent-mcp-pool@2.0.0`.
+Reviewed 2026-09-06, re-reviewed 2026-09-07 against `agent-core@2.2.0` and
+`agent-mcp-pool@2.2.0`.
 
 **`@cubicecho/agent-core` — wrong layer, still closed.** It is the
 endpoint-agnostic half of an OpenAI-compatible agent loop: capability
 negotiation, schema compatibility, on-demand tool loading, streamed turns, a
-run-event bus, retry, and a pooled `OpenAI` client. The 2.x API reshuffled that
-surface but did not change what it is for. This repo is a gateway; it makes no
-model calls and has no run to instrument, so there is nothing for any of it to
-attach to. The one module with a plausible home — `schema-compat`'s
-`sanitizeTools`/`relaxTools`, to normalize downstream tool schemas at the
-aggregate endpoint — is a *client* concern: a gateway should forward a server's
-schema faithfully and let the consumer decide what its inference endpoint will
-accept. Reopen only if the router grows an agent of its own.
+run-event bus, retry, and a pooled `OpenAI` client — with `openai` as a required
+peer dependency. The 2.x API reshuffled that surface but did not change what it
+is for. This repo is a gateway; it makes no model calls and has no run to
+instrument, so there is nothing for any of it to attach to. The one module with
+a plausible home — `schema-compat`'s `sanitizeTools`/`relaxTools`, to normalize
+downstream tool schemas at the aggregate endpoint — is a *client* concern: a
+gateway should forward a server's schema faithfully and let the consumer decide
+what its inference endpoint will accept. Reopen only if the router grows an
+agent of its own.
 
-**`@cubicecho/agent-mcp-pool` — transport adopted, pool not yet.** The three
-gaps that blocked it in the first review are closed upstream: lazy connect with
-idle reap ([#8](https://github.com/cubicecho/agent-mcp-pool/issues/8)), a raw
-`Client` via `client(id)` ([#9](https://github.com/cubicecho/agent-mcp-pool/issues/9)),
-and stdio `cwd` plus a notification relay
-([#10](https://github.com/cubicecho/agent-mcp-pool/issues/10)).
+**`@cubicecho/agent-mcp-pool` — adopted, pool and all.** Every objection raised
+in the first two reviews is now closed upstream: lazy connect with idle reap
+([#8](https://github.com/cubicecho/agent-mcp-pool/issues/8)), a raw `Client` via
+`client(id)` ([#9](https://github.com/cubicecho/agent-mcp-pool/issues/9)), stdio
+`cwd` plus a notification relay
+([#10](https://github.com/cubicecho/agent-mcp-pool/issues/10)), a discriminated
+`McpPoolError` carrying `retryAt` and the child's stderr
+([#50](https://github.com/cubicecho/agent-mcp-pool/issues/50)), `pid` and
+`startedAt` on `state()` ([#49](https://github.com/cubicecho/agent-mcp-pool/issues/49)),
+a paginated `tools/list` drain ([#47](https://github.com/cubicecho/agent-mcp-pool/issues/47)),
+`openai` off the dependency tree ([#48](https://github.com/cubicecho/agent-mcp-pool/issues/48)),
+and — the last one, shipped in `2.1.0` — `indexTools: false`
+([#56](https://github.com/cubicecho/agent-mcp-pool/issues/56)), which skips the
+tool-list drain on connect. That drain was the blocker: this repo proxies
+`tools/list` straight through from the client that asked and never reads the
+index, so indexing put a full paginated listing in front of every cold
+user-facing request and held a second copy of every tool.
 
-What was adopted is the transport layer, which this repo had been duplicating
-exactly — the same seven-name env allowlist, the same 4000-char stderr tail, the
-same two transports including the `cwd ?? undefined` nuance the SDK needs.
-`gateway/manager.ts` calls `createTransport`, `readStderrTail` and
-`MINIMAL_CHILD_ENV`, and `toConnection()` adapts this repo's discriminated-union
-config to the flat row they take.
+`gateway/manager.ts` is now a thin adapter, and owns only what the pool does not
+model:
 
-What was **not** adopted is `McpPool` itself. Four of the five objections to it
-were fixed upstream in `2.0.0`: `McpPoolError` now carries a discriminated code,
-`retryAt` and the child's stderr, so the router's 404 / 409 / 503 / 502 mapping
-is expressible ([#50](https://github.com/cubicecho/agent-mcp-pool/issues/50));
-`state()` reports `pid` and `startedAt`, which the server detail page renders
-([#49](https://github.com/cubicecho/agent-mcp-pool/issues/49)); `tools/list` is
-drained across pages ([#47](https://github.com/cubicecho/agent-mcp-pool/issues/47));
-and `openai` is no longer a dependency at all, which is why this repo's lockfile
-lost 24 MB ([#48](https://github.com/cubicecho/agent-mcp-pool/issues/48)).
+- **Instance keys.** The pool is keyed by a flat `id`, so a workspace member is
+  registered under `w:<slug>:<server>` with its overrides already resolved. That
+  is what makes a member an instance independent of the global server, and it is
+  what `isWorkspaceKey` filters back out of the base-server views.
+- **Config translation.** `toPoolConfig` flattens this repo's discriminated-union
+  `ServerConfig` into the pool's row and resolves `idleTimeoutMs` per row —
+  `config.idleTimeoutMs ?? settings.idleTimeoutMs` for a stdio child, and `0`
+  ("never reap") for a remote connection, which costs nothing to hold open. It is
+  resolved at reconcile rather than passed to the pool once, because the global
+  default is a setting an operator can edit while the router is running.
+- **Router-only bookkeeping.** Tool counts, call counts, last-called timestamps
+  and the activity ring live in `meta` and `activity`; the pool tracks
+  connections, not usage.
+- **HTTP mapping.** `McpPoolError` codes become statuses: `unknown-server` and
+  `disabled` → 404, `backoff` → 503, anything else → 502 with the child's stderr
+  as `detail`. `api/calls.ts` passes an `HttpError` through untouched so a route
+  cannot flatten the 503 back into a 502.
 
-One is left ([#56](https://github.com/cubicecho/agent-mcp-pool/issues/56)):
-`connect()` always drains the full tool list before an entry goes `ready`, with
-no opt-out. That is right for an agent — the index is what `tools()` and `call()`
-are for — and wrong for this repo, which proxies `tools/list` straight through
-from the client that asked and never reads the index. Since servers are spawned
-lazily on the first request that needs one, adopting the pool today would put a
-full paginated `tools/list` in front of every user-facing cold request, and hold
-a second copy of every tool for every server. Revisit when that is optional.
+Two behaviours changed with the adoption, both accepted:
+
+- **`reconcile()` is async.** `pool.sync()` is queued, so every caller now awaits
+  it — a route that writes config and then reads status has to, or it reads the
+  state from before its own write.
+- **Remote servers share the crash backoff.** It used to apply to stdio children
+  only; the pool applies it to every entry. An unreachable remote server now
+  answers 503 for `crashBackoffMs` after a failed connect instead of redialling
+  on every request, which is the better behaviour anyway.
+
+**`2.2.0` closed [#58](https://github.com/cubicecho/agent-mcp-pool/issues/58)**,
+which asked for a `stop(id)` and for `reconnect` to be pinned down against a
+lazy pool. Both landed, and `restart(name)` is now `stop` + `getClient` rather
+than `reconnect`: `stop` leaves the row idle with its `error`/`failedAt`
+cleared, so the `getClient` *is* the dial and a restart that fails answers 502
+carrying the child's stderr. `reconnect` dials the child itself, which lands a
+failed restart inside the backoff it started a millisecond earlier — the next
+request would answer 503 "crashed recently", naming a crash the operator just
+asked to be retried. Clearing that backoff is what pressing Restart on a
+crash-looping server is *for*. Delete still needs neither: it reconciles (which
+closes the child) before removing the install directory.
+
+**`connectTimeoutMs` is a router setting now.** A child that spawns and then
+never speaks used to hold its request open forever — the MCP SDK's own 60s
+applies to the `initialize` *request*, which such a child never gets far enough
+to answer. `settings.connectTimeoutMs` (default 60s, generous because a first
+`uvx`/`npx` spawn may resolve and download a package before it says anything)
+is passed to the pool at construction, and a wedged child now fails the request
+that woke it. Alone among the timeouts here it is read once at startup, so an
+edit needs a router restart — see
+[#62](https://github.com/cubicecho/agent-mcp-pool/issues/62), which asks for it
+per row and re-resolvable the way `idleTimeoutMs` already is.
+
+Three upstream issues are open from this adoption, none blocking: #62 above,
+[#63](https://github.com/cubicecho/agent-mcp-pool/issues/63) (`sync()` or
+`reconnect()` with no `configs`, on a pool built without `load()`, silently
+closes and forgets every server — this repo always passes `configs`, so it is
+only a trap for the next caller), and
+[#60](https://github.com/cubicecho/agent-mcp-pool/issues/60), why downstream
+servers see `clientInfo.version` of `0.1.0` instead of this router's
+`SERVER_VERSION` — the pool takes a `clientName` but hardcodes the version
+beside it. Cosmetic, and only visible in a downstream server's own logs.
+
+The pool does not surface a downstream's `instructions`, and does not need to:
+it hands back the real SDK `Client`, which carries `getInstructions()` from its
+own initialize result. `manager.getClient` reads it on every use — a field
+access, and there is no event to hang it off, since the pool reaps and respawns
+children on its own and each respawn is a fresh handshake.
 
 **Namespacing stays here regardless.** The pool truncates `<slug>__<tool>` to 64
 characters for OpenAI's function-name limit and resolves by whole-string lookup,
 while `gateway/naming.ts` splits names a *foreign* MCP client invented,
 longest-prefix-first, and applies the same scheme to resource URIs and prompt
-names. Unifying on the truncation corrupts resource URIs. Even a full adoption
-of the pool would leave `naming.ts` untouched.
+names. Unifying on the truncation corrupts resource URIs. Full adoption of the
+pool leaves `naming.ts` untouched, as predicted.
 
 ## Work items
 
@@ -287,6 +351,15 @@ blocked by the shared-downstream-client architecture and is documented below.
   and `README.md` updated. Live notification-relay against
   `@modelcontextprotocol/server-everything` remains a manual e2e smoke (needs a
   spawned downstream that emits them)
+- [x] F9 `instructions` passthrough: `createProxyServer`/`createAggregateServer`
+  take an `instructions` string for `ServerOptions`; `manager` caches each
+  downstream's `getInstructions()` on every `getClient` and clears it with the
+  config it was read under; `mergeInstructions` builds the aggregate document
+  (preamble + `## <server>` sections, members with nothing to say skipped,
+  `undefined` when none have any); `routes.ts` connects before building a 1:1
+  proxy `Server` and reads the cache without connecting for the aggregates.
+  Covered by unit tests in `proxy.test.ts`/`manager.test.ts` and an end-to-end
+  test in `api.test.ts` driving real `StreamableHTTPClientTransport` clients
 
 ### Phase 2 — Integration (after tracks merge)
 

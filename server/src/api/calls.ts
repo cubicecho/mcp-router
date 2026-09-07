@@ -5,18 +5,22 @@ import type { GatewayManager } from '../gateway/manager.ts';
 export type DownstreamClient = Awaited<ReturnType<GatewayManager['getClient']>>;
 
 /**
- * Connect (spawning if needed) for a listing/call endpoint. A missing server
- * surfaces as 404; any other connect failure as 502 with the downstream detail.
+ * Connect (spawning if needed) for a listing/call endpoint.
+ *
+ * The manager already classifies a pool failure — 404 for a name it doesn't
+ * manage or one that is disabled, 503 while a crashed server sits in its
+ * backoff, 502 for a connect that was tried and failed — so its status is
+ * passed through rather than flattened. Only a failure from somewhere else
+ * needs a status put on it here.
  */
 export async function connect(manager: GatewayManager, name: string): Promise<DownstreamClient> {
   try {
     return await manager.getClient(name);
   } catch (cause) {
-    if (cause instanceof HttpError && cause.status === 404) {
+    if (cause instanceof HttpError) {
       throw cause;
     }
-    const detail = cause instanceof HttpError ? (cause.detail ?? cause.message) : String(cause);
-    throw new HttpError(502, `Failed to connect to server "${name}"`, detail, { cause });
+    throw new HttpError(502, `Failed to connect to server "${name}"`, errorMessage(cause), { cause });
   }
 }
 
