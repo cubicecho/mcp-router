@@ -244,7 +244,8 @@ the exported standalone `probe` dropped the row's `connectTimeoutMs` that
 [#67](https://github.com/cubicecho/agent-mcp-pool/issues/67), where the timeout
 bounded each *request* rather than the connect, so a paginated `tools/list` on
 a cold connect multiplied it by the page count. A `requestBudget` countdown is
-now shared by `initialize` and every page.
+now shared by `initialize` and every page, and the exported `listAllTools`
+reads its `timeout` as the budget for the whole walk.
 
 Neither reached the router, for the same two reasons. It calls no probe of
 either kind — "Test connection" goes through `manager.getClient`, so it is
