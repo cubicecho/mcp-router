@@ -280,11 +280,15 @@ the proxy was declaring five surfaces for every server regardless of what stood
 behind it. Reading `getServerCapabilities()` at the one connect the 1:1 endpoint
 already makes for `instructions` costs nothing and makes the declaration true.
 
-**Nothing is open upstream on either package.** `agent-core` moved `2.2.2` →
-`2.2.4` over the same window: token counting per content part, a produced latch
-read off what a chunk carried, a refused temperature told from a refused value,
-model names in negotiation notices. All of it is inside the run loop this repo
-does not have, so the "wrong layer" finding above is unchanged by it.
+**Nothing is open on `agent-mcp-pool`, and nothing this repo can reach is open
+on `agent-core`.** That package moved `2.2.2` → `2.2.4` over the same window:
+token counting per content part, a produced latch read off what a chunk carried,
+a refused temperature told from a refused value, model names in negotiation
+notices. Its one open issue,
+[#61](https://github.com/cubicecho/agent-core/issues/61), is a `side-task.ts`
+latch that turns the no-thinking hints off after any unrecognised 400. All of it
+is inside the run loop this repo does not have, so the "wrong layer" finding
+above is unchanged by it.
 
 **Namespacing stays here regardless.** The pool truncates `<slug>__<tool>` to 64
 characters for OpenAI's function-name limit and resolves by whole-string lookup,
