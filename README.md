@@ -75,6 +75,19 @@ if one exists (`cp .env.example .env`), so you can keep `MCP_ROUTER_TOKEN`
 there instead of passing it inline. Variables already set in your shell take
 precedence over `.env`.
 
+Connections are kept open between tool calls, which usually arrive further
+apart than the defaults allow for:
+
+- `HTTP_KEEP_ALIVE_TIMEOUT_MS` (default `75000`) is how long an idle client
+  connection stays open; Node's own default is 5 s. Behind a reverse proxy, keep
+  it above the proxy's idle timeout (60 s for nginx and ALB, 90 s for Traefik),
+  or the proxy can reuse a connection the router is closing and answer 502.
+  `0` never closes an idle connection.
+- `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` (default `30000`) is how long an idle
+  connection to a remote streamable-HTTP server stays open when that server
+  does not send a `Keep-Alive` timeout of its own; the default would be 4 s,
+  after which every proxied call pays a new TLS handshake.
+
 For development:
 
 ```bash
