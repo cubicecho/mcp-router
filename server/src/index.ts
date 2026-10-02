@@ -4,11 +4,9 @@ import { authDisabledByEnv } from './auth.ts';
 import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
-import { tuneInbound, tuneOutbound } from './http-tuning.ts';
+import { tuneInbound } from './http-tuning.ts';
 
 async function main(): Promise<void> {
-  // Before the manager connects to anything: a dispatcher only governs connections opened after it is set.
-  tuneOutbound();
   const dataDir = path.resolve(process.env.DATA_DIR ?? './data');
   const store = new ConfigStore(dataDir);
   await store.init();
