@@ -21,6 +21,7 @@ import type {
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
+import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
@@ -264,6 +265,8 @@ export class GatewayManager {
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
       crashBackoffMs: CRASH_BACKOFF_MS,
+      // The pool's own keep-alive, at the idle time HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS names.
+      fetch: outboundFetch(),
     });
   }
 

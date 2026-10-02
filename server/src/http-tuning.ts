@@ -1,5 +1,6 @@
 import type { Server } from 'node:http';
-import { Agent, setGlobalDispatcher } from 'undici';
+import { keepAliveFetch } from '@cubicecho/agent-mcp-pool';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 
 /** Idle time before an inbound keep-alive connection is closed, in ms. Above the 60 s nginx and ALB hold theirs. */
 export const DEFAULT_KEEP_ALIVE_TIMEOUT_MS = 75_000;
@@ -32,13 +33,10 @@ export function tuneInbound(server: Server, env: NodeJS.ProcessEnv = process.env
 }
 
 /**
- * Keeps idle connections to remote servers open longer than undici's 4 s, so a proxied call after a pause skips the TLS handshake.
- * @param env Source of `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS`.
- * @returns The timeout applied, in ms. A remote's own `Keep-Alive: timeout` still wins over it.
+ * Builds the `fetch` the pool reaches remote servers with, which keeps an idle connection longer than undici's 4 s so a proxied call after a pause skips the TLS handshake.
+ * @param env Source of `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS`; the default applies when it is unset or not a positive whole number.
+ * @returns A `fetch` for `McpPool`. A remote's own `Keep-Alive: timeout` still wins over its timeout.
  */
-export function tuneOutbound(env: NodeJS.ProcessEnv = process.env): number {
-  const timeoutMs = envMs(env.HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, 1);
-  // Global rather than per-transport: the pool builds its HTTP transports on the global `fetch`.
-  setGlobalDispatcher(new Agent({ keepAliveTimeout: timeoutMs }));
-  return timeoutMs;
+export function outboundFetch(env: NodeJS.ProcessEnv = process.env): FetchLike {
+  return keepAliveFetch(envMs(env.HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, 1));
 }

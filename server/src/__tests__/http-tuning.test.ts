@@ -1,23 +1,11 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { getGlobalDispatcher, setGlobalDispatcher } from 'undici';
 import { afterEach, describe, expect, it } from 'vitest';
-import {
-  DEFAULT_KEEP_ALIVE_TIMEOUT_MS,
-  DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS,
-  tuneInbound,
-  tuneOutbound,
-} from '../http-tuning.ts';
+import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS, outboundFetch, tuneInbound } from '../http-tuning.ts';
 
 const servers: Server[] = [];
-const originalDispatcher = getGlobalDispatcher();
 
 afterEach(async () => {
-  const dispatcher = getGlobalDispatcher();
-  if (dispatcher !== originalDispatcher) {
-    setGlobalDispatcher(originalDispatcher);
-    await dispatcher.close();
-  }
   for (const server of servers.splice(0)) {
     server.closeAllConnections();
     server.close();
@@ -59,28 +47,35 @@ describe('tuneInbound', () => {
   });
 });
 
-describe('tuneOutbound', () => {
-  it('defaults when unset or not a positive whole number', () => {
-    expect(tuneOutbound({})).toBe(DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS);
-    expect(tuneOutbound({ HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS: '0' })).toBe(DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS);
-  });
-
-  it('keeps a connection for reuse by the global fetch', async () => {
+describe('outboundFetch', () => {
+  // Past the 4 s the global fetch keeps an idle connection, so one connection means the timeout is this fetch's own.
+  it('keeps a connection for 30 s unless told otherwise', async () => {
     const { url, connections } = await countingServer();
-    tuneOutbound({});
-    await (await fetch(url)).text();
-    await pause(50);
-    await (await fetch(url)).text();
-    expect(connections()).toBe(1);
-  });
+    for (const env of [{}, { HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS: '0' }]) {
+      const fetch = outboundFetch(env);
+      await (await fetch(url)).text();
+      await pause(4500);
+      await (await fetch(url)).text();
+    }
+    // One per fetch: each holds its own connections.
+    expect(connections()).toBe(2);
+  }, 15_000);
 
-  // Proves the global fetch runs on this dispatcher: a default one would still hold the connection.
-  it('applies its timeout to the global fetch', async () => {
+  it('takes HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS', async () => {
     const { url, connections } = await countingServer();
-    tuneOutbound({ HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS: '100' });
+    const fetch = outboundFetch({ HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS: '100' });
     await (await fetch(url)).text();
     await pause(400);
     await (await fetch(url)).text();
     expect(connections()).toBe(2);
+  });
+
+  it('leaves the global fetch alone', async () => {
+    const { url, connections } = await countingServer();
+    outboundFetch({ HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS: '100' });
+    await (await fetch(url)).text();
+    await pause(400);
+    await (await fetch(url)).text();
+    expect(connections()).toBe(1);
   });
 });
