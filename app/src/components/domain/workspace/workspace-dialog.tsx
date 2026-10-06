@@ -1,28 +1,34 @@
 import type { CreateWorkspaceRequest, ServerStatus, WorkspaceMember, WorkspaceStatus } from '@mcp-router/shared';
 import { slugify } from '@mcp-router/shared';
-import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { useStore } from '@tanstack/react-form';
+import { type ReactElement, useMemo, useState } from 'react';
 import { toast } from 'sonner';
+import { InputField, SwitchField, TextareaField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
 import { ConnectCard } from '@/components/domain/connect-card';
 import { FormField } from '@/components/form-field';
+import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-/** Per-server override text held while editing; parsed into a WorkspaceMember on submit. */
-interface OverrideText {
+/**
+ * One server's membership while editing: whether it is in the workspace, and its
+ * override text, parsed into a WorkspaceMember on submit. Held as a list of these
+ * rather than a record keyed by server name — a name may contain dots, which
+ * TanStack Form would read as a path into the value.
+ */
+interface MemberDraft {
+  name: string;
+  included: boolean;
   env: string;
   args: string;
   headers: string;
   url: string;
 }
-
-const emptyOverride = (): OverrideText => ({ env: '', args: '', headers: '', url: '' });
 
 const recordToLines = (record?: Record<string, string>): string =>
   Object.entries(record ?? {})
@@ -52,6 +58,50 @@ const FORM_ID = 'workspace-form';
 
 const textToArgs = (text: string): string[] => text.split('\n').filter((line) => line.trim().length > 0);
 
+const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
+  Object.entries(members).map(([name, member]) => ({
+    name,
+    included: member.enabled ?? true,
+    env: recordToLines(member.env),
+    args: (member.args ?? []).join('\n'),
+    headers: recordToLines(member.headers),
+    url: member.url ?? '',
+  }));
+
+/** The members to save: every included draft whose server is still installed, with its overrides parsed. */
+function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<string, WorkspaceMember> {
+  const result: Record<string, WorkspaceMember> = {};
+  for (const server of servers) {
+    const draft = drafts.find((candidate) => candidate.name === server.config.name);
+    if (!draft?.included) {
+      continue;
+    }
+    const member: WorkspaceMember = { enabled: true };
+    if (server.config.transport.type === 'stdio') {
+      const env = linesToRecord(draft.env);
+      if (Object.keys(env).length > 0) {
+        member.env = env;
+      }
+      const args = textToArgs(draft.args);
+      if (args.length > 0) {
+        member.args = args;
+      }
+    } else {
+      const headers = linesToRecord(draft.headers);
+      if (Object.keys(headers).length > 0) {
+        member.headers = headers;
+      }
+      // Only persist a URL override when it actually differs from the base URL.
+      const url = draft.url.trim();
+      if (server.config.transport.type === 'streamable-http' && url && url !== server.config.transport.url) {
+        member.url = url;
+      }
+    }
+    result[server.config.name] = member;
+  }
+  return result;
+}
+
 interface WorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -61,134 +111,77 @@ interface WorkspaceDialogProps {
 
 export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
   const isEdit = workspace !== undefined;
-  const { data: servers } = useServers();
+  const { data: servers = [] } = useServers();
   const create = useCreateWorkspace();
   const update = useUpdateWorkspace();
-
-  const [name, setName] = useState(workspace?.name ?? '');
-  const [enabled, setEnabled] = useState(workspace?.enabled ?? true);
-  const [description, setDescription] = useState(workspace?.description ?? '');
-  const [members, setMembers] = useState<Set<string>>(
-    () => new Set(Object.keys(workspace?.members ?? {}).filter((key) => workspace?.members[key]?.enabled ?? true)),
-  );
-  const [overrides, setOverrides] = useState<Record<string, OverrideText>>(() => {
-    const initial: Record<string, OverrideText> = {};
-    for (const [server, member] of Object.entries(workspace?.members ?? {})) {
-      initial[server] = {
-        env: recordToLines(member.env),
-        args: (member.args ?? []).join('\n'),
-        headers: recordToLines(member.headers),
-        url: member.url ?? '',
-      };
-    }
-    return initial;
-  });
   const [expanded, setExpanded] = useState<string | null>(null);
+
+  const form = useAppForm({
+    defaultValues: {
+      name: workspace?.name ?? '',
+      description: workspace?.description ?? '',
+      enabled: workspace?.enabled ?? true,
+      // Starts with the workspace's own members; a server joins the list the first time it is switched on.
+      members: toDrafts(workspace?.members ?? {}),
+    },
+    onSubmit: async ({ value }) => {
+      const body: CreateWorkspaceRequest = {
+        name: value.name.trim(),
+        enabled: value.enabled,
+        description: value.description.trim() || undefined,
+        members: buildMembers(value.members, servers),
+      };
+      try {
+        if (isEdit) {
+          const updated = await update.mutateAsync({ slug: workspace.slug, ...body });
+          toast.success(`Saved workspace ${updated.name}`);
+        } else {
+          const created = await create.mutateAsync(body);
+          toast.success(`Created workspace ${created.name}`);
+        }
+        onOpenChange(false);
+      } catch (error) {
+        toastApiError(error);
+      }
+    },
+  });
+  const values = useStore(form.store, (state) => state.values);
 
   // Auto-slug: renaming re-derives the URL. In edit mode the URL only moves once
   // the name actually changes, so show the stored slug until then.
-  const slug = isEdit && name === workspace.name ? workspace.slug : slugify(name);
+  const slug = isEdit && values.name === workspace.name ? workspace.slug : slugify(values.name);
   const slugValid = slug.length > 0;
 
-  const toggleMember = (server: string, on: boolean) => {
-    setMembers((prev) => {
-      const next = new Set(prev);
+  const toggleMember = (server: ServerStatus, on: boolean) => {
+    const serverName = server.config.name;
+    // Seed the URL override for remote members with the base URL so "extending"
+    // it (e.g. appending a workspace path) is just editing the tail. Unchanged
+    // values are dropped on submit, so this never persists a redundant override.
+    const baseUrl = server.config.transport.type === 'streamable-http' ? server.config.transport.url : '';
+    const members = form.getFieldValue('members');
+    const index = members.findIndex((member) => member.name === serverName);
+    if (index === -1) {
       if (on) {
-        next.add(server);
-      } else {
-        next.delete(server);
-        setExpanded((cur) => (cur === server ? null : cur));
+        form.pushFieldValue('members', {
+          name: serverName,
+          included: true,
+          env: '',
+          args: '',
+          headers: '',
+          url: baseUrl,
+        });
       }
-      return next;
-    });
-    if (on) {
-      // Seed the URL override for remote members with the base URL so "extending"
-      // it (e.g. appending a workspace path) is just editing the tail. Unchanged
-      // values are dropped on submit, so this never persists a redundant override.
-      const config = servers?.find((s) => s.config.name === server)?.config;
-      if (config?.transport.type === 'streamable-http') {
-        const baseUrl = config.transport.url;
-        setOverrides((prev) =>
-          prev[server]?.url ? prev : { ...prev, [server]: { ...emptyOverride(), ...prev[server], url: baseUrl } },
-        );
-      }
-    }
-  };
-
-  const setOverride = (server: string, patch: Partial<OverrideText>) => {
-    setOverrides((prev) => ({ ...prev, [server]: { ...emptyOverride(), ...prev[server], ...patch } }));
-  };
-
-  const buildMembers = (): Record<string, WorkspaceMember> => {
-    const result: Record<string, WorkspaceMember> = {};
-    for (const server of servers ?? []) {
-      const serverName = server.config.name;
-      if (!members.has(serverName)) {
-        continue;
-      }
-      const ov = overrides[serverName] ?? emptyOverride();
-      const member: WorkspaceMember = { enabled: true };
-      if (server.config.transport.type === 'stdio') {
-        const env = linesToRecord(ov.env);
-        if (Object.keys(env).length > 0) {
-          member.env = env;
-        }
-        const args = textToArgs(ov.args);
-        if (args.length > 0) {
-          member.args = args;
-        }
-      } else {
-        const headers = linesToRecord(ov.headers);
-        if (Object.keys(headers).length > 0) {
-          member.headers = headers;
-        }
-        // Only persist a URL override when it actually differs from the base URL.
-        const url = ov.url.trim();
-        if (server.config.transport.type === 'streamable-http' && url && url !== server.config.transport.url) {
-          member.url = url;
-        }
-      }
-      result[serverName] = member;
-    }
-    return result;
-  };
-
-  const handleSubmit = (event: FormEvent) => {
-    event.preventDefault();
-    const trimmedName = name.trim();
-    if (!trimmedName || !slugValid) {
-      toast.error('Enter a workspace name that produces a valid URL slug');
       return;
     }
-    const body: CreateWorkspaceRequest = {
-      name: trimmedName,
-      enabled,
-      description: description.trim() || undefined,
-      members: buildMembers(),
-    };
-    if (isEdit) {
-      update.mutate(
-        { slug: workspace.slug, ...body },
-        {
-          onSuccess: (updated) => {
-            toast.success(`Saved workspace ${updated.name}`);
-            onOpenChange(false);
-          },
-          onError: toastApiError,
-        },
-      );
-    } else {
-      create.mutate(body, {
-        onSuccess: (created) => {
-          toast.success(`Created workspace ${created.name}`);
-          onOpenChange(false);
-        },
-        onError: toastApiError,
-      });
+    form.setFieldValue(`members[${index}].included`, on);
+    if (on && baseUrl && !members[index]?.url) {
+      form.setFieldValue(`members[${index}].url`, baseUrl);
+    }
+    if (!on) {
+      setExpanded((current) => (current === serverName ? null : current));
     }
   };
 
-  const pending = create.isPending || update.isPending;
   const endpoint = useMemo(() => `${window.location.origin}/mcp/w/${workspace?.slug ?? ''}`, [workspace?.slug]);
 
   return (
@@ -198,21 +191,30 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       size="lg"
       title={isEdit ? `Edit ${workspace.name}` : 'New workspace'}
       description="A workspace exposes a custom aggregate of the servers you choose at its own URL, with optional per-workspace parameter overrides. Each server runs isolated per workspace, independent of its global enabled state."
+      hasUnsavedChanges={() => !form.state.isDefaultValue}
       footerActionsSlot={(close) => (
         <>
           <Button type="button" variant="ghost" onClick={close} content="Cancel" />
-          <Button
-            type="submit"
-            form={FORM_ID}
-            disabled={pending || !slugValid}
-            content={pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create workspace'}
-          />
+          <form.AppForm>
+            <form.SubmitButton form={FORM_ID} content={isEdit ? 'Save changes' : 'Create workspace'} />
+          </form.AppForm>
         </>
       )}
       contentSlot={
-        <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-5">
-          <FormField
+        <form
+          id={FORM_ID}
+          onSubmit={(event) => {
+            event.preventDefault();
+            form.handleSubmit();
+          }}
+          className="flex flex-col gap-5"
+        >
+          <InputField
+            form={form}
+            name="name"
             label="Workspace name"
+            required
+            placeholder="Acme backend"
             descriptionClassName="font-mono"
             description={
               <>
@@ -220,27 +222,24 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                 {isEdit && slugValid && slug !== workspace.slug && ' — renaming moves the URL'}
               </>
             }
-            controlSlot={
-              <Input value={name} placeholder="Acme backend" onChange={(event) => setName(event.target.value)} />
-            }
+            validators={{
+              onChange: ({ value }) =>
+                slugify(value).length > 0 ? undefined : 'Enter a workspace name that produces a valid URL slug',
+            }}
           />
 
-          <FormField
+          <InputField
+            form={form}
+            name="description"
             label="Description (optional)"
-            controlSlot={
-              <Input
-                value={description}
-                placeholder="What this workspace is for"
-                onChange={(event) => setDescription(event.target.value)}
-              />
-            }
+            placeholder="What this workspace is for"
           />
 
-          <FormField
-            orientation="horizontal"
+          <SwitchField
+            form={form}
+            name="enabled"
             label="Enabled"
             description="When off, the workspace's endpoint returns 404 without deleting it."
-            controlSlot={<Switch checked={enabled} onCheckedChange={setEnabled} />}
           />
 
           <FormField
@@ -249,28 +248,81 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
             description="Choose which servers this workspace exposes. Expand a server to override its parameters for this workspace only."
             controlSlot={
               <div className="divide-y rounded-md border">
-                {(servers ?? []).length === 0 && (
-                  <p className="p-3 text-sm text-muted-foreground">No servers installed yet.</p>
-                )}
-                {(servers ?? []).map((server) => (
-                  <MemberRow
-                    key={server.config.name}
-                    server={server}
-                    included={members.has(server.config.name)}
-                    expanded={expanded === server.config.name}
-                    override={overrides[server.config.name] ?? emptyOverride()}
-                    onToggle={(on) => toggleMember(server.config.name, on)}
-                    onExpandToggle={() =>
-                      setExpanded((cur) => (cur === server.config.name ? null : server.config.name))
-                    }
-                    onOverrideChange={(patch) => setOverride(server.config.name, patch)}
-                  />
-                ))}
+                {servers.length === 0 && <EmptyState compact title="No servers installed yet." className="p-3" />}
+                {servers.map((server) => {
+                  const serverName = server.config.name;
+                  const index = values.members.findIndex((member) => member.name === serverName);
+                  const transport = server.config.transport;
+                  return (
+                    <MemberRow
+                      key={serverName}
+                      server={server}
+                      included={values.members[index]?.included ?? false}
+                      expanded={expanded === serverName}
+                      onToggle={(on) => toggleMember(server, on)}
+                      onExpandToggle={() => setExpanded((current) => (current === serverName ? null : serverName))}
+                      overridesSlot={
+                        transport.type === 'stdio' ? (
+                          <>
+                            <TextareaField
+                              form={form}
+                              name={`members[${index}].env`}
+                              label="Env overrides (KEY=VALUE per line)"
+                              labelClassName="font-sans text-xs"
+                              description="Merged over the server's env; workspace values win."
+                              rows={3}
+                              placeholder="API_KEY=workspace-specific-value"
+                              className="font-mono"
+                              descriptionClassName="font-sans"
+                            />
+                            <TextareaField
+                              form={form}
+                              name={`members[${index}].args`}
+                              label="Arguments (one per line)"
+                              labelClassName="font-sans text-xs"
+                              description="Replaces the server's args entirely when set."
+                              rows={3}
+                              placeholder="leave blank to use the server defaults"
+                              className="font-mono"
+                              descriptionClassName="font-sans"
+                            />
+                          </>
+                        ) : (
+                          <>
+                            <InputField
+                              form={form}
+                              name={`members[${index}].url`}
+                              label="URL override"
+                              labelClassName="font-sans text-xs"
+                              description="Replaces the server's URL for this workspace — e.g. append a path to scope a shared upstream. Leave as the base URL to inherit it."
+                              placeholder={
+                                transport.type === 'streamable-http' ? transport.url : 'https://example.com/mcp'
+                              }
+                              className="font-mono"
+                              descriptionClassName="font-sans"
+                            />
+                            <TextareaField
+                              form={form}
+                              name={`members[${index}].headers`}
+                              label="Header overrides (KEY=VALUE per line)"
+                              labelClassName="font-sans text-xs"
+                              description="Merged over the server's request headers."
+                              rows={3}
+                              placeholder="Authorization=Bearer workspace-token"
+                              className="font-mono"
+                              descriptionClassName="font-sans"
+                            />
+                          </>
+                        )
+                      }
+                    />
+                  );
+                })}
               </div>
             }
           />
 
-          {isEdit && enabled && (
+          {isEdit && values.enabled && (
             <ConnectCard
               endpoint={endpoint}
               label={workspace.slug}
@@ -287,24 +339,15 @@ interface MemberRowProps {
   server: ServerStatus;
   included: boolean;
   expanded: boolean;
-  override: OverrideText;
   onToggle: (on: boolean) => void;
   onExpandToggle: () => void;
-  onOverrideChange: (patch: Partial<OverrideText>) => void;
+  /** The override fields for this server, drawn while it is included and expanded. */
+  overridesSlot: ReactElement;
 }
 
-function MemberRow({
-  server,
-  included,
-  expanded,
-  override,
-  onToggle,
-  onExpandToggle,
-  onOverrideChange,
-}: MemberRowProps) {
+function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overridesSlot }: MemberRowProps) {
   const isStdio = server.config.transport.type === 'stdio';
   const name = server.config.name;
-  const baseUrl = server.config.transport.type === 'streamable-http' ? server.config.transport.url : undefined;
 
   return (
     <div className="flex flex-col gap-3 p-3">
@@ -321,78 +364,13 @@ function MemberRow({
             variant="ghost"
             size="sm"
             onClick={onExpandToggle}
-            iconSlot={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+            iconSlot={expanded ? <ChevronDown /> : <ChevronRight />}
             content="Overrides"
           />
         )}
       </div>
 
-      {included && expanded && (
-        <div className="flex flex-col gap-3 pl-11">
-          {isStdio ? (
-            <>
-              <FormField
-                label="Env overrides (KEY=VALUE per line)"
-                labelClassName="text-xs"
-                description="Merged over the server's env; workspace values win."
-                controlSlot={
-                  <Textarea
-                    rows={3}
-                    className="resize-y font-mono text-xs"
-                    placeholder={'API_KEY=workspace-specific-value'}
-                    value={override.env}
-                    onChange={(event) => onOverrideChange({ env: event.target.value })}
-                  />
-                }
-              />
-              <FormField
-                label="Arguments (one per line)"
-                labelClassName="text-xs"
-                description="Replaces the server's args entirely when set."
-                controlSlot={
-                  <Textarea
-                    rows={3}
-                    className="resize-y font-mono text-xs"
-                    placeholder={'leave blank to use the server defaults'}
-                    value={override.args}
-                    onChange={(event) => onOverrideChange({ args: event.target.value })}
-                  />
-                }
-              />
-            </>
-          ) : (
-            <>
-              <FormField
-                label="URL override"
-                labelClassName="text-xs"
-                description="Replaces the server's URL for this workspace — e.g. append a path to scope a shared upstream. Leave as the base URL to inherit it."
-                controlSlot={
-                  <Input
-                    className="font-mono text-xs"
-                    placeholder={baseUrl ?? 'https://example.com/mcp'}
-                    value={override.url}
-                    onChange={(event) => onOverrideChange({ url: event.target.value })}
-                  />
-                }
-              />
-              <FormField
-                label="Header overrides (KEY=VALUE per line)"
-                labelClassName="text-xs"
-                description="Merged over the server's request headers."
-                controlSlot={
-                  <Textarea
-                    rows={3}
-                    className="resize-y font-mono text-xs"
-                    placeholder={'Authorization=Bearer workspace-token'}
-                    value={override.headers}
-                    onChange={(event) => onOverrideChange({ headers: event.target.value })}
-                  />
-                }
-              />
-            </>
-          )}
-        </div>
-      )}
+      {included && expanded && <div className="flex flex-col gap-3 pl-11">{overridesSlot}</div>}
     </div>
   );
 }
