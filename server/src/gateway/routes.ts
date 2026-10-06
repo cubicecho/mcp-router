@@ -24,7 +24,7 @@ export interface McpRouterDeps {
 
 /**
  * Streamable-HTTP MCP endpoints in stateful mode: the initialize request mints
- * a session (its own proxy Server + transport), kept in a map and reused across
+ * a session (its own proxy Server + transport), kept by the session registry and reused across
  * the session's subsequent POST/GET(SSE)/DELETE requests. A long-lived session
  * is what lets downstream notifications (list_changed, resources/updated, log
  * messages) reach the client over its GET SSE stream.
