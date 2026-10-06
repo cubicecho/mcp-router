@@ -19,14 +19,13 @@ import type {
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
+import { CRASH_BACKOFF_MS } from '../defaults.ts';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
 import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
-
-const CRASH_BACKOFF_MS = 5_000;
 
 /**
  * What the router keeps per managed instance, beside what the pool holds.

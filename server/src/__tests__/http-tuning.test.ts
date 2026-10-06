@@ -1,7 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS, outboundFetch, tuneInbound } from '../http-tuning.ts';
+import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS } from '../defaults.ts';
+import { outboundFetch, tuneInbound } from '../http-tuning.ts';
 
 const servers: Server[] = [];
 

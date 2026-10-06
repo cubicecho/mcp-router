@@ -1,12 +1,7 @@
 import type { Server } from 'node:http';
 import { keepAliveFetch } from '@cubicecho/agent-mcp-pool';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
-
-/** Idle time before an inbound keep-alive connection is closed, in ms. Above the 60 s nginx and ALB hold theirs. */
-export const DEFAULT_KEEP_ALIVE_TIMEOUT_MS = 75_000;
-
-/** Idle time before an outbound connection is closed when the remote names none, in ms. Below the 60 s most servers allow. */
-export const DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS = 30_000;
+import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS } from './defaults.ts';
 
 /**
  * Reads a millisecond duration from an env value.

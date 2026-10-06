@@ -4,10 +4,8 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
+import { STREAM_KEEPALIVE_MS } from '../defaults.ts';
 import { BoundedEventStore } from './event-store.ts';
-
-/** Delay before TCP keepalive probes start on a held GET SSE stream. */
-const STREAM_KEEPALIVE_MS = 60_000;
 
 /** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
 export type WireRelay = (server: Server) => () => void;

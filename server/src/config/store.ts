@@ -13,6 +13,7 @@ import {
 } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
 import { effectiveAuth } from '../auth.ts';
+import { WATCH_DEBOUNCE_MS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 
 export interface ConfigState {
@@ -21,8 +22,6 @@ export interface ConfigState {
   servers: ServerConfig[];
   workspaces: WorkspaceConfig[];
 }
-
-const WATCH_DEBOUNCE_MS = 300;
 
 /**
  * Owns the flat config files under DATA_DIR/config: settings.json,
