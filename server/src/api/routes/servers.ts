@@ -1,19 +1,12 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
 import type { ServerConfig, ServerStatus } from '@mcp-router/shared';
-import {
-  activityResponseSchema,
-  installRequestSchema,
-  promptGetRequestSchema,
-  resourceReadRequestSchema,
-  toolCallRequestSchema,
-  updateServerRequestSchema,
-} from '@mcp-router/shared';
+import { activityResponseSchema, installRequestSchema, updateServerRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
 import { errorMessage, HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
-import { runUiCall } from '../calls.ts';
+import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
@@ -140,53 +133,9 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     res.json({ prompts: prompts ?? [] });
   });
 
-  // Run one tool from the UI. Recorded to the activity log like proxied calls,
-  // under via 'ui'. A tool that resolves with `isError: true` is logged not-ok.
-  router.post('/:name/tools/call', async (req, res) => {
-    const name = req.params.name;
+  registerUiCallRoutes(router, manager, (name) => {
     requireStatus(name);
-    const body = toolCallRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      {
-        method: 'tools/call',
-        target: body.name,
-        params: body,
-        failLabel: `Tool "${body.name}" failed`,
-      },
-      (client) => client.callTool({ name: body.name, arguments: body.arguments }),
-    );
-    res.json(result);
-  });
-
-  // Read one resource by URI from the UI. Works for a static resource's URI or a
-  // concrete URI the caller expanded from a resource template.
-  router.post('/:name/resources/read', async (req, res) => {
-    const name = req.params.name;
-    requireStatus(name);
-    const body = resourceReadRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      { method: 'resources/read', target: body.uri, params: body, failLabel: `Resource "${body.uri}" failed to read` },
-      (client) => client.readResource({ uri: body.uri }),
-    );
-    res.json(result);
-  });
-
-  // Get one prompt (with its arguments) from the UI.
-  router.post('/:name/prompts/get', async (req, res) => {
-    const name = req.params.name;
-    requireStatus(name);
-    const body = promptGetRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      { method: 'prompts/get', target: body.name, params: body, failLabel: `Prompt "${body.name}" failed` },
-      (client) => client.getPrompt({ name: body.name, arguments: body.arguments }),
-    );
-    res.json(result);
+    return (_kind, requested) => ({ key: name, target: requested });
   });
 
   router.get('/:name/activity', (req, res) => {

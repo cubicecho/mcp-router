@@ -3,11 +3,8 @@ import type { WorkspaceConfig, WorkspaceStatus } from '@mcp-router/shared';
 import {
   activityResponseSchema,
   createWorkspaceRequestSchema,
-  promptGetRequestSchema,
-  resourceReadRequestSchema,
   serverNameSchema,
   slugify,
-  toolCallRequestSchema,
   updateWorkspaceRequestSchema,
   workspaceConfigSchema,
 } from '@mcp-router/shared';
@@ -20,7 +17,7 @@ import { collectFrom } from '../../gateway/fan-out.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
-import { runUiCall, type UiCallContext } from '../calls.ts';
+import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Workspace CRUD plus the aggregate's capability listings and test calls, mounted at /api/workspaces. */
@@ -149,25 +146,6 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     );
   };
 
-  // Run one workspace tool/resource/prompt call from the UI: resolve the namespaced
-  // name to a member, then invoke + record activity against its workspace instance key.
-  const runWorkspaceUiCall = async (
-    workspace: WorkspaceConfig,
-    full: string,
-    kind: string,
-    ctx: Omit<UiCallContext, 'target'>,
-    run: (client: DownstreamClient, name: string) => Promise<unknown>,
-  ): Promise<unknown> => {
-    const scope = scopeOf(workspace);
-    const split = splitNamespacedName(full, scope.names());
-    if (!split) {
-      throw new HttpError(400, `Unknown ${kind} "${full}" (expected <server>__<name>)`);
-    }
-    return runUiCall(manager, scope.keyFor(split.serverName), { ...ctx, target: split.name }, (client) =>
-      run(client, split.name),
-    );
-  };
-
   router.get('/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
@@ -210,47 +188,16 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     res.json({ prompts });
   });
 
-  router.post('/:slug/tools/call', async (req, res) => {
-    const workspace = requireWorkspace(req.params.slug);
-    const body = toolCallRequestSchema.parse(req.body);
-    const result = await runWorkspaceUiCall(
-      workspace,
-      body.name,
-      'tool',
-      {
-        method: 'tools/call',
-        params: body,
-        failLabel: `Tool "${body.name}" failed`,
-      },
-      (client, name) => client.callTool({ name, arguments: body.arguments }),
-    );
-    res.json(result);
-  });
-
-  router.post('/:slug/resources/read', async (req, res) => {
-    const workspace = requireWorkspace(req.params.slug);
-    const body = resourceReadRequestSchema.parse(req.body);
-    const result = await runWorkspaceUiCall(
-      workspace,
-      body.uri,
-      'resource',
-      { method: 'resources/read', params: body, failLabel: `Resource "${body.uri}" failed to read` },
-      (client, uri) => client.readResource({ uri }),
-    );
-    res.json(result);
-  });
-
-  router.post('/:slug/prompts/get', async (req, res) => {
-    const workspace = requireWorkspace(req.params.slug);
-    const body = promptGetRequestSchema.parse(req.body);
-    const result = await runWorkspaceUiCall(
-      workspace,
-      body.name,
-      'prompt',
-      { method: 'prompts/get', params: body, failLabel: `Prompt "${body.name}" failed` },
-      (client, name) => client.getPrompt({ name, arguments: body.arguments }),
-    );
-    res.json(result);
+  // A test call routes by its `<server>__` prefix back to the owning member's workspace instance.
+  registerUiCallRoutes(router, manager, (slug) => {
+    const scope = scopeOf(requireWorkspace(slug));
+    return (kind, requested) => {
+      const split = splitNamespacedName(requested, scope.names());
+      if (!split) {
+        throw new HttpError(400, `Unknown ${kind} "${requested}" (expected <server>__<name>)`);
+      }
+      return { key: scope.keyFor(split.serverName), target: split.name };
+    };
   });
 
   // Workspace activity merges every member instance's log, newest first. Ids are

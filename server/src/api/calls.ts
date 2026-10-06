@@ -1,3 +1,5 @@
+import { promptGetRequestSchema, resourceReadRequestSchema, toolCallRequestSchema } from '@mcp-router/shared';
+import type { Router } from 'express';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
@@ -39,4 +41,76 @@ export async function runUiCall(
     }
     throw new HttpError(502, ctx.failLabel, errorMessage(cause), { cause });
   }
+}
+
+/** Where one UI call lands: the instance to reach, and the name or URI as that server knows it. */
+export interface UiCallTarget {
+  key: InstanceKey;
+  target: string;
+}
+
+/**
+ * Resolve what a UI call asked for into where it lands.
+ *
+ * @param kind - What is being asked for ("tool", "resource", "prompt"), for the error message.
+ * @param requested - The name or URI exactly as the caller sent it.
+ */
+export type LocateUiCall = (kind: string, requested: string) => UiCallTarget;
+
+/**
+ * Register the three test-call routes the UI uses — `/:id/tools/call`,
+ * `/:id/resources/read` (a static resource's URI, or one the caller expanded
+ * from a template) and `/:id/prompts/get`. Each is recorded like a proxied
+ * call, under via 'ui'.
+ *
+ * @param scopeOf - Given the route's `:id`, rejects an unknown one and returns how its calls are located.
+ */
+export function registerUiCallRoutes(router: Router, manager: GatewayManager, scopeOf: (id: string) => LocateUiCall) {
+  const register = <B>(
+    method: string,
+    kind: string,
+    parse: (body: unknown) => B,
+    requestedBy: (body: B) => string,
+    failLabel: (requested: string) => string,
+    run: (client: DownstreamClient, target: string, body: B) => Promise<unknown>,
+  ): void => {
+    router.post(`/:id/${method}`, async (req, res) => {
+      const locate = scopeOf(req.params.id);
+      const body = parse(req.body);
+      const requested = requestedBy(body);
+      const { key, target } = locate(kind, requested);
+      const result = await runUiCall(
+        manager,
+        key,
+        { method, target, params: body, failLabel: failLabel(requested) },
+        (client) => run(client, target, body),
+      );
+      res.json(result);
+    });
+  };
+
+  register(
+    'tools/call',
+    'tool',
+    (body) => toolCallRequestSchema.parse(body),
+    (body) => body.name,
+    (name) => `Tool "${name}" failed`,
+    (client, name, body) => client.callTool({ name, arguments: body.arguments }),
+  );
+  register(
+    'resources/read',
+    'resource',
+    (body) => resourceReadRequestSchema.parse(body),
+    (body) => body.uri,
+    (uri) => `Resource "${uri}" failed to read`,
+    (client, uri) => client.readResource({ uri }),
+  );
+  register(
+    'prompts/get',
+    'prompt',
+    (body) => promptGetRequestSchema.parse(body),
+    (body) => body.name,
+    (name) => `Prompt "${name}" failed`,
+    (client, name, body) => client.getPrompt({ name, arguments: body.arguments }),
+  );
 }
