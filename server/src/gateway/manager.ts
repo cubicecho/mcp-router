@@ -319,11 +319,6 @@ export class GatewayManager {
     return this.meta.get(key)?.handshake ?? {};
   }
 
-  /** {@link withClient} for a server's workspace-scoped instance. */
-  withClientForWorkspace<T>(slug: string, serverName: string, run: (client: Client) => Promise<T>): Promise<T> {
-    return this.withClient(workspaceInstanceKey(slug, serverName), run);
-  }
-
   /**
    * Drop an instance's connection and dial it again.
    *
