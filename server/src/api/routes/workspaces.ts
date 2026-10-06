@@ -14,13 +14,14 @@ import {
 import { Router } from 'express';
 import { HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
+import type { DownstreamClient } from '../../gateway/downstream.ts';
 import { collectFrom } from '../../gateway/fan-out.ts';
 import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { toolCallFailed, toolErrorText } from '../../gateway/proxy.ts';
-import { type DownstreamClient, runUiCall, type UiCallContext } from '../calls.ts';
+import { runUiCall, type UiCallContext } from '../calls.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /** Workspace CRUD plus the aggregate's capability listings and test calls, mounted at /api/workspaces. */

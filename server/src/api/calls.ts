@@ -1,9 +1,7 @@
 import { errorMessage, HttpError } from '../errors.ts';
+import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
-
-/** A connected downstream client, as the gateway manager hands it out. */
-export type DownstreamClient = Awaited<ReturnType<GatewayManager['getClient']>>;
 
 export interface UiCallContext {
   method: string;
