@@ -236,88 +236,81 @@ export function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined
   return result;
 }
 
-/** Build a full ServerConfig from an InstallRequest, installing npm packages as needed. */
-export async function buildServerConfig(request: InstallRequest, deps: InstallerDeps): Promise<ServerConfig> {
-  const { source } = request;
-  let config: ServerConfig;
-  if (source.type === 'registry') {
-    const registry = deps.getRegistry(source.registry);
-    if (!registry) {
-      throw new HttpError(404, `Unknown registry "${source.registry}"`);
+/** What an install source decides about a config; everything else comes from the request. */
+type SourceParts = Pick<ServerConfig, 'transport'> &
+  Partial<Pick<ServerConfig, 'displayName' | 'description' | 'env' | 'envMeta'>>;
+
+type RegistrySource = Extract<InstallRequest['source'], { type: 'registry' }>;
+
+/** A registry entry's chosen package or remote, with the env prefills and hints the entry declares. */
+async function registryParts(
+  request: InstallRequest,
+  source: RegistrySource,
+  name: string,
+  deps: InstallerDeps,
+): Promise<SourceParts> {
+  const registry = deps.getRegistry(source.registry);
+  if (!registry) {
+    throw new HttpError(404, `Unknown registry "${source.registry}"`);
+  }
+  const entry = await deps.registryClient.getServer(registry, source.serverName);
+  const selection = selectFromEntry(entry, request.packageSelector);
+  const described = { displayName: entry.server.title, description: entry.server.description };
+  if ('remote' in selection) {
+    const remote = selection.remote;
+    if (remote.type !== 'streamable-http') {
+      throw new HttpError(400, `Remote transport "${remote.type}" is not supported (only streamable-http)`);
     }
-    const entry = await deps.registryClient.getServer(registry, source.serverName);
-    const name = resolveServerName(request);
-    const selection = selectFromEntry(entry, request.packageSelector);
-    let transport: ServerTransport;
-    let env: Record<string, string> = {};
-    let envMeta: Record<string, EnvVarMeta> = {};
-    if ('package' in selection) {
-      const pkg = selection.package;
-      const version = source.version ?? pkg.version;
-      const args = fixedArgsFrom(pkg.packageArguments);
-      if (pkg.registryType === 'npm') {
-        transport = await installNpmPackage(deps, name, pkg.identifier, version, args);
-      } else if (pkg.registryType === 'pypi') {
-        transport = buildPypiTransport(pkg.identifier, version, args);
-      } else {
-        throw new HttpError(
-          400,
-          `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
-        );
-      }
-      ({ env, envMeta } = envFromRegistry(pkg.environmentVariables));
-    } else {
-      const remote = selection.remote;
-      if (remote.type !== 'streamable-http') {
-        throw new HttpError(400, `Remote transport "${remote.type}" is not supported (only streamable-http)`);
-      }
-      transport = { type: 'streamable-http', url: remote.url, headers: headersFromRegistry(remote.headers) };
-    }
-    config = {
-      name,
-      displayName: entry.server.title,
-      description: entry.server.description,
-      enabled: request.enabled,
-      source,
-      transport,
-      env: { ...env, ...request.env },
-      envMeta,
-    };
-  } else if (source.type === 'npm') {
-    const name = resolveServerName(request);
-    const transport = await installNpmPackage(deps, name, source.package, source.version);
-    config = {
-      name,
-      enabled: request.enabled,
-      source,
-      transport,
-      env: request.env,
-      envMeta: {},
-    };
-  } else if (source.type === 'pypi') {
-    const name = resolveServerName(request);
-    const transport = buildPypiTransport(source.package, source.version);
-    config = {
-      name,
-      enabled: request.enabled,
-      source,
-      transport,
-      env: request.env,
-      envMeta: {},
-    };
-  } else {
-    const name = resolveServerName(request);
-    if (!request.transport) {
-      throw new HttpError(400, 'A "transport" is required when installing a remote server');
-    }
-    config = {
-      name,
-      enabled: request.enabled,
-      source,
-      transport: request.transport,
-      env: request.env,
-      envMeta: {},
+    return {
+      ...described,
+      transport: { type: 'streamable-http', url: remote.url, headers: headersFromRegistry(remote.headers) },
     };
   }
-  return serverConfigSchema.parse(config);
+  const pkg = selection.package;
+  const version = source.version ?? pkg.version;
+  const args = fixedArgsFrom(pkg.packageArguments);
+  let transport: ServerTransport;
+  if (pkg.registryType === 'npm') {
+    transport = await installNpmPackage(deps, name, pkg.identifier, version, args);
+  } else if (pkg.registryType === 'pypi') {
+    transport = buildPypiTransport(pkg.identifier, version, args);
+  } else {
+    throw new HttpError(
+      400,
+      `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
+    );
+  }
+  const { env, envMeta } = envFromRegistry(pkg.environmentVariables);
+  return { ...described, transport, env: { ...env, ...request.env }, envMeta };
+}
+
+/** The part of a config that depends on where the server comes from, installing npm packages as needed. */
+async function sourceParts(request: InstallRequest, name: string, deps: InstallerDeps): Promise<SourceParts> {
+  const { source } = request;
+  switch (source.type) {
+    case 'registry':
+      return registryParts(request, source, name, deps);
+    case 'npm':
+      return { transport: await installNpmPackage(deps, name, source.package, source.version) };
+    case 'pypi':
+      return { transport: buildPypiTransport(source.package, source.version) };
+    default:
+      if (!request.transport) {
+        throw new HttpError(400, 'A "transport" is required when installing a remote server');
+      }
+      return { transport: request.transport };
+  }
+}
+
+/** Build a full ServerConfig from an InstallRequest, installing npm packages as needed. */
+export async function buildServerConfig(request: InstallRequest, deps: InstallerDeps): Promise<ServerConfig> {
+  const name = resolveServerName(request);
+  return serverConfigSchema.parse({
+    name,
+    enabled: request.enabled,
+    source: request.source,
+    env: request.env,
+    envMeta: {},
+    ...(await sourceParts(request, name, deps)),
+  });
 }
