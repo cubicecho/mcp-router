@@ -351,9 +351,9 @@ export class GatewayManager {
     const name = this.meta.get(key)?.config.name ?? key;
     switch (cause.code) {
       case 'unknown-server':
-        throw new HttpError(404, `Unknown server "${key}"`, undefined, { cause });
+        throw new HttpError(404, `Unknown server "${name}"`, undefined, { cause });
       case 'disabled':
-        throw new HttpError(404, `Server "${key}" is disabled`, undefined, { cause });
+        throw new HttpError(404, `Server "${name}" is disabled`, undefined, { cause });
       case 'backoff':
         throw new HttpError(503, `Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
       default:

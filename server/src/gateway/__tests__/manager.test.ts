@@ -216,7 +216,7 @@ describe('GatewayManager workspaces', () => {
 
     await expect(manager.getClient(workspaceInstanceKey('acme', 'gh'))).rejects.toMatchObject({
       status: 404,
-      message: 'Server "w:acme:gh" is disabled',
+      message: 'Server "gh" is disabled',
     });
   });
 
