@@ -1,151 +1,103 @@
 import type { EnvVarMeta } from '@mcp-router/shared';
-import { EyeIcon, EyeOffIcon, PlusIcon, XIcon } from 'lucide-react';
-import { useState } from 'react';
-import { ActionButton } from '@/components/action-button';
-import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-
-interface EnvRow {
-  id: number;
-  key: string;
-  value: string;
-  /** New rows have an editable key and no registry metadata. */
-  isNew: boolean;
-}
+import { InputField, useAppForm } from '@/components/app-form';
+import { KeyValueRows, recordToRows, rowsToRecord } from '@/components/domain/key-value-rows';
+import { EmptyState } from '@/components/page';
+import { PasswordField } from '@/components/password-field';
 
 interface EnvEditorProps {
   env: Record<string, string>;
   envMeta: Record<string, EnvVarMeta>;
-  onSave: (env: Record<string, string>) => void;
+  /** A returned promise keeps Save showing progress until it settles. */
+  onSave: (env: Record<string, string>) => void | Promise<void>;
   saving?: boolean;
 }
 
-let nextRowId = 0;
-
-function buildRows(env: Record<string, string>, envMeta: Record<string, EnvVarMeta>): EnvRow[] {
-  const keys = [...new Set([...Object.keys(envMeta), ...Object.keys(env)])];
-  return keys.map((key) => ({ id: nextRowId++, key, value: env[key] ?? '', isNew: false }));
-}
-
 /**
- * Table of env vars: the union of the config's `envMeta` (registry hints) and
- * `env` (actual values). Secret vars render masked with a reveal toggle;
- * arbitrary key/value rows can be added and removed. Save emits the resulting
- * env record (rows with an empty key or value are dropped).
+ * Form over a server's env vars. The ones the registry declared (`envMeta`) are
+ * fixed fields — named, described, masked with a reveal toggle when secret —
+ * and everything else in `env` is a free key/value row that can be renamed,
+ * added and removed. Save emits the resulting env record (entries with an empty
+ * key or value are dropped).
  */
 export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorProps) {
-  const [rows, setRows] = useState<EnvRow[]>(() => buildRows(env, envMeta));
-  const [revealed, setRevealed] = useState<ReadonlySet<number>>(new Set());
+  const declared = Object.entries(envMeta);
 
-  const updateRow = (id: number, patch: Partial<Pick<EnvRow, 'key' | 'value'>>) => {
-    setRows((current) => current.map((row) => (row.id === id ? { ...row, ...patch } : row)));
-  };
-
-  const removeRow = (id: number) => {
-    setRows((current) => current.filter((row) => row.id !== id));
-  };
-
-  const addRow = () => {
-    setRows((current) => [...current, { id: nextRowId++, key: '', value: '', isNew: true }]);
-  };
-
-  const toggleReveal = (id: number) => {
-    setRevealed((current) => {
-      const next = new Set(current);
-      if (next.has(id)) {
-        next.delete(id);
-      } else {
-        next.add(id);
-      }
-      return next;
-    });
-  };
-
-  const handleSave = () => {
-    const result: Record<string, string> = {};
-    for (const row of rows) {
-      const key = row.key.trim();
-      if (key && row.value) {
-        result[key] = row.value;
-      }
-    }
-    onSave(result);
-  };
+  const form = useAppForm({
+    defaultValues: {
+      // An array, not a record keyed by variable name: a name is free text, and a dot in it would read as a path.
+      declared: declared.map(([name]) => ({ key: name, value: env[name] ?? '' })),
+      extraRows: recordToRows(
+        Object.fromEntries(Object.entries(env).filter(([name]) => !Object.hasOwn(envMeta, name))),
+      ),
+    },
+    onSubmit: async ({ value }) => {
+      await onSave(rowsToRecord([...value.declared, ...value.extraRows], { skipEmptyValues: true }));
+    },
+  });
 
   return (
-    <div className="flex flex-col gap-3">
-      {rows.length === 0 && <p className="text-sm text-muted-foreground">No environment variables configured.</p>}
-      {rows.map((row) => {
-        const meta = row.isNew ? undefined : envMeta[row.key];
-        const isSecret = meta?.isSecret === true;
-        const isRevealed = revealed.has(row.id);
-        return (
-          <div key={row.id} className="flex items-start gap-2">
-            <div className="w-2/5 min-w-0">
-              {row.isNew ? (
-                <Input
-                  value={row.key}
-                  placeholder="KEY"
-                  aria-label="Variable name"
-                  className="font-mono"
-                  onChange={(event) => updateRow(row.id, { key: event.target.value })}
-                />
-              ) : (
-                <div className="pt-1.5">
-                  <span className="font-mono text-sm">
-                    {row.key}
-                    {meta?.isRequired && (
-                      <span className="ml-0.5 text-destructive" title="Required">
-                        *
-                      </span>
-                    )}
-                  </span>
-                  {meta?.description && <p className="text-xs text-muted-foreground">{meta.description}</p>}
-                </div>
-              )}
-            </div>
-            <div className="flex min-w-0 flex-1 items-center gap-1">
-              <Input
-                type={isSecret && !isRevealed ? 'password' : 'text'}
-                value={row.value}
-                placeholder={meta?.placeholder ?? meta?.default ?? 'value'}
-                aria-label={`Value for ${row.key || 'new variable'}`}
-                className="font-mono"
-                onChange={(event) => updateRow(row.id, { value: event.target.value })}
-              />
-              {isSecret && (
-                <ActionButton
-                  variant="ghost"
-                  size="icon-sm"
-                  label={isRevealed ? `Hide ${row.key}` : `Reveal ${row.key}`}
-                  onClick={() => toggleReveal(row.id)}
-                  iconSlot={isRevealed ? <EyeOffIcon /> : <EyeIcon />}
-                />
-              )}
-              {(row.isNew || meta === undefined) && (
-                <ActionButton
-                  variant="ghost"
-                  size="icon-sm"
-                  label={`Remove ${row.key || 'new variable'}`}
-                  onClick={() => removeRow(row.id)}
-                  iconSlot={<XIcon />}
-                />
-              )}
-            </div>
-          </div>
-        );
-      })}
-      <div className="flex items-center justify-between pt-1">
-        <Button
-          type="button"
-          variant="outline"
-          size="sm"
-          onClick={addRow}
-          iconSlot={<PlusIcon />}
-          content="Add variable"
-        />
-        <Button type="button" size="sm" disabled={saving} onClick={handleSave} content={saving ? 'Saving…' : 'Save'} />
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        form.handleSubmit();
+      }}
+    >
+      {declared.map(([name, meta], index) =>
+        meta.isSecret ? (
+          <PasswordField
+            key={name}
+            form={form}
+            name={`declared[${index}].value`}
+            label={name}
+            required={meta.isRequired}
+            description={meta.description}
+            placeholder={meta.placeholder ?? meta.default ?? 'value'}
+            showLabel={`Reveal ${name}`}
+            hideLabel={`Hide ${name}`}
+            // The name and the value are code; the description under them is prose.
+            className="font-mono"
+            descriptionClassName="font-sans"
+          />
+        ) : (
+          <InputField
+            key={name}
+            form={form}
+            name={`declared[${index}].value`}
+            label={name}
+            required={meta.isRequired}
+            description={meta.description}
+            placeholder={meta.placeholder ?? meta.default ?? 'value'}
+            className="font-mono"
+            descriptionClassName="font-sans"
+          />
+        ),
+      )}
+
+      <form.Field name="extraRows">
+        {(field) => (
+          <>
+            {declared.length === 0 && field.state.value.length === 0 && (
+              <EmptyState compact title="No environment variables configured." />
+            )}
+            <KeyValueRows
+              legend={declared.length > 0 ? 'Other variables' : 'Variables'}
+              hideLegendWhenEmpty
+              keyLabel="Variable name"
+              unnamed="new variable"
+              addLabel="Add variable"
+              rows={field.state.value}
+              onChange={field.handleChange}
+            />
+          </>
+        )}
+      </form.Field>
+
+      <div className="flex justify-end">
+        <form.AppForm>
+          <form.SubmitButton size="sm" disabled={saving} />
+        </form.AppForm>
       </div>
-    </div>
+    </form>
   );
 }

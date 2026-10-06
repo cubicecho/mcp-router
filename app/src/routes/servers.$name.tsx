@@ -60,19 +60,16 @@ function ServerDetailPage() {
     });
   };
 
-  const handleSaveEnv = (env: Record<string, string>) => {
-    update.mutate(
-      { name, env },
-      {
-        onSuccess: () => {
-          toast.success('Environment saved', {
-            description: 'Restart the server for changes to take effect.',
-            action: { label: 'Restart', onClick: handleRestart },
-          });
-        },
-        onError: toastApiError,
-      },
-    );
+  const handleSaveEnv = async (env: Record<string, string>) => {
+    try {
+      await update.mutateAsync({ name, env });
+      toast.success('Environment saved', {
+        description: 'Restart the server for changes to take effect.',
+        action: { label: 'Restart', onClick: handleRestart },
+      });
+    } catch (error) {
+      toastApiError(error);
+    }
   };
 
   return (

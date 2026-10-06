@@ -1,4 +1,4 @@
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { describe, expect, it, vi } from 'vitest';
 import { EnvEditor } from '@/components/domain/server/env-editor';
@@ -15,7 +15,8 @@ describe('EnvEditor', () => {
 
     expect(screen.getByText('API_KEY')).toBeInTheDocument();
     expect(screen.getByText('REGION')).toBeInTheDocument();
-    expect(screen.getByText('LOG_LEVEL')).toBeInTheDocument();
+    // an env-only var is a free row: its name is an editable input
+    expect(screen.getByDisplayValue('LOG_LEVEL')).toBeInTheDocument();
     expect(screen.getByText('The API key')).toBeInTheDocument();
   });
 
@@ -23,7 +24,7 @@ describe('EnvEditor', () => {
     const user = userEvent.setup();
     render(<EnvEditor env={ENV} envMeta={ENV_META} onSave={vi.fn()} />);
 
-    const secretInput = screen.getByLabelText('Value for API_KEY');
+    const secretInput = screen.getByLabelText(/^API_KEY/);
     expect(secretInput).toHaveAttribute('type', 'password');
     // non-secret values are plain text
     expect(screen.getByLabelText('Value for LOG_LEVEL')).toHaveAttribute('type', 'text');
@@ -47,16 +48,18 @@ describe('EnvEditor', () => {
 
     // add a new arbitrary var
     await user.click(screen.getByRole('button', { name: /add variable/i }));
-    await user.type(screen.getByLabelText('Variable name'), 'NEW_VAR');
+    await user.type(screen.getAllByLabelText('Variable name')[1] as HTMLElement, 'NEW_VAR');
     await user.type(screen.getByLabelText('Value for NEW_VAR'), 'hello');
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onSave).toHaveBeenCalledWith({ API_KEY: 'super-secret', LOG_LEVEL: 'info', NEW_VAR: 'hello' });
+    await waitFor(() =>
+      expect(onSave).toHaveBeenCalledWith({ API_KEY: 'super-secret', LOG_LEVEL: 'info', NEW_VAR: 'hello' }),
+    );
 
     // remove the env-only var (meta rows are not removable)
     await user.click(screen.getByRole('button', { name: 'Remove LOG_LEVEL' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
-    expect(onSave).toHaveBeenLastCalledWith({ API_KEY: 'super-secret', NEW_VAR: 'hello' });
+    await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ API_KEY: 'super-secret', NEW_VAR: 'hello' }));
   });
 
   it('drops rows with an empty value (unset)', async () => {
@@ -64,9 +67,20 @@ describe('EnvEditor', () => {
     const onSave = vi.fn();
     render(<EnvEditor env={ENV} envMeta={ENV_META} onSave={onSave} />);
 
-    await user.clear(screen.getByLabelText('Value for API_KEY'));
+    await user.clear(screen.getByLabelText(/^API_KEY/));
     await user.click(screen.getByRole('button', { name: 'Save' }));
 
-    expect(onSave).toHaveBeenCalledWith({ LOG_LEVEL: 'debug' });
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ LOG_LEVEL: 'debug' }));
+  });
+
+  it('keeps a variable whose name contains dots as one key', async () => {
+    const user = userEvent.setup();
+    const onSave = vi.fn();
+    render(<EnvEditor env={{ 'app.log.level': 'debug' }} envMeta={{ 'app.region': {} }} onSave={onSave} />);
+
+    await user.type(screen.getByLabelText(/^app\.region/), 'eu');
+    await user.click(screen.getByRole('button', { name: 'Save' }));
+
+    await waitFor(() => expect(onSave).toHaveBeenCalledWith({ 'app.region': 'eu', 'app.log.level': 'debug' }));
   });
 });

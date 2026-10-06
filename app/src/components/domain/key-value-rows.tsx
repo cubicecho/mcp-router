@@ -1,6 +1,6 @@
-import { PlusIcon, XIcon } from 'lucide-react';
 import { ActionButton } from '@/components/action-button';
 import { Button } from '@/components/ui/button';
+import { Plus, X } from '@/components/ui/icons';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
@@ -77,7 +77,7 @@ export function KeyValueRows({
             size="icon-sm"
             label={`Remove ${row.key || unnamed}`}
             onClick={() => onChange(rows.filter((_, i) => i !== index))}
-            iconSlot={<XIcon />}
+            iconSlot={<X />}
           />
         </div>
       ))}
@@ -87,7 +87,7 @@ export function KeyValueRows({
           variant="outline"
           size="sm"
           onClick={() => onChange([...rows, { key: '', value: '' }])}
-          iconSlot={<PlusIcon />}
+          iconSlot={<Plus />}
           content={addLabel}
         />
       </div>
