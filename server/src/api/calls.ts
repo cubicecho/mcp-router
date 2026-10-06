@@ -25,13 +25,9 @@ export async function runUiCall(
   ctx: UiCallContext,
   run: (client: DownstreamClient) => Promise<unknown>,
 ): Promise<unknown> {
-  let startedAt = Date.now();
+  const startedAt = Date.now();
   try {
-    const result = await manager.withClient(key, (client) => {
-      // From the request rather than from the connect, which a cold server spends spawning.
-      startedAt = Date.now();
-      return run(client);
-    });
+    const result = await manager.withClient(key, run);
     const failure = ctx.detectFailure?.(result) ?? null;
     manager.recordActivity(key, {
       at: new Date().toISOString(),

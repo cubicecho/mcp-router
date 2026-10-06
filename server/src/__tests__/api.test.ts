@@ -393,7 +393,7 @@ describe('REST API', () => {
       },
     ]);
 
-    // A cold server spends the start of the request connecting.
+    // A cold server spends the start of the request connecting, and that wait is part of the call.
     const callTool = vi.fn(async () => ({ content: [] }));
     vi.spyOn(manager, 'withClient').mockImplementationOnce(async (_key, run) => {
       await new Promise((resolve) => setTimeout(resolve, 60));
@@ -401,7 +401,7 @@ describe('REST API', () => {
     });
     const slow = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
     expect(slow.status).toBe(200);
-    expect(manager.getActivity('hosted')[0]?.durationMs).toBeLessThan(40);
+    expect(manager.getActivity('hosted')[0]?.durationMs).toBeGreaterThanOrEqual(50);
   });
 
   it("runs a workspace's UI calls against the member's own instance, under its exposed name", async () => {
