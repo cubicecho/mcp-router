@@ -26,15 +26,21 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     getRegistry: (name: string) => store.getRegistry(name),
   };
 
+  const requireServer = (name: string): ServerConfig => {
+    const config = store.getServer(name);
+    if (!config) {
+      throw new HttpError(404, `Unknown server "${name}"`);
+    }
+    return config;
+  };
+
   const requireStatus = (name: string): ServerStatus => {
-    const status = manager.status(name);
-    if (!status || !store.getServer(name)) {
+    const status = manager.status(requireServer(name).name);
+    if (!status) {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
     return status;
   };
-
-  // Connect (spawning if needed) for a listing/call endpoint. A missing server
 
   router.get('/', (_req, res) => {
     res.json(manager.statusAll());
@@ -58,10 +64,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.patch('/:name', async (req, res) => {
     const name = req.params.name;
-    const existing = store.getServer(name);
-    if (!existing) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    const existing = requireServer(name);
     // The request schema is a plain object, so an omitted field is an absent key
     // (never an explicit undefined) and spreads as "leave it alone". Only
     // idleTimeoutMs needs a hand: null means "clear the override", not "set null".
@@ -79,9 +82,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.delete('/:name', async (req, res) => {
     const name = req.params.name;
-    if (!store.getServer(name)) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    requireServer(name);
     await store.deleteServer(name);
     // Before the uninstall, not after: the reconcile is what closes the child,
     // and removing its install directory out from under a live process is how a
@@ -93,9 +94,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.post('/:name/restart', async (req, res) => {
     const name = req.params.name;
-    if (!store.getServer(name)) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    requireServer(name);
     await manager.restart(name);
     res.json(requireStatus(name));
   });
