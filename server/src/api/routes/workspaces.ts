@@ -15,7 +15,7 @@ import { Router } from 'express';
 import { HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { collectFrom } from '../../gateway/fan-out.ts';
-import { workspaceInstanceKey } from '../../gateway/manager.ts';
+import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';

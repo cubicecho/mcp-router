@@ -11,7 +11,8 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
 import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
-import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
+import { workspaceInstanceKey } from '../gateway/instance-key.ts';
+import { GatewayManager } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
 /** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */

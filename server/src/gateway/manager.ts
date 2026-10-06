@@ -23,6 +23,7 @@ import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
+import { isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
@@ -107,16 +108,6 @@ interface ServerMeta {
   callCount: number;
   /** ISO timestamp of the most recent recorded call. */
   lastCalledAt?: string;
-}
-
-/** Map key for a server instance scoped to a workspace. Contains ':' so it never collides with a base server name. */
-export function workspaceInstanceKey(slug: string, serverName: string): string {
-  return `w:${slug}:${serverName}`;
-}
-
-/** True for a workspace-scoped instance key (base keys are plain server names, which cannot contain ':'). */
-function isWorkspaceKey(key: string): boolean {
-  return key.includes(':');
 }
 
 /**
