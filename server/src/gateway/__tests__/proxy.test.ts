@@ -5,14 +5,11 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
 import { HttpError } from '../../errors.ts';
-import {
-  type AggregateDeps,
-  createAggregateServer,
-  createProxyServer,
-  mergeInstructions,
-  type ProxyDeps,
-  proxyCapabilities,
-} from '../proxy.ts';
+import { type AggregateDeps, createAggregateServer } from '../aggregate-proxy.ts';
+import { proxyCapabilities } from '../capability.ts';
+import { createProxyServer } from '../direct-proxy.ts';
+import { mergeInstructions } from '../instructions.ts';
+import type { ProxyDeps } from '../track.ts';
 
 type RecordedActivity = ActivityEntry & { name: string };
 

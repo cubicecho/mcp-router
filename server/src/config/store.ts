@@ -12,7 +12,8 @@ import {
   workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
-import { authDisabledByEnv } from '../auth.ts';
+import { effectiveAuth } from '../auth.ts';
+import { WATCH_DEBOUNCE_MS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 
 export interface ConfigState {
@@ -21,8 +22,6 @@ export interface ConfigState {
   servers: ServerConfig[];
   workspaces: WorkspaceConfig[];
 }
-
-const WATCH_DEBOUNCE_MS = 300;
 
 /**
  * Owns the flat config files under DATA_DIR/config: settings.json,
@@ -211,7 +210,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       settings = settingsFileSchema.parse({});
       dirty = true;
     }
-    if (settings.authEnabled && !authDisabledByEnv() && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
+    if (effectiveAuth(settings).enabled && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
       settings.authToken = randomBytes(32).toString('hex');
       dirty = true;
       console.log(`Generated auth token (persisted to ${file}):\n  ${settings.authToken}`);

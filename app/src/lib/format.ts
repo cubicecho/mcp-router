@@ -44,3 +44,19 @@ export function suggestLocalName(name: string): string {
     .replace(/^[^a-z0-9]+/, '')
     .slice(0, 64);
 }
+
+/** A timestamp in the viewer's locale, or the raw text when it does not parse. */
+export function formatAbsoluteTime(iso: string): string {
+  const date = new Date(iso);
+  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
+}
+
+/** Compact uptime, e.g. "3h 12m" or "4m 7s". */
+export function formatUptime(seconds: number): string {
+  const hours = Math.floor(seconds / 3600);
+  const minutes = Math.floor((seconds % 3600) / 60);
+  if (hours > 0) {
+    return `${hours}h ${minutes}m`;
+  }
+  return `${minutes}m ${Math.floor(seconds % 60)}s`;
+}

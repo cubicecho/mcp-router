@@ -3,25 +3,25 @@ import { useStore } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
-import { type KeyValueRow, KeyValueRows, rowsToRecord } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value-rows';
 import { suggestLocalName } from '@/lib/format';
+import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
+import { serverNameError } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 type Ecosystem = 'npm' | 'pypi';
 
-const COPY: Record<Ecosystem, { title: string; description: string; packagePlaceholder: string; runner: string }> = {
+const COPY: Record<Ecosystem, { title: string; description: string; packagePlaceholder: string }> = {
   npm: {
     title: 'Install from npm',
     description: 'Install any npm package that provides an MCP server binary.',
     packagePlaceholder: '@modelcontextprotocol/server-everything',
-    runner: 'node',
   },
   pypi: {
     title: 'Install from PyPI',
     description: 'Run any PyPI package that provides an MCP server, via uvx.',
     packagePlaceholder: 'mcp-server-fetch',
-    runner: 'uvx',
   },
 };
 
@@ -84,10 +84,7 @@ export function PackageInstallCard({
               // Only a typed name is checked here; an empty one falls back to the suggestion, and an
               // unusable suggestion keeps Install disabled.
               validators={{
-                onChange: ({ value }) => {
-                  const result = serverNameSchema.safeParse(value);
-                  return !value || result.success ? undefined : (result.error.issues[0]?.message ?? 'Invalid name');
-                },
+                onChange: ({ value }) => serverNameError(value, { allowEmpty: true }),
               }}
             />
           </div>

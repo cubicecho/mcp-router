@@ -1,7 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-
-/** Defensive cap for draining paginated lists, against a downstream that never stops returning cursors. */
-const MAX_LIST_PAGES = 100;
+import { MAX_LIST_PAGES } from '../defaults.ts';
 
 /**
  * Drain a paginated downstream list. A caller can't forward a single client
@@ -10,7 +8,7 @@ const MAX_LIST_PAGES = 100;
  * (and its count) would silently hide tools/resources/prompts of any downstream
  * that paginates.
  */
-export async function allPages<T>(
+async function allPages<T>(
   fetchPage: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor?: string }>,
 ): Promise<T[]> {
   const items: T[] = [];

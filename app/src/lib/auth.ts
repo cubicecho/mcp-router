@@ -47,7 +47,7 @@ export function getNeedsAuth(): boolean {
   return needsAuth;
 }
 
-export function subscribeNeedsAuth(listener: Listener): () => void {
+function subscribeNeedsAuth(listener: Listener): () => void {
   listeners.add(listener);
   return () => {
     listeners.delete(listener);

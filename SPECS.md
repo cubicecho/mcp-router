@@ -268,7 +268,7 @@ client for one field. The router keeps reading both off the client in
 outlive the connection: `state()` clears them when a child is reaped, by design,
 while the aggregate's merged `instructions` is built from whatever its members
 have *ever* said in this process. What the release is used for here is the
-`ServerCapabilities` re-export, which lets `proxy.ts` and `manager.ts` type the
+`ServerCapabilities` re-export, which lets `capability.ts` and `manager.ts` type the
 field without reaching into the SDK's module layout.
 
 The capability half of it is what prompted the endpoint change above. The pool's

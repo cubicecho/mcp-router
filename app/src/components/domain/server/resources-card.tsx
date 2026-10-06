@@ -1,8 +1,9 @@
+import type { ServerResource, ServerResourceTemplate } from '@mcp-router/shared';
 import { useState } from 'react';
 import { FormField } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import type { CapabilityScope, ServerResource, ServerResourceTemplate } from '@/lib/api';
+import type { CapabilityScope } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 

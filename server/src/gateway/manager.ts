@@ -6,7 +6,6 @@ import {
   type McpServerState,
   type McpStatus,
   MINIMAL_CHILD_ENV,
-  type ServerCapabilities,
   sameConnection,
 } from '@cubicecho/agent-mcp-pool';
 import type {
@@ -20,55 +19,13 @@ import type {
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
+import { CRASH_BACKOFF_MS } from '../defaults.ts';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
-
-const CRASH_BACKOFF_MS = 5_000;
-/** Max activity entries kept per server (in-memory ring buffer). */
-const ACTIVITY_LIMIT = 200;
-/** Serialized params/result (and error/target strings) larger than this are truncated before storing. */
-const ACTIVITY_VALUE_CHARS = 8_000;
-
-/** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
-function truncateString(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  // A high surrogate at the cut point would leave an unpaired half; cut before it.
-  const last = value.charCodeAt(max - 1);
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
-  return `${value.slice(0, end)}… [truncated, ${value.length} chars]`;
-}
-
-/**
- * Snapshot a recorded params/result into a bounded, detached value.
- *
- * Never retains a reference to the caller's value: a small payload is returned
- * as a fresh structural clone (so it can't pin memory or alias later mutations
- * into the log, yet keeps its shape — the schema's `unknown` stays truthful and
- * the UI can pretty-print it), and an over-large one collapses to a truncation
- * marker string. Serialization is compact so the size budget isn't spent on
- * indentation.
- */
-function snapshotValue(value: unknown): unknown {
-  if (value === undefined) {
-    return undefined;
-  }
-  let serialized: string | undefined;
-  try {
-    serialized = JSON.stringify(value);
-  } catch {
-    return '[unserializable]';
-  }
-  if (serialized === undefined) {
-    return undefined; // functions / symbols serialize to nothing
-  }
-  if (serialized.length > ACTIVITY_VALUE_CHARS) {
-    return truncateString(serialized, ACTIVITY_VALUE_CHARS);
-  }
-  return JSON.parse(serialized);
-}
+import { ActivityLog, type ActivityRecord } from './activity-log.ts';
+import type { Handshake } from './handshake.ts';
+import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 /**
  * What the router keeps per managed instance, beside what the pool holds.
@@ -83,40 +40,18 @@ interface ServerMeta {
   /** Tool count from the last proxied `tools/list`; cleared when the connection is restarted. */
   toolCount?: number;
   /**
-   * The downstream's own `instructions`, as of the last connect.
+   * What the downstream said at its last connect.
    *
-   * Kept because it is only ever knowable from a live connection — it arrives in
-   * the initialize result and nowhere else — while the proxy `Server` that has to
-   * re-emit it is constructed when a client initializes, which for the aggregate
-   * is long before most of its members have been spawned. Cleared with the config
-   * it was read under; a server whose command or env changed is a different
-   * server, and stale guidance is worse than none.
+   * Kept because the proxy `Server` that re-emits it is built when a client
+   * initializes, which for an aggregate is long before most members have spawned.
+   * Cleared with the config it was read under: a server whose command or env
+   * changed is a different server, and stale guidance is worse than none.
    */
-  instructions?: string;
-  /**
-   * What the downstream declared it supports, as of the last connect.
-   *
-   * Kept for the same reason and on the same terms as `instructions`: it arrives
-   * in the initialize result and nowhere else, while the 1:1 proxy `Server` that
-   * has to re-declare it is constructed per client session. Cleared with the
-   * config it was read under — a server whose command changed may well answer a
-   * different set of methods.
-   */
-  capabilities?: ServerCapabilities;
+  handshake?: Handshake;
   /** Count of proxied calls recorded via recordActivity this process (reset on restart). */
   callCount: number;
   /** ISO timestamp of the most recent recorded call. */
   lastCalledAt?: string;
-}
-
-/** Map key for a server instance scoped to a workspace. Contains ':' so it never collides with a base server name. */
-export function workspaceInstanceKey(slug: string, serverName: string): string {
-  return `w:${slug}:${serverName}`;
-}
-
-/** True for a workspace-scoped instance key (base keys are plain server names, which cannot contain ':'). */
-function isWorkspaceKey(key: string): boolean {
-  return key.includes(':');
 }
 
 /**
@@ -127,11 +62,7 @@ function isWorkspaceKey(key: string): boolean {
  * aggregate tool namespacing is unaffected; its `enabled` reflects both the
  * workspace and the member being on.
  */
-export function resolveMemberConfig(
-  base: ServerConfig,
-  member: WorkspaceMember,
-  workspace: WorkspaceConfig,
-): ServerConfig {
+function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, workspace: WorkspaceConfig): ServerConfig {
   let transport = base.transport;
   if (transport.type === 'stdio' && member.args) {
     transport = { ...transport, args: member.args };
@@ -157,7 +88,7 @@ export function resolveMemberConfig(
  * `env` goes on the stdio arm only — it is a child's environment, and a remote
  * server has no child to hand it to.
  */
-export function toConnection(config: ServerConfig): McpConnection {
+function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
   if (transport.type === 'stdio') {
     return {
@@ -179,7 +110,7 @@ export function toConnection(config: ServerConfig): McpConnection {
  * of the base server's. `slug` is left unset and never read: the pool indexes no
  * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
  */
-function toPoolConfig(key: string, config: ServerConfig, settings: SettingsFile): McpServerConfig {
+function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
   const stdio = config.transport.type === 'stdio';
   return {
     id: key,
@@ -211,7 +142,7 @@ function toPoolConfig(key: string, config: ServerConfig, settings: SettingsFile)
  * keeps across a reconcile: a tool count read from the old child is not true of a
  * new one. Only the connection fields matter, so the identity is left blank.
  */
-export function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
+function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
   return !sameConnection(connectionRow(a), connectionRow(b));
 }
 
@@ -240,10 +171,8 @@ const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
 export class GatewayManager {
   private readonly pool: McpPool;
   private readonly getSettings: () => SettingsFile;
-  private readonly meta = new Map<string, ServerMeta>();
-  /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
-  private readonly activity = new Map<string, ActivityEntry[]>();
-  private activitySeq = 0;
+  private readonly meta = new Map<InstanceKey, ServerMeta>();
+  private readonly activity = new ActivityLog();
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
@@ -296,16 +225,14 @@ export class GatewayManager {
       const next = desired.get(key);
       if (!next) {
         this.meta.delete(key);
-        this.activity.delete(key);
+        this.activity.clear(key);
         continue;
       }
       if (needsRestart(meta.config, next)) {
-        // The pool is about to replace the child; a count, an instructions string
-        // and a capability set read from the old one stop being true at the same
-        // moment.
+        // The pool is about to replace the child; a count and a handshake read
+        // from the old one stop being true at the same moment.
         meta.toolCount = undefined;
-        meta.instructions = undefined;
-        meta.capabilities = undefined;
+        meta.handshake = undefined;
       }
       meta.config = next;
     }
@@ -323,14 +250,14 @@ export class GatewayManager {
    * instance key. Resets the idle timer. For base servers the key is the server
    * name; a workspace-scoped instance is keyed by {@link workspaceInstanceKey}.
    */
-  async getClient(name: string): Promise<Client> {
+  async getClient(key: InstanceKey): Promise<Client> {
     let client: Client;
     try {
-      client = await this.pool.client(name);
+      client = await this.pool.client(key);
     } catch (cause) {
-      this.fail(name, cause);
+      this.fail(key, cause);
     }
-    this.observe(name, client);
+    this.observe(key, client);
     return client;
   }
 
@@ -342,11 +269,10 @@ export class GatewayManager {
    * hang them off — the pool reaps, respawns and redials on its own, and each of
    * those is a fresh handshake that may say something new.
    */
-  private observe(name: string, client: Client): void {
-    const meta = this.meta.get(name);
+  private observe(key: InstanceKey, client: Client): void {
+    const meta = this.meta.get(key);
     if (meta) {
-      meta.instructions = client.getInstructions();
-      meta.capabilities = client.getServerCapabilities();
+      meta.handshake = { instructions: client.getInstructions(), capabilities: client.getServerCapabilities() };
     }
   }
 
@@ -364,44 +290,28 @@ export class GatewayManager {
    *
    * @param run The request. Called a second time, with the new client, after a redial.
    */
-  async withClient<T>(name: string, run: (client: Client) => Promise<T>): Promise<T> {
+  async withClient<T>(key: InstanceKey, run: (client: Client) => Promise<T>): Promise<T> {
     try {
-      return await this.pool.use(name, (client) => {
-        this.observe(name, client);
+      return await this.pool.use(key, (client) => {
+        this.observe(key, client);
         return run(client);
       });
     } catch (cause) {
       // Only the pool's own refusals are rewritten; whatever `run` rejected with is the caller's.
-      this.fail(name, cause);
+      this.fail(key, cause);
     }
   }
 
   /**
-   * The downstream's `instructions` as of its last connect, if it has ever
-   * connected in this process.
+   * What the downstream said at its last connect; empty if it has not connected
+   * in this process.
    *
    * Deliberately does not connect: the aggregate endpoint asks this for every
    * member while a client is initializing, and spawning a dozen children to
    * write a preamble the session may never act on is not a trade worth making.
-   * The 1:1 endpoint, which has exactly one server and is certain to use it,
-   * connects first and then asks.
    */
-  instructions(name: string): string | undefined {
-    return this.meta.get(name)?.instructions;
-  }
-
-  /**
-   * The downstream's declared capabilities as of its last connect, if it has ever
-   * connected in this process. Deliberately does not connect, for the same reason
-   * {@link instructions} does not.
-   */
-  capabilities(name: string): ServerCapabilities | undefined {
-    return this.meta.get(name)?.capabilities;
-  }
-
-  /** {@link withClient} for a server's workspace-scoped instance. */
-  withClientForWorkspace<T>(slug: string, serverName: string, run: (client: Client) => Promise<T>): Promise<T> {
-    return this.withClient(workspaceInstanceKey(slug, serverName), run);
+  handshake(key: InstanceKey): Handshake {
+    return this.meta.get(key)?.handshake ?? {};
   }
 
   /**
@@ -416,9 +326,9 @@ export class GatewayManager {
    * asked to be retried. Clearing that backoff is what pressing Restart on a
    * crash-looping server is for.
    */
-  async restart(name: string): Promise<Client> {
-    await this.pool.stop(name);
-    return this.getClient(name);
+  async restart(key: InstanceKey): Promise<Client> {
+    await this.pool.stop(key);
+    return this.getClient(key);
   }
 
   /**
@@ -429,16 +339,16 @@ export class GatewayManager {
    * `backoff` and `connect-failed` are the pair worth keeping apart — the first
    * means the pool declined to dial, the second that it dialled and could not.
    */
-  private fail(key: string, cause: unknown): never {
+  private fail(key: InstanceKey, cause: unknown): never {
     if (!(cause instanceof McpPoolError)) {
       throw cause;
     }
     const name = this.meta.get(key)?.config.name ?? key;
     switch (cause.code) {
       case 'unknown-server':
-        throw new HttpError(404, `Unknown server "${key}"`, undefined, { cause });
+        throw new HttpError(404, `Unknown server "${name}"`, undefined, { cause });
       case 'disabled':
-        throw new HttpError(404, `Server "${key}" is disabled`, undefined, { cause });
+        throw new HttpError(404, `Server "${name}" is disabled`, undefined, { cause });
       case 'backoff':
         throw new HttpError(503, `Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
       default:
@@ -447,13 +357,13 @@ export class GatewayManager {
   }
 
   /** The pool's connection rows by instance key. Secrets are left out: nothing here reads the row's config. */
-  private connectionState(): Map<string, McpServerState> {
+  private connectionState(): Map<InstanceKey, McpServerState> {
     return new Map(this.pool.state().map((row) => [row.id, row]));
   }
 
-  status(name: string): ServerStatus | undefined {
-    const meta = this.meta.get(name);
-    return meta ? toStatus(meta, this.connectionState().get(name)) : undefined;
+  status(key: InstanceKey): ServerStatus | undefined {
+    const meta = this.meta.get(key);
+    return meta ? toStatus(meta, this.connectionState().get(key)) : undefined;
   }
 
   statusAll(): ServerStatus[] {
@@ -477,54 +387,40 @@ export class GatewayManager {
    * messages to their upstream client; survives downstream respawns because the
    * pool re-installs the handler on every connect.
    */
-  onNotification(listener: (key: string, notification: Notification) => void): () => void {
+  onNotification(listener: (key: InstanceKey, notification: Notification) => void): () => void {
     return this.pool.onNotification(listener);
   }
 
-  recordToolCount(name: string, count: number): void {
-    const meta = this.meta.get(name);
+  recordToolCount(key: InstanceKey, count: number): void {
+    const meta = this.meta.get(key);
     if (meta) {
       meta.toolCount = count;
     }
   }
 
-  /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
-  recordActivity(name: string, entry: Omit<ActivityEntry, 'id'>): void {
+  /** Count a call against its instance and append it to the activity log. */
+  recordActivity(key: InstanceKey, entry: ActivityRecord): void {
     // Only log for a currently-managed server: an in-flight call that completes
     // after the server was removed (reconcile drops it from both maps) must not
     // resurrect a stray activity entry that then leaks forever. A call that
     // completes right after a Clear legitimately re-populates the log — the
     // server still exists, so that is new activity, not a leak.
-    const meta = this.meta.get(name);
+    const meta = this.meta.get(key);
     if (!meta) {
       return;
     }
     meta.callCount += 1;
     meta.lastCalledAt = entry.at;
-    const log = this.activity.get(name) ?? [];
-    log.push({
-      ...entry,
-      id: ++this.activitySeq,
-      // Bound every payload-bearing field, not just params/result: error messages
-      // and targets (e.g. data: URIs) can embed arbitrarily large payloads too.
-      target: entry.target === undefined ? undefined : truncateString(entry.target, ACTIVITY_VALUE_CHARS),
-      error: entry.error === undefined ? undefined : truncateString(entry.error, ACTIVITY_VALUE_CHARS),
-      params: snapshotValue(entry.params),
-      result: snapshotValue(entry.result),
-    });
-    if (log.length > ACTIVITY_LIMIT) {
-      log.splice(0, log.length - ACTIVITY_LIMIT);
-    }
-    this.activity.set(name, log);
+    this.activity.record(key, entry);
   }
 
-  /** Recorded activity for a server, newest first (at most ACTIVITY_LIMIT). */
-  getActivity(name: string): ActivityEntry[] {
-    return [...(this.activity.get(name) ?? [])].reverse();
+  /** Recorded activity for an instance, newest first. */
+  getActivity(key: InstanceKey): ActivityEntry[] {
+    return this.activity.newestFirst(key);
   }
 
-  clearActivity(name: string): void {
-    this.activity.delete(name);
+  clearActivity(key: InstanceKey): void {
+    this.activity.clear(key);
   }
 
   /** Names of all enabled base servers (for the global aggregate endpoint). */

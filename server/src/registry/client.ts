@@ -1,6 +1,7 @@
 import type { Registry, RegistryListResponse, RegistryServerEntry } from '@mcp-router/shared';
 import { registryListResponseSchema, registryServerEntrySchema } from '@mcp-router/shared';
 import { errorMessage, HttpError } from '../errors.ts';
+import { isRecord } from '../is-record.ts';
 
 export interface RegistrySearchParams {
   search?: string;
@@ -33,8 +34,8 @@ export class RegistryClient {
     }
     const body = await this.fetchJson(url, registry);
     // The registry's ServerListResponse allows servers: null for empty result sets.
-    if (typeof body === 'object' && body !== null && (body as { servers?: unknown }).servers === null) {
-      (body as { servers: unknown }).servers = [];
+    if (isRecord(body) && body.servers === null) {
+      body.servers = [];
     }
     return this.parse(registryListResponseSchema.parse.bind(registryListResponseSchema), body, registry);
   }

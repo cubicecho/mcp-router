@@ -5,7 +5,7 @@
  * contain underscores.
  */
 
-export const NAMESPACE_SEPARATOR = '__';
+const NAMESPACE_SEPARATOR = '__';
 
 export function namespaceName(serverName: string, name: string): string {
   return `${serverName}${NAMESPACE_SEPARATOR}${name}`;

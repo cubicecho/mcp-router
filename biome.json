@@ -60,6 +60,7 @@
       "**/*.css",
       "!**/dist",
       "!**/node_modules",
+      "!.claude",
       "!**/data",
       "!site",
       "!**/*.gen.ts"

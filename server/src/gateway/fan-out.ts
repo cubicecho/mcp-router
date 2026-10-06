@@ -1,18 +1,13 @@
-import type { ActivityEntry } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { errorDetailMessage } from '../errors.ts';
-import { lacksCapability } from './capability.ts';
-
-/**
- * Runs one request against a downstream's client, by server name. What every
- * path to a downstream is handed in place of the client itself, so the redial
- * of a lost session (see `GatewayManager.withClient`) cannot be stepped around.
- */
-export type WithClient = <R>(name: string, run: (client: Client) => Promise<R>) => Promise<R>;
+import type { ActivityRecord } from './activity-log.ts';
+import { emptyOnMissing } from './capability.ts';
+import type { WithClient } from './downstream.ts';
+import { recordedCall } from './recorded-call.ts';
 
 export interface FanOutDeps {
   withClient: WithClient;
-  recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
+  recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
 /**
@@ -38,21 +33,15 @@ export async function collectFrom<T>(
 ): Promise<T[]> {
   const results = await Promise.all(
     names.map(async (name) => {
-      const startedAt = Date.now();
       try {
-        return await deps.withClient(name, (client) => fn(client, name));
+        const listed = await recordedCall(
+          (entry) => deps.recordActivity(name, entry),
+          { via: 'aggregate', method, failuresOnly: true },
+          () => emptyOnMissing(() => deps.withClient(name, (client) => fn(client, name))),
+        );
+        return listed ?? [];
       } catch (err) {
-        if (!lacksCapability(err)) {
-          console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);
-          deps.recordActivity(name, {
-            at: new Date().toISOString(),
-            via: 'aggregate',
-            method,
-            ok: false,
-            durationMs: Date.now() - startedAt,
-            error: errorDetailMessage(err),
-          });
-        }
+        console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);
         return [];
       }
     }),

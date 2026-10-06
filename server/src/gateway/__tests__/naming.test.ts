@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { namespaceName, splitNamespacedName } from '../gateway/naming.ts';
+import { namespaceName, splitNamespacedName } from '../naming.ts';
 
 describe('aggregate namespacing', () => {
   it('prefixes names with <server>__', () => {

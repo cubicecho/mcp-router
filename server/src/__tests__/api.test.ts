@@ -10,8 +10,10 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
+import { HttpError } from '../errors.ts';
 import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
-import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
+import { workspaceInstanceKey } from '../gateway/instance-key.ts';
+import { GatewayManager } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
 /** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */
@@ -111,6 +113,17 @@ describe('REST API', () => {
     const deleted = await authed(request(app).delete('/api/servers/hosted'));
     expect(deleted.status).toBe(204);
     expect((await authed(request(app).get('/api/servers/hosted'))).status).toBe(404);
+  });
+
+  it('derives a name for a pypi install that gives none', async () => {
+    const created = await authed(request(app).post('/api/servers')).send({
+      source: { type: 'pypi', package: 'mcp-server-fetch' },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.config).toMatchObject({
+      name: 'mcp-server-fetch',
+      transport: { type: 'stdio', command: 'uvx', args: ['mcp-server-fetch'] },
+    });
   });
 
   it('serves and clears in-memory activity for a known server', async () => {
@@ -366,6 +379,90 @@ describe('REST API', () => {
     const deleted = await authed(request(app).delete('/api/workspaces/renamed'));
     expect(deleted.status).toBe(204);
     expect((await authed(request(app).get('/api/workspaces/renamed'))).status).toBe(404);
+  });
+
+  it('logs a UI call the manager refused, and one that waited on a connect', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    // A server that would not connect answers with the manager's own status.
+    vi.spyOn(manager, 'withClient').mockRejectedValueOnce(
+      new HttpError(502, 'Failed to connect to server "hosted"', 'stderr tail'),
+    );
+    const refused = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
+    expect(refused.status).toBe(502);
+    expect(manager.getActivity('hosted')).toMatchObject([
+      {
+        via: 'ui',
+        method: 'tools/call',
+        target: 'echo',
+        ok: false,
+        error: 'Failed to connect to server "hosted": stderr tail',
+      },
+    ]);
+
+    // A cold server spends the start of the request connecting, and that wait is part of the call.
+    const callTool = vi.fn(async () => ({ content: [] }));
+    vi.spyOn(manager, 'withClient').mockImplementationOnce(async (_key, run) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return run({ callTool } as unknown as Client);
+    });
+    const slow = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
+    expect(slow.status).toBe(200);
+    expect(manager.getActivity('hosted')[0]?.durationMs).toBeGreaterThanOrEqual(50);
+  });
+
+  it("runs a workspace's UI calls against the member's own instance, under its exposed name", async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+    await authed(request(app).post('/api/workspaces')).send({ name: 'Team', members: { hosted: {} } });
+    const memberKey = workspaceInstanceKey('team', 'hosted');
+
+    const callTool = vi.fn(async () => ({ content: [{ type: 'text', text: 'boom' }], isError: true }));
+    const readResource = vi.fn(async () => {
+      throw new Error('down');
+    });
+    const listTools = vi.fn(async () => ({ tools: [{ name: 'echo', inputSchema: { type: 'object' } }] }));
+    stubDownstream(manager, { callTool, readResource, listTools });
+
+    // The listing is namespaced, and its count belongs to the member's instance, not the base server.
+    const tools = await authed(request(app).get('/api/workspaces/team/tools'));
+    expect(tools.body.tools.map((tool: { name: string }) => tool.name)).toEqual(['hosted__echo']);
+    expect(manager.status(memberKey)?.toolCount).toBe(1);
+    expect(manager.status('hosted')?.toolCount).toBeUndefined();
+
+    // A tool that resolves with isError still answers 200, and is logged as a failure with its text.
+    const called = await authed(request(app).post('/api/workspaces/team/tools/call')).send({
+      name: 'hosted__echo',
+      arguments: { a: 1 },
+    });
+    expect(called.status).toBe(200);
+    expect(callTool).toHaveBeenCalledWith({ name: 'echo', arguments: { a: 1 } });
+
+    // A downstream that throws is a 502, logged with the thrown message.
+    const read = await authed(request(app).post('/api/workspaces/team/resources/read')).send({
+      uri: 'hosted__file:///a.txt',
+    });
+    expect(read.status).toBe(502);
+    expect(readResource).toHaveBeenCalledWith({ uri: 'file:///a.txt' });
+
+    // A name that resolves to no member is the caller's error, and is not logged anywhere.
+    const unknown = await authed(request(app).post('/api/workspaces/team/tools/call')).send({ name: 'ghost__echo' });
+    expect(unknown.status).toBe(400);
+
+    const activity = await authed(request(app).get('/api/workspaces/team/activity'));
+    expect(activity.body.entries).toMatchObject([
+      { via: 'ui', method: 'resources/read', target: 'file:///a.txt', ok: false, error: 'down' },
+      { via: 'ui', method: 'tools/call', target: 'echo', ok: false, error: 'boom' },
+    ]);
+    expect(manager.getActivity(memberKey)).toHaveLength(2);
+    expect(manager.getActivity('hosted')).toEqual([]);
   });
 });
 
@@ -624,5 +721,71 @@ describe('MCP session lifecycle', () => {
     const second = await initSession();
     expect((await listWithSession(first)).status).toBe(404);
     expect((await listWithSession(second)).status).toBe(200);
+  });
+
+  it("relays a downstream notification only to the endpoints that expose its instance, under that endpoint's names", async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.saveServer({
+      name: 'alpha',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'http://127.0.0.1:1/mcp', headers: {} },
+      enabled: true,
+      env: {},
+      envMeta: {},
+    });
+    await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: { alpha: { enabled: true } } });
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
+
+    // Stand in for the pool: every session subscribes, and every session hears every instance.
+    const listeners: Parameters<GatewayManager['onNotification']>[0][] = [];
+    vi.spyOn(manager, 'onNotification').mockImplementation((listener) => {
+      listeners.push(listener);
+      return () => {};
+    });
+    const emit = (key: string, uri: string) => {
+      for (const listener of listeners) {
+        listener(key, { method: 'notifications/resources/updated', params: { uri } });
+      }
+    };
+
+    const httpServer = createServer(app);
+    await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+    const { port } = httpServer.address() as AddressInfo;
+    const clients: Client[] = [];
+    const connect = async (endpoint: string): Promise<Set<unknown>> => {
+      const uris = new Set<unknown>();
+      const client = new Client({ name: 'test-client', version: '1.0.0' });
+      client.fallbackNotificationHandler = async (notification) => {
+        uris.add(notification.params?.uri);
+      };
+      clients.push(client);
+      await client.connect(
+        new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}${endpoint}`), {
+          requestInit: { headers: { Authorization: `Bearer ${token}` } },
+        }),
+      );
+      return uris;
+    };
+    try {
+      const aggregate = await connect('/mcp');
+      const workspace = await connect('/mcp/w/team');
+      const direct = await connect('/mcp/alpha');
+
+      // Re-emitted until each stream is open: a notification sent before a client's GET lands is dropped.
+      await vi.waitFor(() => {
+        emit('alpha', 'file:///base');
+        emit(workspaceInstanceKey('team', 'alpha'), 'file:///member');
+        expect(aggregate.size).toBeGreaterThan(0);
+        expect(workspace.size).toBeGreaterThan(0);
+        expect(direct.size).toBeGreaterThan(0);
+      });
+
+      expect([...aggregate]).toEqual(['alpha__file:///base']);
+      expect([...workspace]).toEqual(['alpha__file:///member']);
+      expect([...direct]).toEqual(['file:///base']);
+    } finally {
+      await Promise.all(clients.map((client) => client.close()));
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    }
   });
 });

@@ -9,6 +9,7 @@ import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/ui/icons';
+import { AGGREGATE_ENDPOINT_PATH, endpointUrl } from '@/lib/endpoint';
 import { useServers } from '@/lib/queries';
 
 export const Route = createFileRoute('/')({
@@ -55,7 +56,7 @@ function ServersPage() {
             <>
               <ServerList servers={data} />
               <ConnectCard
-                endpoint={`${window.location.origin}/mcp`}
+                endpoint={endpointUrl(AGGREGATE_ENDPOINT_PATH)}
                 label="mcp-router"
                 description="Point an MCP client at the aggregate endpoint to get every enabled server's tools, namespaced as <server>__<tool>."
               />

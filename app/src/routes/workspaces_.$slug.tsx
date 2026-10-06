@@ -5,11 +5,7 @@ import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DescriptionList, PropertyRow } from '@/components/description-list';
-import { ConnectCard } from '@/components/domain/connect-card';
-import { ActivityCard } from '@/components/domain/server/activity-card';
-import { PromptsCard } from '@/components/domain/server/prompts-card';
-import { ResourcesCard } from '@/components/domain/server/resources-card';
-import { ToolsCard } from '@/components/domain/server/tools-card';
+import { CapabilityTabs } from '@/components/domain/capability-tabs';
 import { MembersCard } from '@/components/domain/workspace/members-card';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { PageLayout } from '@/components/page-layout';
@@ -20,7 +16,7 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
@@ -37,8 +33,8 @@ function WorkspaceDetailPage() {
   const remove = useDeleteWorkspace();
   const [editOpen, setEditOpen] = useState(false);
 
-  const endpointUrl = `${window.location.origin}/mcp/w/${slug}`;
   const scope = { kind: 'workspace', slug } as const;
+  const endpoint = endpointUrl(endpointPath(scope));
 
   const handleDelete = () => {
     remove.mutate(slug, {
@@ -103,12 +99,12 @@ function WorkspaceDetailPage() {
                         <>
                           <PropertyRow
                             label="Endpoint"
-                            value={endpointUrl}
+                            value={endpoint}
                             valueClassName="break-all font-mono"
                             actionSlot={
                               <CopyButton
                                 variant="ghost"
-                                value={endpointUrl}
+                                value={endpoint}
                                 label="Copy endpoint URL"
                                 onError={toastCopyError}
                               />
@@ -154,34 +150,7 @@ function WorkspaceDetailPage() {
 
               <MembersCard workspace={workspace} />
 
-              <Tabs defaultValue="tools">
-                <TabsList>
-                  <TabsTrigger value="tools">Tools</TabsTrigger>
-                  <TabsTrigger value="resources">Resources</TabsTrigger>
-                  <TabsTrigger value="prompts">Prompts</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="connect">Connect</TabsTrigger>
-                </TabsList>
-                <TabsContent value="tools">
-                  <ToolsCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="resources">
-                  <ResourcesCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="prompts">
-                  <PromptsCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="activity">
-                  <ActivityCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="connect">
-                  <ConnectCard
-                    endpoint={endpointUrl}
-                    label={slug}
-                    description={`Point an MCP client at this workspace's aggregate endpoint (tools are <server>__-namespaced).`}
-                  />
-                </TabsContent>
-              </Tabs>
+              <CapabilityTabs scope={scope} />
 
               {editOpen && <WorkspaceDialog key={slug} open workspace={workspace} onOpenChange={setEditOpen} />}
             </>

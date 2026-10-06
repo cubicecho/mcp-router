@@ -1,33 +1,11 @@
+import type { ServerTool } from '@mcp-router/shared';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import type { CapabilityScope, ServerTool } from '@/lib/api';
+import type { CapabilityScope } from '@/lib/api';
+import { argsTemplate } from '@/lib/args-template';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
-
-/** Prefill the args editor from the tool's input schema: one key per property. */
-function argsTemplate(inputSchema: unknown): string {
-  const properties = (inputSchema as { properties?: Record<string, { type?: string; default?: unknown }> } | undefined)
-    ?.properties;
-  if (!properties || Object.keys(properties).length === 0) {
-    return '{}';
-  }
-  const template: Record<string, unknown> = {};
-  for (const [key, prop] of Object.entries(properties)) {
-    template[key] =
-      prop.default ??
-      (prop.type === 'number' || prop.type === 'integer'
-        ? 0
-        : prop.type === 'boolean'
-          ? false
-          : prop.type === 'array'
-            ? []
-            : prop.type === 'object'
-              ? {}
-              : '');
-  }
-  return JSON.stringify(template, null, 2);
-}
 
 function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) {
   const schemaSig = JSON.stringify(tool.inputSchema);

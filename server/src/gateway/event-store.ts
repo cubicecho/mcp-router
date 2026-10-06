@@ -1,8 +1,6 @@
 import type { EventId, EventStore, StreamId } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-
-/** Default per-stream-and-session cap on buffered events — enough to cover a brief reconnect. */
-const DEFAULT_MAX_EVENTS = 256;
+import { DEFAULT_MAX_EVENTS } from '../defaults.ts';
 
 /**
  * Bounded in-memory {@link EventStore} that gives MCP sessions SSE resumability:

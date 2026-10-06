@@ -169,7 +169,7 @@ function Node({
 }
 
 /** Syntax-highlighted, collapsible tree rendering of any JSON value. */
-export function JsonTree({ value }: { value: unknown }) {
+function JsonTree({ value }: { value: unknown }) {
   return (
     <div className="font-mono text-xs leading-relaxed">
       <Node value={value} depth={0} comma={false} />

@@ -1,4 +1,5 @@
 import { readFileSync } from 'node:fs';
+import { isRecord } from './is-record.ts';
 
 /**
  * Version reported in RouterStatus and MCP server info.
@@ -12,8 +13,8 @@ import { readFileSync } from 'node:fs';
 function readVersion(): string {
   try {
     const pkgUrl = new URL('../../package.json', import.meta.url);
-    const pkg = JSON.parse(readFileSync(pkgUrl, 'utf8')) as { version?: unknown };
-    return typeof pkg.version === 'string' ? pkg.version : '0.0.0';
+    const pkg: unknown = JSON.parse(readFileSync(pkgUrl, 'utf8'));
+    return isRecord(pkg) && typeof pkg.version === 'string' ? pkg.version : '0.0.0';
   } catch {
     return '0.0.0';
   }

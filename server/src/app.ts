@@ -3,7 +3,7 @@ import path from 'node:path';
 import express from 'express';
 import { errorMiddleware } from './api/error-middleware.ts';
 import { createApiRouter } from './api/router.ts';
-import { authDisabledByEnv, createAuthMiddleware, createOriginMiddleware } from './auth.ts';
+import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from './auth.ts';
 import type { ConfigStore } from './config/store.ts';
 import type { GatewayManager } from './gateway/manager.ts';
 import { createMcpRouter } from './gateway/routes.ts';
@@ -25,13 +25,7 @@ export function buildApp(deps: AppDeps): express.Express {
   app.disable('x-powered-by');
   app.use(express.json({ limit: '4mb' }));
 
-  const auth = createAuthMiddleware(() => {
-    const settings = store.getSettings();
-    return {
-      enabled: settings.authEnabled && !authDisabledByEnv(),
-      token: process.env.MCP_ROUTER_TOKEN ?? settings.authToken,
-    };
-  });
+  const auth = createAuthMiddleware(() => effectiveAuth(store.getSettings()));
 
   // Origin check first so a DNS-rebound browser request is rejected regardless of the bearer token
   // (which it cannot read anyway) — the one guard that still applies when SECURE_LOCAL_NET drops auth.

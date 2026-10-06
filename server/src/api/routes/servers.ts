@@ -1,21 +1,13 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
 import type { ServerConfig, ServerStatus } from '@mcp-router/shared';
-import {
-  activityResponseSchema,
-  installRequestSchema,
-  promptGetRequestSchema,
-  resourceReadRequestSchema,
-  toolCallRequestSchema,
-  updateServerRequestSchema,
-} from '@mcp-router/shared';
+import { activityResponseSchema, installRequestSchema, updateServerRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
 import { errorMessage, HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
-import { toolCallFailed, toolErrorText } from '../../gateway/proxy.ts';
-import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
-import { runUiCall } from '../calls.ts';
-import type { ApiDeps } from '../deps.ts';
+import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
+import { registerUiCallRoutes } from '../calls.ts';
+import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
 export function createServerRoutes({ store, manager, registryClient, dataDir }: ApiDeps): Router {
@@ -27,15 +19,21 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     getRegistry: (name: string) => store.getRegistry(name),
   };
 
+  const requireServer = (name: string): ServerConfig => {
+    const config = store.getServer(name);
+    if (!config) {
+      throw new HttpError(404, `Unknown server "${name}"`);
+    }
+    return config;
+  };
+
   const requireStatus = (name: string): ServerStatus => {
-    const status = manager.status(name);
-    if (!status || !store.getServer(name)) {
+    const status = manager.status(requireServer(name).name);
+    if (!status) {
       throw new HttpError(404, `Unknown server "${name}"`);
     }
     return status;
   };
-
-  // Connect (spawning if needed) for a listing/call endpoint. A missing server
 
   router.get('/', (_req, res) => {
     res.json(manager.statusAll());
@@ -43,22 +41,13 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.post('/', async (req, res) => {
     const request = installRequestSchema.parse(req.body);
-    const name =
-      request.name ??
-      (request.source.type === 'registry'
-        ? deriveServerName(request.source.serverName)
-        : request.source.type === 'npm'
-          ? deriveServerName(request.source.package)
-          : undefined);
-    if (!name) {
-      throw new HttpError(400, 'A "name" is required when installing a remote server');
-    }
+    const name = resolveServerName(request);
     if (store.getServer(name)) {
       throw new HttpError(409, `Server "${name}" already exists`);
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.status(201).json(requireStatus(config.name));
   });
 
@@ -68,10 +57,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.patch('/:name', async (req, res) => {
     const name = req.params.name;
-    const existing = store.getServer(name);
-    if (!existing) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    const existing = requireServer(name);
     // The request schema is a plain object, so an omitted field is an absent key
     // (never an explicit undefined) and spreads as "leave it alone". Only
     // idleTimeoutMs needs a hand: null means "clear the override", not "set null".
@@ -83,29 +69,25 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
       next.idleTimeoutMs = idleTimeoutMs;
     }
     await store.saveServer(next);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.json(requireStatus(name));
   });
 
   router.delete('/:name', async (req, res) => {
     const name = req.params.name;
-    if (!store.getServer(name)) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    requireServer(name);
     await store.deleteServer(name);
     // Before the uninstall, not after: the reconcile is what closes the child,
     // and removing its install directory out from under a live process is how a
     // half-deleted server with a file still open happens.
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     await uninstall(dataDir, name);
     res.status(204).end();
   });
 
   router.post('/:name/restart', async (req, res) => {
     const name = req.params.name;
-    if (!store.getServer(name)) {
-      throw new HttpError(404, `Unknown server "${name}"`);
-    }
+    requireServer(name);
     await manager.restart(name);
     res.json(requireStatus(name));
   });
@@ -151,54 +133,9 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     res.json({ prompts: prompts ?? [] });
   });
 
-  // Run one tool from the UI. Recorded to the activity log like proxied calls,
-  // under via 'ui'. A tool that resolves with `isError: true` is logged not-ok.
-  router.post('/:name/tools/call', async (req, res) => {
-    const name = req.params.name;
+  registerUiCallRoutes(router, manager, (name) => {
     requireStatus(name);
-    const body = toolCallRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      {
-        method: 'tools/call',
-        target: body.name,
-        params: body,
-        failLabel: `Tool "${body.name}" failed`,
-        detectFailure: (r) => (toolCallFailed(r) ? toolErrorText(r) : null),
-      },
-      (client) => client.callTool({ name: body.name, arguments: body.arguments }),
-    );
-    res.json(result);
-  });
-
-  // Read one resource by URI from the UI. Works for a static resource's URI or a
-  // concrete URI the caller expanded from a resource template.
-  router.post('/:name/resources/read', async (req, res) => {
-    const name = req.params.name;
-    requireStatus(name);
-    const body = resourceReadRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      { method: 'resources/read', target: body.uri, params: body, failLabel: `Resource "${body.uri}" failed to read` },
-      (client) => client.readResource({ uri: body.uri }),
-    );
-    res.json(result);
-  });
-
-  // Get one prompt (with its arguments) from the UI.
-  router.post('/:name/prompts/get', async (req, res) => {
-    const name = req.params.name;
-    requireStatus(name);
-    const body = promptGetRequestSchema.parse(req.body);
-    const result = await runUiCall(
-      manager,
-      name,
-      { method: 'prompts/get', target: body.name, params: body, failLabel: `Prompt "${body.name}" failed` },
-      (client) => client.getPrompt({ name: body.name, arguments: body.arguments }),
-    );
-    res.json(result);
+    return (_kind, requested) => ({ key: name, target: requested });
   });
 
   router.get('/:name/activity', (req, res) => {

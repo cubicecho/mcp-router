@@ -1,9 +1,9 @@
 import type { RouterStatus } from '@mcp-router/shared';
 import { updateSettingsRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
-import { authDisabledByEnv } from '../../auth.ts';
+import { effectiveAuth } from '../../auth.ts';
 import { SERVER_VERSION } from '../../version.ts';
-import type { ApiDeps } from '../deps.ts';
+import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Router-wide endpoints: status, global settings, and a config reload. */
 export function createSystemRoutes({ store, manager }: ApiDeps): Router {
@@ -16,7 +16,7 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
       serverCount: store.getServers().length,
       runningCount: manager.runningCount(),
-      authEnabled: store.getSettings().authEnabled && !authDisabledByEnv(),
+      authEnabled: effectiveAuth(store.getSettings()).enabled,
       idleTimeoutMs: store.getSettings().idleTimeoutMs,
     };
     res.json(status);
@@ -29,7 +29,7 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
     const next = await store.updateSettings(patch);
     // The global idle timeout is resolved onto each server's row when the pool is
     // reconciled, so an edited one only reaches the running children through one.
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.json({ idleTimeoutMs: next.idleTimeoutMs });
   });
 
