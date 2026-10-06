@@ -23,54 +23,10 @@ import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
-import type { ActivityRecord } from './activity-log.ts';
+import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
-/** Max activity entries kept per server (in-memory ring buffer). */
-const ACTIVITY_LIMIT = 200;
-/** Serialized params/result (and error/target strings) larger than this are truncated before storing. */
-const ACTIVITY_VALUE_CHARS = 8_000;
-
-/** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
-function truncateString(value: string, max: number): string {
-  if (value.length <= max) {
-    return value;
-  }
-  // A high surrogate at the cut point would leave an unpaired half; cut before it.
-  const last = value.charCodeAt(max - 1);
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
-  return `${value.slice(0, end)}… [truncated, ${value.length} chars]`;
-}
-
-/**
- * Snapshot a recorded params/result into a bounded, detached value.
- *
- * Never retains a reference to the caller's value: a small payload is returned
- * as a fresh structural clone (so it can't pin memory or alias later mutations
- * into the log, yet keeps its shape — the schema's `unknown` stays truthful and
- * the UI can pretty-print it), and an over-large one collapses to a truncation
- * marker string. Serialization is compact so the size budget isn't spent on
- * indentation.
- */
-function snapshotValue(value: unknown): unknown {
-  if (value === undefined) {
-    return undefined;
-  }
-  let serialized: string | undefined;
-  try {
-    serialized = JSON.stringify(value);
-  } catch {
-    return '[unserializable]';
-  }
-  if (serialized === undefined) {
-    return undefined; // functions / symbols serialize to nothing
-  }
-  if (serialized.length > ACTIVITY_VALUE_CHARS) {
-    return truncateString(serialized, ACTIVITY_VALUE_CHARS);
-  }
-  return JSON.parse(serialized);
-}
 
 /**
  * What the router keeps per managed instance, beside what the pool holds.
@@ -233,9 +189,7 @@ export class GatewayManager {
   private readonly pool: McpPool;
   private readonly getSettings: () => SettingsFile;
   private readonly meta = new Map<InstanceKey, ServerMeta>();
-  /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
-  private readonly activity = new Map<InstanceKey, ActivityEntry[]>();
-  private activitySeq = 0;
+  private readonly activity = new ActivityLog();
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
@@ -288,7 +242,7 @@ export class GatewayManager {
       const next = desired.get(key);
       if (!next) {
         this.meta.delete(key);
-        this.activity.delete(key);
+        this.activity.clear(key);
         continue;
       }
       if (needsRestart(meta.config, next)) {
@@ -480,7 +434,7 @@ export class GatewayManager {
     }
   }
 
-  /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
+  /** Count a call against its instance and append it to the activity log. */
   recordActivity(key: InstanceKey, entry: ActivityRecord): void {
     // Only log for a currently-managed server: an in-flight call that completes
     // after the server was removed (reconcile drops it from both maps) must not
@@ -493,30 +447,16 @@ export class GatewayManager {
     }
     meta.callCount += 1;
     meta.lastCalledAt = entry.at;
-    const log = this.activity.get(key) ?? [];
-    log.push({
-      ...entry,
-      id: ++this.activitySeq,
-      // Bound every payload-bearing field, not just params/result: error messages
-      // and targets (e.g. data: URIs) can embed arbitrarily large payloads too.
-      target: entry.target === undefined ? undefined : truncateString(entry.target, ACTIVITY_VALUE_CHARS),
-      error: entry.error === undefined ? undefined : truncateString(entry.error, ACTIVITY_VALUE_CHARS),
-      params: snapshotValue(entry.params),
-      result: snapshotValue(entry.result),
-    });
-    if (log.length > ACTIVITY_LIMIT) {
-      log.splice(0, log.length - ACTIVITY_LIMIT);
-    }
-    this.activity.set(key, log);
+    this.activity.record(key, entry);
   }
 
-  /** Recorded activity for a server, newest first (at most ACTIVITY_LIMIT). */
+  /** Recorded activity for an instance, newest first. */
   getActivity(key: InstanceKey): ActivityEntry[] {
-    return [...(this.activity.get(key) ?? [])].reverse();
+    return this.activity.newestFirst(key);
   }
 
   clearActivity(key: InstanceKey): void {
-    this.activity.delete(key);
+    this.activity.clear(key);
   }
 
   /** Names of all enabled base servers (for the global aggregate endpoint). */
