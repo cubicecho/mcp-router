@@ -59,9 +59,7 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
               onChange={(event) => setSearchInput(event.target.value)}
             />
           </div>
-          <Button type="submit" disabled={!registry}>
-            Search
-          </Button>
+          <Button type="submit" disabled={!registry} content="Search" />
         </form>
       </div>
 
@@ -97,9 +95,12 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
           </div>
           {results.hasNextPage && (
             <div className="flex justify-center">
-              <Button variant="outline" disabled={results.isFetchingNextPage} onClick={() => results.fetchNextPage()}>
-                {results.isFetchingNextPage ? 'Loading…' : 'Load more'}
-              </Button>
+              <Button
+                variant="outline"
+                disabled={results.isFetchingNextPage}
+                onClick={() => results.fetchNextPage()}
+                content={results.isFetchingNextPage ? 'Loading…' : 'Load more'}
+              />
             </div>
           )}
         </>
@@ -118,7 +119,7 @@ function BrowsePage() {
     <PageLayout
       title="Browse"
       description="Install MCP servers from a registry, or straight from npm or PyPI."
-      content={
+      contentSlot={
         <Tabs defaultValue="registry" className="py-4 md:py-6">
           <TabsList>
             <TabsTrigger value="registry">From registry</TabsTrigger>

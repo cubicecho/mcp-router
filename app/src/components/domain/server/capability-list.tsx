@@ -44,7 +44,7 @@ export function CapabilityList({
     <CardLayout
       title={title}
       description={description}
-      content={
+      contentSlot={
         <>
           {isPending && (
             <div className="flex flex-col gap-2">
@@ -97,9 +97,14 @@ export function RunButton({
 }) {
   return (
     <div>
-      <Button size="sm" variant="outline" disabled={pending || disabled} onClick={onClick}>
-        {pending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />} {label}
-      </Button>
+      <Button
+        size="sm"
+        variant="outline"
+        disabled={pending || disabled}
+        onClick={onClick}
+        iconSlot={pending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
+        content={label}
+      />
     </div>
   );
 }

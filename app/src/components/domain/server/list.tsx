@@ -109,18 +109,16 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             hint="Test connection"
             disabled={test.isPending}
             onClick={handleTest}
-          >
-            {test.isPending ? <Loader2Icon className="animate-spin" /> : <PlugZapIcon />}
-          </ActionButton>
+            iconSlot={test.isPending ? <Loader2Icon className="animate-spin" /> : <PlugZapIcon />}
+          />
           <ActionButton
             variant="ghost"
             size="icon-sm"
             label={`Edit ${config.name}`}
             hint="Edit"
             onClick={() => onEdit(server)}
-          >
-            <PencilIcon />
-          </ActionButton>
+            iconSlot={<PencilIcon />}
+          />
           <ActionButton
             variant="ghost"
             size="icon-sm"
@@ -133,9 +131,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
                 onError: toastApiError,
               })
             }
-          >
-            <RotateCwIcon />
-          </ActionButton>
+            iconSlot={<RotateCwIcon />}
+          />
           <ConfirmButton
             variant="ghost"
             size="icon-sm"
@@ -149,9 +146,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
                 onError: toastApiError,
               })
             }
-          >
-            <Trash2Icon className="text-destructive" />
-          </ConfirmButton>
+            iconSlot={<Trash2Icon className="text-destructive" />}
+          />
         </div>
       </TableCell>
     </TableRow>

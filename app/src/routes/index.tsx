@@ -23,30 +23,25 @@ function ServersPage() {
     <PageLayout
       title="Servers"
       description="Installed MCP servers and their runtime state."
-      action={
-        <Button onClick={() => setAddOpen(true)}>
-          <PlusIcon /> Add server
-        </Button>
-      }
-      content={
+      actionSlot={<Button onClick={() => setAddOpen(true)} iconSlot={<PlusIcon />} content="Add server" />}
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState
             query={servers}
             what="servers"
             count={data?.length ?? 0}
-            empty={
+            emptySlot={
               <Card>
                 <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
                   <p className="text-sm text-muted-foreground">No servers installed yet.</p>
                   <div className="flex gap-2">
-                    <Button onClick={() => setAddOpen(true)}>
-                      <PlusIcon /> Add server
-                    </Button>
-                    <Button variant="outline" asChild>
-                      <Link to="/browse">
-                        <CompassIcon /> Browse registries
-                      </Link>
-                    </Button>
+                    <Button onClick={() => setAddOpen(true)} iconSlot={<PlusIcon />} content="Add server" />
+                    <Button
+                      variant="outline"
+                      linkSlot={<Link to="/browse" />}
+                      iconSlot={<CompassIcon />}
+                      content="Browse registries"
+                    />
                   </div>
                 </CardContent>
               </Card>

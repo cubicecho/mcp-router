@@ -33,26 +33,26 @@ function WorkspacesPage() {
     <PageLayout
       title="Workspaces"
       description="Custom aggregates: expose a chosen subset of servers at their own URL, with optional per-workspace parameter overrides."
-      action={
-        <Button onClick={() => setDialog({ mode: 'create' })}>
-          <PlusIcon /> New workspace
-        </Button>
+      actionSlot={
+        <Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<PlusIcon />} content="New workspace" />
       }
-      content={
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState
             query={workspaces}
             what="workspaces"
             count={data?.length ?? 0}
-            empty={
+            emptySlot={
               <CardLayout
-                icon={<LayersIcon />}
+                iconSlot={<LayersIcon />}
                 title="No workspaces yet"
                 description="Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace."
-                content={
-                  <Button onClick={() => setDialog({ mode: 'create' })}>
-                    <PlusIcon /> New workspace
-                  </Button>
+                contentSlot={
+                  <Button
+                    onClick={() => setDialog({ mode: 'create' })}
+                    iconSlot={<PlusIcon />}
+                    content="New workspace"
+                  />
                 }
               />
             }
@@ -109,9 +109,8 @@ function WorkspacesPage() {
                           size="icon-sm"
                           label={`Edit ${workspace.name}`}
                           onClick={() => setDialog({ mode: 'edit', workspace })}
-                        >
-                          <PencilIcon />
-                        </ActionButton>
+                          iconSlot={<PencilIcon />}
+                        />
                         <ConfirmButton
                           variant="ghost"
                           size="icon-sm"
@@ -124,9 +123,8 @@ function WorkspacesPage() {
                               onError: toastApiError,
                             })
                           }
-                        >
-                          <Trash2Icon className="text-destructive" />
-                        </ConfirmButton>
+                          iconSlot={<Trash2Icon className="text-destructive" />}
+                        />
                       </TableCell>
                     </TableRow>
                   );

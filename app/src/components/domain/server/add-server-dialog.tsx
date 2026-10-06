@@ -220,19 +220,20 @@ export function AddServerDialog({
           ? 'Change how this server is run or proxied. Saving restarts it if the transport or environment changed.'
           : 'Configure an MCP server manually — a local command to run, or an existing HTTP server to route through. Nothing is downloaded from a registry.'
       }
-      footerActions={(close) => (
+      footerActionsSlot={(close) => (
         <>
-          <Button type="button" variant="outline" onClick={close}>
-            Cancel
-          </Button>
+          <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
-            <form.SubmitButton form={FORM_ID} disabled={!ready} pendingLabel={isEdit ? 'Saving…' : 'Adding…'}>
-              {isEdit ? 'Save changes' : 'Add server'}
-            </form.SubmitButton>
+            <form.SubmitButton
+              form={FORM_ID}
+              disabled={!ready}
+              pendingLabel={isEdit ? 'Saving…' : 'Adding…'}
+              content={isEdit ? 'Save changes' : 'Add server'}
+            />
           </form.AppForm>
         </>
       )}
-      content={
+      contentSlot={
         <form
           id={FORM_ID}
           onSubmit={(event) => {
@@ -245,10 +246,15 @@ export function AddServerDialog({
             <FormField
               className="rounded-lg border border-dashed bg-muted/40 p-3"
               label="Paste a config"
-              action={
-                <Button type="button" variant="outline" size="sm" disabled={!jsonText.trim()} onClick={applyJson}>
-                  Apply config
-                </Button>
+              actionSlot={
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={!jsonText.trim()}
+                  onClick={applyJson}
+                  content="Apply config"
+                />
               }
               description={
                 <>
@@ -259,7 +265,7 @@ export function AddServerDialog({
                   first server is used if several are present.
                 </>
               }
-              control={
+              controlSlot={
                 <Textarea
                   value={jsonText}
                   rows={10}

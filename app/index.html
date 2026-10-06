@@ -4,12 +4,8 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>MCP Router</title>
-    <script>
-      // Set the theme before first paint: stored preference wins, else follow the OS.
-      const storedTheme = localStorage.getItem('mcp-router-theme');
-      const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
-      document.documentElement.classList.toggle('dark', storedTheme ? storedTheme === 'dark' : prefersDark);
-    </script>
+    <!-- cubeui's pre-paint script: applies the stored theme and palette before React mounts. -->
+    <script>(function(){try{var s=localStorage,p=s.getItem("cubeui-theme"),q=s.getItem("cubeui-palette"),k=["monokai"].indexOf(q)>=0,d=k||p==="dark"||(p!=="light"&&matchMedia("(prefers-color-scheme: dark)").matches),e=document.documentElement,c=e.classList;c.toggle("dark",d);c.toggle("light",!k&&p==="light");if(["monokai"].indexOf(q)>=0)e.setAttribute("data-palette",q)}catch(e){}})();</script>
   </head>
   <body>
     <div id="root"></div>

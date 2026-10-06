@@ -124,19 +124,15 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
       size="md"
       title={`Install ${server.title ?? server.name}`}
       description={server.description}
-      footerActions={(close) => (
+      footerActionsSlot={(close) => (
         <>
-          <Button type="button" variant="outline" onClick={close}>
-            Cancel
-          </Button>
+          <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
-            <form.SubmitButton form={FORM_ID} pendingLabel="Installing…">
-              Install
-            </form.SubmitButton>
+            <form.SubmitButton form={FORM_ID} pendingLabel="Installing…" content="Install" />
           </form.AppForm>
         </>
       )}
-      content={
+      contentSlot={
         <form
           id={FORM_ID}
           onSubmit={(event) => {
@@ -156,7 +152,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
           {options.length > 1 && (
             <FormField
               label="Package"
-              control={
+              controlSlot={
                 <OptionSelect
                   options={options.map((option) => ({ value: option.selector, label: option.label }))}
                   value={selector}
