@@ -14,7 +14,7 @@ import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
 import { runUiCall } from '../calls.ts';
-import type { ApiDeps } from '../deps.ts';
+import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
 export function createServerRoutes({ store, manager, registryClient, dataDir }: ApiDeps): Router {
@@ -57,7 +57,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.status(201).json(requireStatus(config.name));
   });
 
@@ -82,7 +82,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
       next.idleTimeoutMs = idleTimeoutMs;
     }
     await store.saveServer(next);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.json(requireStatus(name));
   });
 
@@ -95,7 +95,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     // Before the uninstall, not after: the reconcile is what closes the child,
     // and removing its install directory out from under a live process is how a
     // half-deleted server with a file still open happens.
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     await uninstall(dataDir, name);
     res.status(204).end();
   });

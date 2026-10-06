@@ -21,7 +21,7 @@ import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { runUiCall, type UiCallContext } from '../calls.ts';
-import type { ApiDeps } from '../deps.ts';
+import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Workspace CRUD plus the aggregate's capability listings and test calls, mounted at /api/workspaces. */
 export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
@@ -77,7 +77,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
       members: request.members ?? {},
     });
     await store.saveWorkspace(config);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.status(201).json(toWorkspaceStatus(config));
   });
 
@@ -108,14 +108,14 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     if (slug !== existing.slug) {
       await store.deleteWorkspace(existing.slug);
     }
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.json(toWorkspaceStatus(next));
   });
 
   router.delete('/:slug', async (req, res) => {
     requireWorkspace(req.params.slug);
     await store.deleteWorkspace(req.params.slug);
-    await manager.reconcile(store.getServers(), store.getWorkspaces());
+    await applyConfig({ store, manager });
     res.status(204).end();
   });
 

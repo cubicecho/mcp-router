@@ -9,3 +9,8 @@ export interface ApiDeps {
   registryClient: RegistryClient;
   dataDir: string;
 }
+
+/** Reconcile the gateway's instances to the desired state the store holds right now. */
+export function applyConfig({ store, manager }: Pick<ApiDeps, 'store' | 'manager'>): Promise<void> {
+  return manager.reconcile(store.getServers(), store.getWorkspaces());
+}
