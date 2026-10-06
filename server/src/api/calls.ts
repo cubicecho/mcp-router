@@ -20,7 +20,7 @@ export interface UiCallContext {
  * reached at all keeps the status the manager gave it, and is recorded too. A
  * workspace member's key records under its own instance.
  */
-export async function runUiCall(
+async function runUiCall(
   manager: GatewayManager,
   key: InstanceKey,
   ctx: UiCallContext,

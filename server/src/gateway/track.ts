@@ -21,14 +21,17 @@ export interface ProxyDeps {
   recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
-export type TrackContext = RecordedCallContext;
-
 /**
  * Run a downstream call, recording its params + result/error and timing to the
  * server's activity log. Records both outcomes, converts a raw downstream
  * failure into a proper MCP error, and always re-raises.
  */
-export async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: () => Promise<T>): Promise<T> {
+export async function track<T>(
+  deps: ProxyDeps,
+  name: string,
+  ctx: RecordedCallContext,
+  run: () => Promise<T>,
+): Promise<T> {
   try {
     return await recordedCall((entry) => deps.recordActivity(name, entry), ctx, run);
   } catch (err) {

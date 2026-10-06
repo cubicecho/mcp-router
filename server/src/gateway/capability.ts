@@ -8,7 +8,7 @@ import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
  * "method not found" or our client-side capability assertion refused to send.
  * List endpoints treat this as an empty list.
  */
-export function lacksCapability(err: unknown): boolean {
+function lacksCapability(err: unknown): boolean {
   if (err instanceof McpError && err.code === ErrorCode.MethodNotFound) {
     return true;
   }

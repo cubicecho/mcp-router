@@ -62,11 +62,7 @@ interface ServerMeta {
  * aggregate tool namespacing is unaffected; its `enabled` reflects both the
  * workspace and the member being on.
  */
-export function resolveMemberConfig(
-  base: ServerConfig,
-  member: WorkspaceMember,
-  workspace: WorkspaceConfig,
-): ServerConfig {
+function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, workspace: WorkspaceConfig): ServerConfig {
   let transport = base.transport;
   if (transport.type === 'stdio' && member.args) {
     transport = { ...transport, args: member.args };
@@ -92,7 +88,7 @@ export function resolveMemberConfig(
  * `env` goes on the stdio arm only — it is a child's environment, and a remote
  * server has no child to hand it to.
  */
-export function toConnection(config: ServerConfig): McpConnection {
+function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
   if (transport.type === 'stdio') {
     return {
@@ -146,7 +142,7 @@ function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: Settings
  * keeps across a reconcile: a tool count read from the old child is not true of a
  * new one. Only the connection fields matter, so the identity is left blank.
  */
-export function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
+function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
   return !sameConnection(connectionRow(a), connectionRow(b));
 }
 

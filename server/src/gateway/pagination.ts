@@ -8,7 +8,7 @@ import { MAX_LIST_PAGES } from '../defaults.ts';
  * (and its count) would silently hide tools/resources/prompts of any downstream
  * that paginates.
  */
-export async function allPages<T>(
+async function allPages<T>(
   fetchPage: (cursor: string | undefined) => Promise<{ items: T[]; nextCursor?: string }>,
 ): Promise<T[]> {
   const items: T[] = [];

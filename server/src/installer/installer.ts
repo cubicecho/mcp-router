@@ -177,7 +177,7 @@ export function selectFromEntry(
 }
 
 /** npm-install a package into the server's install dir and derive its stdio transport from the bin field. */
-export async function installNpmPackage(
+async function installNpmPackage(
   deps: InstallerDeps,
   serverName: string,
   packageName: string,
@@ -227,7 +227,7 @@ export function buildPypiTransport(
 }
 
 /** Fixed headers from a registry remote's header inputs (only value-carrying entries). */
-export function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined): Record<string, string> {
+function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined): Record<string, string> {
   const result: Record<string, string> = {};
   for (const header of headers ?? []) {
     const value = header.value ?? header.default;
