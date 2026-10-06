@@ -46,7 +46,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
       request.name ??
       (request.source.type === 'registry'
         ? deriveServerName(request.source.serverName)
-        : request.source.type === 'npm'
+        : request.source.type === 'npm' || request.source.type === 'pypi'
           ? deriveServerName(request.source.package)
           : undefined);
     if (!name) {

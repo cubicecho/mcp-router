@@ -115,6 +115,17 @@ describe('REST API', () => {
     expect((await authed(request(app).get('/api/servers/hosted'))).status).toBe(404);
   });
 
+  it('derives a name for a pypi install that gives none', async () => {
+    const created = await authed(request(app).post('/api/servers')).send({
+      source: { type: 'pypi', package: 'mcp-server-fetch' },
+    });
+    expect(created.status).toBe(201);
+    expect(created.body.config).toMatchObject({
+      name: 'mcp-server-fetch',
+      transport: { type: 'stdio', command: 'uvx', args: ['mcp-server-fetch'] },
+    });
+  });
+
   it('serves and clears in-memory activity for a known server', async () => {
     await authed(request(app).post('/api/servers')).send({
       name: 'hosted',
