@@ -39,7 +39,7 @@ function collector() {
 /** Minimal ProxyDeps over a stubbed downstream client; override pieces per test. */
 function stubDeps(fakeClient: unknown, overrides: Partial<ProxyDeps> = {}): ProxyDeps {
   return {
-    getClient: async () => fakeClient as Client,
+    withClient: async (_name, run) => run(fakeClient as Client),
     recordToolCount: () => {},
     recordActivity: () => {},
     ...overrides,
@@ -77,7 +77,7 @@ describe('proxy activity recording', () => {
     const { activity, record } = collector();
     const deps = stubDeps(null, {
       recordActivity: record,
-      getClient: async () => {
+      withClient: async () => {
         throw new HttpError(502, 'Failed to connect to server "demo"', 'Traceback: ModuleNotFoundError: mcp');
       },
     });
@@ -289,7 +289,7 @@ describe('aggregate activity recording', () => {
     const deps: AggregateDeps = {
       ...stubDeps(null, {
         recordActivity: record,
-        getClient: async (name) => (name === 'bad' ? badClient : goodClient) as Client,
+        withClient: async (name, run) => run((name === 'bad' ? badClient : goodClient) as Client),
       }),
       serverNames: () => ['bad', 'good'],
     };
@@ -425,12 +425,12 @@ describe('logging passthrough', () => {
     const levels: Record<string, string> = {};
     const deps: AggregateDeps = {
       ...stubDeps(null, {
-        getClient: async (name) =>
-          ({
+        withClient: async (name, run) =>
+          run({
             setLoggingLevel: async (l: string) => {
               levels[name] = l;
             },
-          }) as unknown as Client,
+          } as unknown as Client),
       }),
       serverNames: () => ['alpha', 'beta'],
     };

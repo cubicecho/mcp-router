@@ -453,6 +453,157 @@ describe('GatewayManager lifecycle over the pool', () => {
     }
   });
 
+  describe('a remote server that drops its session', () => {
+    /** A remote MCP server whose sessions the test can take away, and which can be switched from stateless to stateful. */
+    async function sessionServer(options: { stateful: boolean }) {
+      const sessions = new Map<string, StreamableHTTPServerTransport>();
+      let initializes = 0;
+      const serve = async (transport: StreamableHTTPServerTransport) => {
+        const server = new McpServer({ name: 'remote', version: '1.0.0' });
+        server.tool('noop', 'Does nothing.', {}, () => ({ content: [] }));
+        await server.connect(transport);
+        return server;
+      };
+      const httpServer = createServer(async (req, res) => {
+        const chunks: Buffer[] = [];
+        for await (const chunk of req) {
+          chunks.push(chunk as Buffer);
+        }
+        const body: unknown = chunks.length ? JSON.parse(Buffer.concat(chunks).toString()) : undefined;
+        const initialize = (body as { method?: string } | undefined)?.method === 'initialize';
+        initializes += initialize ? 1 : 0;
+        if (!options.stateful) {
+          const transport = new StreamableHTTPServerTransport({
+            sessionIdGenerator: undefined,
+            enableJsonResponse: true,
+          });
+          const server = await serve(transport);
+          res.on('close', () => void server.close());
+          await transport.handleRequest(req, res, body);
+          return;
+        }
+        const id = req.headers['mcp-session-id'];
+        if (typeof id === 'string') {
+          const known = sessions.get(id);
+          if (!known) {
+            res.writeHead(404, { 'content-type': 'application/json' }).end('{"error":"Unknown MCP session"}');
+            return;
+          }
+          await known.handleRequest(req, res, body);
+          return;
+        }
+        if (!initialize) {
+          res.writeHead(400, { 'content-type': 'application/json' }).end('{"error":"Missing Mcp-Session-Id header"}');
+          return;
+        }
+        const transport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => `session-${initializes}`,
+          enableJsonResponse: true,
+          onsessioninitialized: (newId) => {
+            sessions.set(newId, transport);
+          },
+        });
+        await serve(transport);
+        await transport.handleRequest(req, res, body);
+      });
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      const { port } = httpServer.address() as AddressInfo;
+      const manager = new GatewayManager(() => settings);
+      await manager.reconcile([
+        serverConfigSchema.parse({
+          name: 'remote',
+          source: { type: 'remote' },
+          transport: { type: 'streamable-http', url: `http://127.0.0.1:${port}/mcp` },
+        }),
+      ]);
+      return {
+        manager,
+        options,
+        initializes: () => initializes,
+        forgetSessions: () => sessions.clear(),
+        close: async () => {
+          await manager.stopAll();
+          httpServer.closeAllConnections();
+          await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+        },
+      };
+    }
+
+    const toolNames = (manager: GatewayManager) =>
+      manager.withClient('remote', async (client) => (await client.listTools()).tools.map((tool) => tool.name));
+
+    it('reconnects and answers the request that found the session gone', async () => {
+      const remote = await sessionServer({ stateful: true });
+      try {
+        expect(await toolNames(remote.manager)).toEqual(['noop']);
+        remote.forgetSessions();
+
+        // The bare client is what every request used to get: it keeps the dead id.
+        const stale = await remote.manager.getClient('remote');
+        await expect(stale.listTools()).rejects.toThrow(/Unknown MCP session/);
+
+        expect(await toolNames(remote.manager)).toEqual(['noop']);
+        expect(remote.initializes()).toBe(2);
+        expect(await remote.manager.getClient('remote')).not.toBe(stale);
+      } finally {
+        await remote.close();
+      }
+    });
+
+    it('reconnects once for a burst of requests that all find the session gone', async () => {
+      const remote = await sessionServer({ stateful: true });
+      try {
+        await toolNames(remote.manager);
+        remote.forgetSessions();
+
+        const results = await Promise.all([
+          toolNames(remote.manager),
+          toolNames(remote.manager),
+          toolNames(remote.manager),
+        ]);
+
+        expect(results).toEqual([['noop'], ['noop'], ['noop']]);
+        expect(remote.initializes()).toBe(2);
+      } finally {
+        await remote.close();
+      }
+    });
+
+    it('reconnects when a server it joined stateless starts asking for a session id', async () => {
+      const remote = await sessionServer({ stateful: false });
+      try {
+        await toolNames(remote.manager);
+        remote.options.stateful = true;
+
+        expect(await toolNames(remote.manager)).toEqual(['noop']);
+        expect(remote.initializes()).toBe(2);
+      } finally {
+        await remote.close();
+      }
+    });
+
+    it('leaves any other failure to the caller, on the connection it had', async () => {
+      const remote = await sessionServer({ stateful: true });
+      try {
+        const before = await remote.manager.getClient('remote');
+        let runs = 0;
+
+        await expect(
+          remote.manager.withClient('remote', async () => {
+            runs += 1;
+            throw new Error('tool blew up');
+          }),
+        ).rejects.toThrow('tool blew up');
+
+        expect(runs).toBe(1);
+        expect(await remote.manager.getClient('remote')).toBe(before);
+        expect(remote.initializes()).toBe(1);
+      } finally {
+        await remote.close();
+      }
+    });
+  });
+
   it('closes the child when the server is disabled, and drops it from the aggregate', async () => {
     const manager = new GatewayManager(() => settings);
     await manager.reconcile([echoConfig('echo')]);

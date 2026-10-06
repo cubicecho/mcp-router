@@ -483,3 +483,18 @@ notifications, DELETE termination. These are the remaining items.
   Covered by `gateway/__tests__/event-store.test.ts` (replay ordering,
   cross-stream isolation, cap eviction, stream-id lookup). Spec: client MAY
   resume a broken stream via `Last-Event-ID`; server SHOULD support it.
+- [x] H4 **Downstream session lost — redial and retry.** A stateful remote
+  server that restarts, or reclaims the router's session on its own, answers
+  every later request `404` (unknown session id) — or `400` (no session id) if
+  the router joined while it was stateless. The SDK's client transport keeps the
+  dead id rather than re-initializing, the pool sees no close so the row stays
+  `ready`, and a remote row is never idle-reaped: the server stayed unreachable
+  until restarted by hand, and an aggregate or workspace listed its other
+  members without it. `GatewayManager.withClient(name, run)` is now how every
+  proxied, fanned-out and UI request reaches a downstream: on `sessionLost` it
+  lets the requests already out on the stale client settle, `stop`s the row
+  once, dials again and runs the request a second time. Safe for `tools/call`
+  because both statuses are a refusal before dispatch. Covered in
+  `gateway/__tests__/manager.test.ts` against a real stateful HTTP server (404,
+  400, a concurrent burst, and an unrelated failure that must not redial). Spec:
+  a client that gets `404` for its session id MUST start a new session.

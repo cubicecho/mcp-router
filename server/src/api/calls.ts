@@ -24,6 +24,19 @@ export async function connect(manager: GatewayManager, name: string): Promise<Do
   }
 }
 
+/**
+ * {@link connect}, then run one request against the client — redialled once if
+ * the downstream has dropped the session it held (see `GatewayManager.withClient`).
+ */
+export async function withDownstream<T>(
+  manager: GatewayManager,
+  name: string,
+  run: (client: DownstreamClient) => Promise<T>,
+): Promise<T> {
+  await connect(manager, name);
+  return manager.withClient(name, run);
+}
+
 export interface UiCallContext {
   method: string;
   target: string;
@@ -45,10 +58,10 @@ export async function runUiCall(
   ctx: UiCallContext,
   run: (client: DownstreamClient) => Promise<unknown>,
 ): Promise<unknown> {
-  const client = await connect(manager, name);
+  await connect(manager, name);
   const startedAt = Date.now();
   try {
-    const result = await run(client);
+    const result = await manager.withClient(name, run);
     const failure = ctx.detectFailure?.(result) ?? null;
     manager.recordActivity(name, {
       at: new Date().toISOString(),
