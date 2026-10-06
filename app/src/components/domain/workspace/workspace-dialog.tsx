@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
+import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
@@ -182,7 +183,10 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
     }
   };
 
-  const endpoint = useMemo(() => `${window.location.origin}/mcp/w/${workspace?.slug ?? ''}`, [workspace?.slug]);
+  const endpoint = useMemo(
+    () => endpointUrl(endpointPath({ kind: 'workspace', slug: workspace?.slug ?? '' })),
+    [workspace?.slug],
+  );
 
   return (
     <DialogLayout

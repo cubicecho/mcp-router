@@ -21,6 +21,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
@@ -37,8 +38,8 @@ function WorkspaceDetailPage() {
   const remove = useDeleteWorkspace();
   const [editOpen, setEditOpen] = useState(false);
 
-  const endpointUrl = `${window.location.origin}/mcp/w/${slug}`;
   const scope = { kind: 'workspace', slug } as const;
+  const endpoint = endpointUrl(endpointPath(scope));
 
   const handleDelete = () => {
     remove.mutate(slug, {
@@ -103,12 +104,12 @@ function WorkspaceDetailPage() {
                         <>
                           <PropertyRow
                             label="Endpoint"
-                            value={endpointUrl}
+                            value={endpoint}
                             valueClassName="break-all font-mono"
                             actionSlot={
                               <CopyButton
                                 variant="ghost"
-                                value={endpointUrl}
+                                value={endpoint}
                                 label="Copy endpoint URL"
                                 onError={toastCopyError}
                               />
@@ -176,7 +177,7 @@ function WorkspaceDetailPage() {
                 </TabsContent>
                 <TabsContent value="connect">
                   <ConnectCard
-                    endpoint={endpointUrl}
+                    endpoint={endpoint}
                     label={slug}
                     description={`Point an MCP client at this workspace's aggregate endpoint (tools are <server>__-namespaced).`}
                   />

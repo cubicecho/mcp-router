@@ -14,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Pencil, Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import { endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
@@ -84,7 +85,7 @@ function WorkspacesPage() {
                           {workspace.path}
                           <CopyButton
                             variant="ghost"
-                            value={`${window.location.origin}${workspace.path}`}
+                            value={endpointUrl(workspace.path)}
                             label={`Copy URL for ${workspace.path}`}
                             onError={toastCopyError}
                           />

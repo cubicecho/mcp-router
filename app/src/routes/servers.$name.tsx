@@ -23,6 +23,7 @@ import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
@@ -41,7 +42,8 @@ function ServerDetailPage() {
   const remove = useDeleteServer();
   const [editOpen, setEditOpen] = useState(false);
 
-  const endpointUrl = `${window.location.origin}/mcp/${name}`;
+  const scope = { kind: 'server', name } as const;
+  const endpoint = endpointUrl(endpointPath(scope));
 
   const handleDelete = () => {
     remove.mutate(name, {
@@ -133,12 +135,12 @@ function ServerDetailPage() {
                         <>
                           <PropertyRow
                             label="Endpoint"
-                            value={endpointUrl}
+                            value={endpoint}
                             valueClassName="break-all font-mono"
                             actionSlot={
                               <CopyButton
                                 variant="ghost"
-                                value={endpointUrl}
+                                value={endpoint}
                                 label="Copy endpoint URL"
                                 onError={toastCopyError}
                               />
@@ -228,20 +230,20 @@ function ServerDetailPage() {
                   <TabsTrigger value="connect">Connect</TabsTrigger>
                 </TabsList>
                 <TabsContent value="tools">
-                  <ToolsCard scope={{ kind: 'server', name }} />
+                  <ToolsCard scope={scope} />
                 </TabsContent>
                 <TabsContent value="resources">
-                  <ResourcesCard scope={{ kind: 'server', name }} />
+                  <ResourcesCard scope={scope} />
                 </TabsContent>
                 <TabsContent value="prompts">
-                  <PromptsCard scope={{ kind: 'server', name }} />
+                  <PromptsCard scope={scope} />
                 </TabsContent>
                 <TabsContent value="activity">
-                  <ActivityCard scope={{ kind: 'server', name }} />
+                  <ActivityCard scope={scope} />
                 </TabsContent>
                 <TabsContent value="connect">
                   <ConnectCard
-                    endpoint={endpointUrl}
+                    endpoint={endpoint}
                     label={name}
                     description={`Point an MCP client directly at ${name} (tools keep their original names).`}
                   />
