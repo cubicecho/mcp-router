@@ -61,6 +61,30 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return split;
   };
 
+  /**
+   * Route a namespaced name to its owning server and run the call there with the prefix stripped.
+   *
+   * Routing runs before track(): a name that resolves to no known server is a caller argument
+   * error with no server to attribute it to (the same shape as hitting /mcp/<unknown>, which also
+   * 404s unrecorded). Once resolved, every outcome — including downstream failures — is recorded
+   * under that server.
+   *
+   * @param strip - Rebuilds the request params around the un-prefixed name.
+   */
+  const routedCall = <P, R>(
+    method: string,
+    kind: string,
+    full: string,
+    strip: (name: string) => P,
+    run: (client: Client, params: P) => Promise<R>,
+  ): Promise<R> => {
+    const { serverName, name } = route(full, kind);
+    const params = strip(name);
+    return track(deps, serverName, { via: 'aggregate', method, target: name, params }, () =>
+      deps.withClient(serverName, (client) => run(client, params)),
+    );
+  };
+
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await collect('tools/list', async (client, name) => {
       // A missing capability is a definitive "has no tools" — clear any count
@@ -73,17 +97,15 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return { tools };
   });
 
-  // Routing runs before track(): a name that resolves to no known server is a
-  // caller argument error with no server to attribute it to (the same shape as
-  // hitting /mcp/<unknown>, which also 404s unrecorded). Once resolved, every
-  // outcome — including downstream failures — is recorded under that server.
-  server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { serverName, name } = route(req.params.name, 'tool');
-    const params = { ...req.params, name };
-    return track(deps, serverName, { via: 'aggregate', method: 'tools/call', target: name, params }, () =>
-      deps.withClient(serverName, async (client) => (await client.callTool(params)) as CallToolResult),
-    );
-  });
+  server.setRequestHandler(CallToolRequestSchema, async (req) =>
+    routedCall(
+      'tools/call',
+      'tool',
+      req.params.name,
+      (name) => ({ ...req.params, name }),
+      async (client, params) => (await client.callTool(params)) as CallToolResult,
+    ),
+  );
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
     const resources = await collect('resources/list', async (client, name) => {
@@ -111,13 +133,15 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return { resourceTemplates };
   });
 
-  server.setRequestHandler(ReadResourceRequestSchema, async (req) => {
-    const { serverName, name: uri } = route(req.params.uri, 'resource');
-    const params = { ...req.params, uri };
-    return track(deps, serverName, { via: 'aggregate', method: 'resources/read', target: uri, params }, () =>
-      deps.withClient(serverName, (client) => client.readResource(params)),
-    );
-  });
+  server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
+    routedCall(
+      'resources/read',
+      'resource',
+      req.params.uri,
+      (uri) => ({ ...req.params, uri }),
+      (client, params) => client.readResource(params),
+    ),
+  );
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
     const prompts = await collect('prompts/list', async (client, name) => {
@@ -127,13 +151,15 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return { prompts };
   });
 
-  server.setRequestHandler(GetPromptRequestSchema, async (req) => {
-    const { serverName, name } = route(req.params.name, 'prompt');
-    const params = { ...req.params, name };
-    return track(deps, serverName, { via: 'aggregate', method: 'prompts/get', target: name, params }, () =>
-      deps.withClient(serverName, (client) => client.getPrompt(params)),
-    );
-  });
+  server.setRequestHandler(GetPromptRequestSchema, async (req) =>
+    routedCall(
+      'prompts/get',
+      'prompt',
+      req.params.name,
+      (name) => ({ ...req.params, name }),
+      (client, params) => client.getPrompt(params),
+    ),
+  );
 
   // The completion ref is namespaced like the prompt/resource it points at
   // (`<server>__<name>` for prompts, `<server>__<uri>` for resources); strip it
@@ -157,21 +183,25 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     );
   });
 
-  server.setRequestHandler(SubscribeRequestSchema, async (req) => {
-    const { serverName, name: uri } = route(req.params.uri, 'resource');
-    const params = { ...req.params, uri };
-    return track(deps, serverName, { via: 'aggregate', method: 'resources/subscribe', target: uri, params }, () =>
-      deps.withClient(serverName, (client) => client.subscribeResource(params)),
-    );
-  });
+  server.setRequestHandler(SubscribeRequestSchema, async (req) =>
+    routedCall(
+      'resources/subscribe',
+      'resource',
+      req.params.uri,
+      (uri) => ({ ...req.params, uri }),
+      (client, params) => client.subscribeResource(params),
+    ),
+  );
 
-  server.setRequestHandler(UnsubscribeRequestSchema, async (req) => {
-    const { serverName, name: uri } = route(req.params.uri, 'resource');
-    const params = { ...req.params, uri };
-    return track(deps, serverName, { via: 'aggregate', method: 'resources/unsubscribe', target: uri, params }, () =>
-      deps.withClient(serverName, (client) => client.unsubscribeResource(params)),
-    );
-  });
+  server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
+    routedCall(
+      'resources/unsubscribe',
+      'resource',
+      req.params.uri,
+      (uri) => ({ ...req.params, uri }),
+      (client, params) => client.unsubscribeResource(params),
+    ),
+  );
 
   // setLevel has no ref, so it applies to the whole connection: fan the level
   // out to every member (best-effort — capability-less members are skipped).
