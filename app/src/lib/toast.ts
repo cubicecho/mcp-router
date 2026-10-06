@@ -9,3 +9,8 @@ export function toastApiError(error: unknown): void {
   }
   toast.error(error instanceof Error ? error.message : String(error));
 }
+
+/** Error toast for a `CopyButton` whose clipboard write was refused. */
+export function toastCopyError(): void {
+  toast.error('Failed to copy to clipboard');
+}

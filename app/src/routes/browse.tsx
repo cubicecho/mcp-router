@@ -1,14 +1,14 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
-import { SearchIcon } from 'lucide-react';
 import { useState } from 'react';
 import { PackageInstallCard } from '@/components/domain/browse/package-install-card';
 import { RegistryServerCard } from '@/components/domain/browse/server-card';
 import { OptionSelect } from '@/components/option-select';
+import { CardGrid, EmptyState } from '@/components/page';
 import { PageLayout } from '@/components/page-layout';
-import { QueryError } from '@/components/query-state';
+import { QueryError, QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Search } from '@/components/ui/icons';
+import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRegistries, useRegistrySearch } from '@/lib/queries';
 
@@ -50,15 +50,13 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
             setSearch(searchInput.trim());
           }}
         >
-          <div className="relative flex-1">
-            <SearchIcon className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-            <Input
-              value={searchInput}
-              placeholder="Search servers…"
-              className="pl-8"
-              onChange={(event) => setSearchInput(event.target.value)}
-            />
-          </div>
+          <SearchInput
+            value={searchInput}
+            label="Search servers"
+            placeholder="Search servers…"
+            wrapperClassName="flex-1"
+            onChangeText={setSearchInput}
+          />
           <Button type="submit" disabled={!registry} content="Search" />
         </form>
       </div>
@@ -67,24 +65,22 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
         <QueryError error={registriesError} onRetry={() => registriesQuery.refetch()} what="registries" />
       )}
 
-      {results.isPending && registry && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-          <Skeleton className="h-44" />
-          <Skeleton className="h-44" />
-          <Skeleton className="h-44" />
-        </div>
-      )}
-
-      {results.error && <QueryError error={results.error} onRetry={() => results.refetch()} what="search results" />}
-
-      {results.data && servers.length === 0 && (
-        <p className="py-8 text-center text-sm text-muted-foreground">No servers found.</p>
+      {registry && (
+        <QueryState
+          query={results}
+          what="search results"
+          count={servers.length}
+          rows={3}
+          emptySlot={
+            <EmptyState icon={Search} title="No servers found" description="Try another search term or registry." />
+          }
+        />
       )}
 
       {servers.length > 0 && (
         <>
-          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-            {servers.map((entry) => (
+          <CardGrid
+            contentSlot={servers.map((entry) => (
               <RegistryServerCard
                 key={entry.server.name}
                 registry={registry}
@@ -92,16 +88,16 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
                 onInstalled={onInstalled}
               />
             ))}
-          </div>
+          />
           {results.hasNextPage && (
-            <div className="flex justify-center">
-              <Button
-                variant="outline"
-                disabled={results.isFetchingNextPage}
-                onClick={() => results.fetchNextPage()}
-                content={results.isFetchingNextPage ? 'Loading…' : 'Load more'}
-              />
-            </div>
+            <Button
+              variant="outline"
+              className="self-center"
+              loading={results.isFetchingNextPage}
+              loadingLabel="Loading…"
+              onClick={() => results.fetchNextPage()}
+              content="Load more"
+            />
           )}
         </>
       )}

@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { FormField } from '@/components/form-field';
+import { EmptyState } from '@/components/page';
 import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
 import type { CapabilityScope, ServerPrompt } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
@@ -22,32 +23,30 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
 
   return (
     <CapabilityRow
-      header={
+      title={prompt.name}
+      description={prompt.description}
+      contentSlot={
         <>
-          <span className="font-mono text-sm">{prompt.name}</span>
-          {prompt.description && <p className="text-sm text-muted-foreground">{prompt.description}</p>}
+          {declaredArgs.length === 0 && <EmptyState compact title="This prompt takes no arguments." />}
+          {declaredArgs.map((arg) => (
+            <FormField
+              key={arg.name}
+              label={<span className="font-mono">{arg.name}</span>}
+              description={arg.description}
+              required={arg.required}
+              controlSlot={
+                <Input
+                  value={args[arg.name] ?? ''}
+                  onChange={(event) => setArgs((prev) => ({ ...prev, [arg.name]: event.target.value }))}
+                />
+              }
+            />
+          ))}
+          <RunButton label="Get" pending={pending} disabled={missingRequired} onClick={submit} />
+          {result && <ResultBlock result={result} />}
         </>
       }
-    >
-      {declaredArgs.length === 0 && <p className="text-xs text-muted-foreground">This prompt takes no arguments.</p>}
-      {declaredArgs.map((arg) => (
-        <div key={arg.name} className="flex flex-col gap-1">
-          <Label htmlFor={`${prompt.name}-${arg.name}`} className="text-xs">
-            <span className="font-mono">{arg.name}</span>
-            {arg.required && <span className="text-destructive"> *</span>}
-          </Label>
-          {arg.description && <p className="text-xs text-muted-foreground">{arg.description}</p>}
-          <Input
-            id={`${prompt.name}-${arg.name}`}
-            value={args[arg.name] ?? ''}
-            className="text-xs"
-            onChange={(event) => setArgs((prev) => ({ ...prev, [arg.name]: event.target.value }))}
-          />
-        </div>
-      ))}
-      <RunButton label="Get" pending={pending} disabled={missingRequired} onClick={submit} />
-      {result && <ResultBlock result={result} />}
-    </CapabilityRow>
+    />
   );
 }
 
@@ -67,12 +66,8 @@ export function PromptsCard({ scope }: { scope: CapabilityScope }) {
       error={error}
       refetch={refetch}
       what="prompts"
-      count={prompts.length}
       emptyText="No prompts reported."
-    >
-      {prompts.map((prompt) => (
-        <PromptRow key={prompt.name} scope={scope} prompt={prompt} />
-      ))}
-    </CapabilityList>
+      rowsSlot={prompts.map((prompt) => <PromptRow key={prompt.name} scope={scope} prompt={prompt} />)}
+    />
   );
 }

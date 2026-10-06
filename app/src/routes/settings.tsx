@@ -4,11 +4,13 @@ import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
-import { DetailRow } from '@/components/domain/detail-row';
+import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { PageLayout } from '@/components/page-layout';
 import { QueryError } from '@/components/query-state';
+import { SettingRow } from '@/components/setting-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
@@ -16,6 +18,12 @@ import { toastApiError } from '@/lib/toast';
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
+
+const CONFIG_TREE = `config/
+├── settings.json        # port, auth token, auth enabled, idle timeout
+├── registries.json      # { registries: [{ name, url }] }
+└── servers/
+    └── <name>.json      # one file per installed server`;
 
 function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / 3600);
@@ -96,35 +104,44 @@ function SettingsPage() {
           <CardLayout
             title="Router"
             loading={status.isPending}
-            contentClassName="flex flex-col gap-3"
+            contentClassName="gap-4"
             contentSlot={
               status.error ? (
                 <QueryError error={status.error} onRetry={() => status.refetch()} what="status" />
               ) : (
                 data && (
                   <>
-                    <DetailRow label="Version">{data.version}</DetailRow>
-                    <DetailRow label="Uptime">{formatUptime(data.uptimeSeconds)}</DetailRow>
-                    <DetailRow label="Port">{port}</DetailRow>
-                    <DetailRow label="Servers">
-                      {data.runningCount}/{data.serverCount} running
-                    </DetailRow>
-                    <DetailRow label="Idle timeout">
-                      <IdleTimeoutEditor key={data.idleTimeoutMs} currentMs={data.idleTimeoutMs} />
-                    </DetailRow>
-                    <DetailRow label="Auth">
-                      {data.authEnabled ? (
-                        <Badge className="border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-                          enabled
-                        </Badge>
-                      ) : (
-                        <Badge variant="secondary">disabled</Badge>
-                      )}
-                    </DetailRow>
-                    <p className="text-xs text-muted-foreground">
-                      The bearer token is set via the <code>MCP_ROUTER_TOKEN</code> environment variable or{' '}
-                      <code>settings.json</code>; it protects <code>/api/*</code> and <code>/mcp*</code>.
-                    </p>
+                    <DescriptionList
+                      contentSlot={
+                        <>
+                          <PropertyRow label="Version" value={data.version} />
+                          <PropertyRow label="Uptime" value={formatUptime(data.uptimeSeconds)} />
+                          <PropertyRow label="Port" value={port} />
+                          <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
+                          <PropertyRow
+                            label="Auth"
+                            value={
+                              data.authEnabled ? (
+                                <Badge variant="positive">enabled</Badge>
+                              ) : (
+                                <Badge variant="secondary">disabled</Badge>
+                              )
+                            }
+                            hint={
+                              <>
+                                The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable or{' '}
+                                <Code>settings.json</Code>; it protects <Code>/api/*</Code> and <Code>/mcp*</Code>.
+                              </>
+                            }
+                          />
+                        </>
+                      }
+                    />
+                    <SettingRow
+                      title="Idle timeout"
+                      description="How long an unused server keeps running before it is stopped."
+                      actionSlot={<IdleTimeoutEditor key={data.idleTimeoutMs} currentMs={data.idleTimeoutMs} />}
+                    />
                   </>
                 )
               )
@@ -135,29 +152,24 @@ function SettingsPage() {
             title="Configuration files"
             description={
               <>
-                All configuration lives in flat, hand-editable JSON files under <code>DATA_DIR/config</code>:
+                All configuration lives in flat, hand-editable JSON files under <Code>DATA_DIR/config</Code>:
               </>
             }
             contentClassName="flex flex-col gap-4"
             contentSlot={
               <>
-                <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
-                  {`config/
-├── settings.json        # port, auth token, auth enabled, idle timeout
-├── registries.json      # { registries: [{ name, url }] }
-└── servers/
-    └── <name>.json      # one file per installed server`}
-                </pre>
+                <CodeBlock content={CONFIG_TREE} />
                 <p className="text-sm text-muted-foreground">
                   Files are watched for changes automatically. After hand-editing you can also trigger an explicit
                   reload — it re-reads everything from disk and reconciles running servers.
                 </p>
                 <div>
                   <Button
-                    disabled={reload.isPending}
+                    loading={reload.isPending}
+                    loadingLabel="Reloading…"
                     onClick={handleReload}
                     iconSlot={<RotateCwIcon />}
-                    content={reload.isPending ? 'Reloading…' : 'Reload config'}
+                    content="Reload config"
                   />
                 </div>
               </>

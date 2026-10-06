@@ -1,4 +1,6 @@
 import { useState } from 'react';
+import { FormField } from '@/components/form-field';
+import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import type { CapabilityScope, ServerResource, ServerResourceTemplate } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
@@ -22,37 +24,38 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
 
   return (
     <CapabilityRow
-      header={
+      title={data.label}
+      meta={
         <>
-          <span className="flex flex-wrap items-baseline gap-x-2">
-            <span className="font-mono text-sm">{data.label}</span>
-            {data.isTemplate && <span className="text-xs text-muted-foreground">template</span>}
-            {data.mimeType && <span className="text-xs text-muted-foreground">{data.mimeType}</span>}
-          </span>
-          {data.label !== data.uri && (
-            <span className="block font-mono text-xs break-all text-muted-foreground">{data.uri}</span>
-          )}
-          {data.description && <p className="text-sm text-muted-foreground">{data.description}</p>}
+          {data.isTemplate && <Badge variant="outline">template</Badge>}
+          {data.mimeType && <Badge variant="secondary">{data.mimeType}</Badge>}
         </>
       }
-    >
-      <Input
-        value={uri}
-        className="font-mono text-xs"
-        aria-label={`URI to read for ${data.label}`}
-        onChange={(event) => setUri(event.target.value)}
-      />
-      {data.isTemplate && (
-        <p className="text-xs text-muted-foreground">Replace the {'{placeholders}'} with concrete values.</p>
-      )}
-      <RunButton
-        label="Read"
-        pending={pending}
-        disabled={uri.trim().length === 0}
-        onClick={() => run({ uri: uri.trim() })}
-      />
-      {result && <ResultBlock result={result} />}
-    </CapabilityRow>
+      description={
+        data.label !== data.uri || data.description ? (
+          <>
+            {data.label !== data.uri && <span className="block break-all font-mono text-xs">{data.uri}</span>}
+            {data.description}
+          </>
+        ) : undefined
+      }
+      contentSlot={
+        <>
+          <FormField
+            label="URI"
+            description={data.isTemplate ? 'Replace the {placeholders} with concrete values.' : undefined}
+            controlSlot={<Input value={uri} className="font-mono" onChange={(event) => setUri(event.target.value)} />}
+          />
+          <RunButton
+            label="Read"
+            pending={pending}
+            disabled={uri.trim().length === 0}
+            onClick={() => run({ uri: uri.trim() })}
+          />
+          {result && <ResultBlock result={result} />}
+        </>
+      }
+    />
   );
 }
 
@@ -92,12 +95,10 @@ export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
       error={error}
       refetch={refetch}
       what="resources"
-      count={rows.length}
       emptyText="No resources reported."
-    >
-      {rows.map((row) => (
+      rowsSlot={rows.map((row) => (
         <ResourceRow key={`${row.isTemplate ? 'tpl' : 'res'}:${row.uri}`} scope={scope} data={row} />
       ))}
-    </CapabilityList>
+    />
   );
 }

@@ -42,11 +42,7 @@ export function RegistryServerCard({
       description={<span className="break-all font-mono text-xs">{server.name}</span>}
       actionSlot={
         <span className="flex shrink-0 items-center gap-1">
-          {installed && (
-            <Badge className="border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
-              Installed
-            </Badge>
-          )}
+          {installed && <Badge variant="positive">Installed</Badge>}
           {server.version && <Badge variant="outline">v{server.version}</Badge>}
         </span>
       }

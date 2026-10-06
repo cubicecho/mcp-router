@@ -1,13 +1,12 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeftIcon, PencilIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
+import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { ConnectCard } from '@/components/domain/connect-card';
-import { CopyButton } from '@/components/domain/copy-button';
-import { DetailRow } from '@/components/domain/detail-row';
 import { ActivityCard } from '@/components/domain/server/activity-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
@@ -17,12 +16,16 @@ import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { ToolsCard } from '@/components/domain/server/tools-card';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
+import { SettingRow } from '@/components/setting-row';
+import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
+import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { toastApiError, toastCopyError } from '@/lib/toast';
 
 export const Route = createFileRoute('/servers/$name')({
   component: ServerDetailPage,
@@ -81,7 +84,7 @@ function ServerDetailPage() {
           label="Back to servers"
           tooltip={false}
           linkSlot={<Link to="/" />}
-          iconSlot={<ArrowLeftIcon />}
+          iconSlot={<ArrowLeft />}
         />
       }
       title={server?.config.displayName ?? name}
@@ -100,7 +103,7 @@ function ServerDetailPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => setEditOpen(true)}
-                      iconSlot={<PencilIcon />}
+                      iconSlot={<Pencil />}
                       content="Edit"
                     />
                     <Button
@@ -120,66 +123,84 @@ function ServerDetailPage() {
                       title={`Delete ${name}?`}
                       description="This stops the server, deletes its config file, and removes its install directory. This cannot be undone."
                       onConfirm={handleDelete}
-                      iconSlot={<Trash2Icon className="text-destructive" />}
+                      iconSlot={<Trash2 className="text-destructive" />}
                       content="Delete"
                     />
                   </span>
                 }
-                contentClassName="flex flex-col gap-3"
+                contentClassName="gap-4"
                 contentSlot={
                   <>
-                    <DetailRow label="Endpoint">
-                      <span className="flex items-center gap-1">
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs break-all">{endpointUrl}</code>
-                        <CopyButton text={endpointUrl} label="Copy endpoint URL" />
-                      </span>
-                    </DetailRow>
-                    <DetailRow label="State">
-                      <ServerStateBadge state={server.state} lastError={server.lastError} />
-                    </DetailRow>
-                    <DetailRow label="Source">
-                      <span className="break-all">{formatSource(server.config.source)}</span>
-                    </DetailRow>
-                    <DetailRow label="Transport">
-                      <span className="break-all">
-                        {server.config.transport.type === 'stdio'
-                          ? `stdio — ${server.config.transport.command} ${server.config.transport.args.join(' ')}`.trim()
-                          : `streamable-http — ${server.config.transport.url}`}
-                      </span>
-                    </DetailRow>
-                    <DetailRow label="Enabled">
-                      <Switch
-                        checked={server.config.enabled}
-                        disabled={update.isPending}
-                        aria-label={`Enable ${name}`}
-                        onCheckedChange={(enabled) =>
-                          update.mutate(
-                            { name, enabled },
-                            {
-                              onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${name}`),
-                              onError: toastApiError,
-                            },
-                          )
-                        }
-                      />
-                    </DetailRow>
-                    {server.pid !== undefined && (
-                      <DetailRow label="PID">
-                        <span className="tabular-nums">{server.pid}</span>
-                      </DetailRow>
-                    )}
-                    {server.startedAt && (
-                      <DetailRow label="Started">
-                        <span title={new Date(server.startedAt).toLocaleString()}>
-                          {formatRelativeTime(server.startedAt)}
-                        </span>
-                      </DetailRow>
-                    )}
+                    <DescriptionList
+                      contentSlot={
+                        <>
+                          <PropertyRow
+                            label="Endpoint"
+                            value={endpointUrl}
+                            valueClassName="break-all font-mono"
+                            actionSlot={
+                              <CopyButton
+                                variant="ghost"
+                                value={endpointUrl}
+                                label="Copy endpoint URL"
+                                onError={toastCopyError}
+                              />
+                            }
+                          />
+                          <PropertyRow
+                            label="State"
+                            value={<ServerStateBadge state={server.state} lastError={server.lastError} />}
+                          />
+                          <PropertyRow
+                            label="Source"
+                            value={formatSource(server.config.source)}
+                            valueClassName="break-all"
+                          />
+                          <PropertyRow
+                            label="Transport"
+                            value={
+                              server.config.transport.type === 'stdio'
+                                ? `stdio — ${server.config.transport.command} ${server.config.transport.args.join(' ')}`.trim()
+                                : `streamable-http — ${server.config.transport.url}`
+                            }
+                            valueClassName="break-all"
+                          />
+                          {server.pid !== undefined && (
+                            <PropertyRow label="PID" value={server.pid} valueClassName="tabular-nums" />
+                          )}
+                          {server.startedAt && (
+                            <PropertyRow
+                              label="Started"
+                              value={formatRelativeTime(server.startedAt)}
+                              hint={new Date(server.startedAt).toLocaleString()}
+                            />
+                          )}
+                        </>
+                      }
+                    />
+                    <SettingRow
+                      title="Enabled"
+                      description="A disabled server is not started and its endpoint stops responding."
+                      actionSlot={({ titleId }) => (
+                        <Switch
+                          checked={server.config.enabled}
+                          disabled={update.isPending}
+                          aria-labelledby={titleId}
+                          aria-label={`Enable ${name}`}
+                          onCheckedChange={(enabled) =>
+                            update.mutate(
+                              { name, enabled },
+                              {
+                                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${name}`),
+                                onError: toastApiError,
+                              },
+                            )
+                          }
+                        />
+                      )}
+                    />
                     {server.state === 'error' && server.lastError && (
-                      <div className="rounded-md border border-destructive/50 bg-destructive/10 p-3 text-sm text-destructive">
-                        <p className="font-medium">Last error</p>
-                        <p className="break-words whitespace-pre-wrap">{server.lastError}</p>
-                      </div>
+                      <Alert variant="destructive" title="Last error" description={server.lastError} />
                     )}
                   </>
                 }

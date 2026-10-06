@@ -86,16 +86,22 @@
         "app/src/components/app-form.tsx",
         "app/src/components/card-layout.tsx",
         "app/src/components/confirm-button.tsx",
+        "app/src/components/description-list.tsx",
         "app/src/components/dialog-layout.tsx",
+        "app/src/components/disclosure-row.tsx",
         "app/src/components/field-row.tsx",
         "app/src/components/form-field.tsx",
         "app/src/components/header-content-footer.tsx",
         "app/src/components/option-select.tsx",
         "app/src/components/page-header.tsx",
         "app/src/components/page-layout.tsx",
+        "app/src/components/page.tsx",
         "app/src/components/password-input.tsx",
         "app/src/components/query-state.tsx",
-        "app/src/components/section.tsx"
+        "app/src/components/section.tsx",
+        "app/src/components/setting-row.tsx",
+        "app/src/components/sidebar.tsx",
+        "app/src/components/split-layout.tsx"
       ],
       "linter": {
         "enabled": false
