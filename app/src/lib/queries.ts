@@ -2,9 +2,6 @@ import type {
   CreateRegistryRequest,
   CreateWorkspaceRequest,
   InstallRequest,
-  PromptGetRequest,
-  ResourceReadRequest,
-  ToolCallRequest,
   UpdateServerRequest,
   UpdateSettingsRequest,
   UpdateWorkspaceRequest,
@@ -12,6 +9,13 @@ import type {
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import type { CapabilityScope } from './api';
 import * as api from './api';
+import {
+  ACTIVITY_POLL_MS,
+  CAPABILITY_STALE_MS,
+  DETAIL_POLL_MS,
+  SERVER_LIST_POLL_MS,
+  STATUS_POLL_MS,
+} from './intervals';
 
 /** Root query key for a capability scope; capability keys hang off it. */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {
@@ -40,7 +44,7 @@ export function useRouterStatus() {
   return useQuery({
     queryKey: queryKeys.status,
     queryFn: api.getStatus,
-    refetchInterval: 15_000,
+    refetchInterval: STATUS_POLL_MS,
   });
 }
 
@@ -49,7 +53,7 @@ export function useServers() {
     queryKey: queryKeys.servers,
     queryFn: api.listServers,
     // Poll so the live call counts / last-called times stay current.
-    refetchInterval: 5_000,
+    refetchInterval: SERVER_LIST_POLL_MS,
   });
 }
 
@@ -58,37 +62,34 @@ export function useServer(name: string) {
     queryKey: queryKeys.server(name),
     queryFn: () => api.getServer(name),
     // Keep the detail page's state/pid live (crashes, idle shutdowns).
-    refetchInterval: 10_000,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
-/** Listing tools may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
+/** A capability listing may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
+const CAPABILITY_LISTING = { retry: false, staleTime: CAPABILITY_STALE_MS } as const;
+
 export function useCapabilityTools(scope: CapabilityScope) {
   return useQuery({
+    ...CAPABILITY_LISTING,
     queryKey: queryKeys.capabilityTools(scope),
     queryFn: () => api.getTools(scope),
-    retry: false,
-    staleTime: 60_000,
   });
 }
 
-/** Listing resources may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
 export function useCapabilityResources(scope: CapabilityScope) {
   return useQuery({
+    ...CAPABILITY_LISTING,
     queryKey: queryKeys.capabilityResources(scope),
     queryFn: () => api.getResources(scope),
-    retry: false,
-    staleTime: 60_000,
   });
 }
 
-/** Listing prompts may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
 export function useCapabilityPrompts(scope: CapabilityScope) {
   return useQuery({
+    ...CAPABILITY_LISTING,
     queryKey: queryKeys.capabilityPrompts(scope),
     queryFn: () => api.getPrompts(scope),
-    retry: false,
-    staleTime: 60_000,
   });
 }
 
@@ -97,7 +98,7 @@ export function useCapabilityActivity(scope: CapabilityScope) {
   return useQuery({
     queryKey: queryKeys.capabilityActivity(scope),
     queryFn: () => api.getActivity(scope),
-    refetchInterval: 5_000,
+    refetchInterval: ACTIVITY_POLL_MS,
   });
 }
 
@@ -106,7 +107,7 @@ export function useWorkspace(slug: string) {
   return useQuery({
     queryKey: queryKeys.workspace(slug),
     queryFn: () => api.getWorkspace(slug),
-    refetchInterval: 10_000,
+    refetchInterval: DETAIL_POLL_MS,
   });
 }
 
@@ -187,31 +188,25 @@ export function useTestServerConnection() {
   });
 }
 
-/** Run one tool from the UI; the call also lands in the scope's activity log. */
+/** Run one test call from the UI; it also lands in the scope's activity log. */
+function useUiCall<Body, Result>(scope: CapabilityScope, run: (scope: CapabilityScope, body: Body) => Promise<Result>) {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (body: Body) => run(scope, body),
+    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
+  });
+}
+
 export function useCallTool(scope: CapabilityScope) {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: ToolCallRequest) => api.callTool(scope, body),
-    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
-  });
+  return useUiCall(scope, api.callTool);
 }
 
-/** Read one resource from the UI; the call also lands in the scope's activity log. */
 export function useReadResource(scope: CapabilityScope) {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: ResourceReadRequest) => api.readResource(scope, body),
-    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
-  });
+  return useUiCall(scope, api.readResource);
 }
 
-/** Get one prompt from the UI; the call also lands in the scope's activity log. */
 export function useGetPrompt(scope: CapabilityScope) {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: (body: PromptGetRequest) => api.getPrompt(scope, body),
-    onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
-  });
+  return useUiCall(scope, api.getPrompt);
 }
 
 export function useClearActivity(scope: CapabilityScope) {
