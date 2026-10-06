@@ -1,15 +1,14 @@
-import { errorDetailMessage, errorMessage, HttpError } from '../errors.ts';
+import { errorMessage, HttpError } from '../errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
+import { recordedCall } from '../gateway/recorded-call.ts';
 
 export interface UiCallContext {
   method: string;
   target: string;
   params: unknown;
   failLabel: string;
-  /** Map a result that resolves but signals failure (e.g. a tool's `isError`) to its error text. */
-  detectFailure?: (result: unknown) => string | null;
 }
 
 /**
@@ -25,33 +24,13 @@ export async function runUiCall(
   ctx: UiCallContext,
   run: (client: DownstreamClient) => Promise<unknown>,
 ): Promise<unknown> {
-  const startedAt = Date.now();
   try {
-    const result = await manager.withClient(key, run);
-    const failure = ctx.detectFailure?.(result) ?? null;
-    manager.recordActivity(key, {
-      at: new Date().toISOString(),
-      via: 'ui',
-      method: ctx.method,
-      target: ctx.target,
-      ok: failure === null,
-      durationMs: Date.now() - startedAt,
-      params: ctx.params,
-      result,
-      error: failure ?? undefined,
-    });
-    return result;
+    return await recordedCall(
+      (entry) => manager.recordActivity(key, entry),
+      { via: 'ui', method: ctx.method, target: ctx.target, params: ctx.params },
+      () => manager.withClient(key, run),
+    );
   } catch (cause) {
-    manager.recordActivity(key, {
-      at: new Date().toISOString(),
-      via: 'ui',
-      method: ctx.method,
-      target: ctx.target,
-      ok: false,
-      durationMs: Date.now() - startedAt,
-      params: ctx.params,
-      error: errorDetailMessage(cause),
-    });
     // The manager's own refusal — disabled, backed off, would not connect — already
     // carries its status. It is logged all the same, as it is for a proxied call:
     // "why did my call fail?" is what the Activity view is for.

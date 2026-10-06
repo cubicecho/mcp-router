@@ -12,7 +12,6 @@ import { Router } from 'express';
 import { errorMessage, HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
-import { toolCallFailed, toolErrorText } from '../../gateway/tool-result.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
 import { runUiCall } from '../calls.ts';
 import type { ApiDeps } from '../deps.ts';
@@ -165,7 +164,6 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
         target: body.name,
         params: body,
         failLabel: `Tool "${body.name}" failed`,
-        detectFailure: (r) => (toolCallFailed(r) ? toolErrorText(r) : null),
       },
       (client) => client.callTool({ name: body.name, arguments: body.arguments }),
     );

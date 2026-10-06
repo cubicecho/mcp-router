@@ -1,8 +1,9 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { errorDetailMessage } from '../errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
-import { lacksCapability } from './capability.ts';
+import { emptyOnMissing } from './capability.ts';
 import type { WithClient } from './downstream.ts';
+import { recordedCall } from './recorded-call.ts';
 
 export interface FanOutDeps {
   withClient: WithClient;
@@ -32,21 +33,15 @@ export async function collectFrom<T>(
 ): Promise<T[]> {
   const results = await Promise.all(
     names.map(async (name) => {
-      const startedAt = Date.now();
       try {
-        return await deps.withClient(name, (client) => fn(client, name));
+        const listed = await recordedCall(
+          (entry) => deps.recordActivity(name, entry),
+          { via: 'aggregate', method, failuresOnly: true },
+          () => emptyOnMissing(() => deps.withClient(name, (client) => fn(client, name))),
+        );
+        return listed ?? [];
       } catch (err) {
-        if (!lacksCapability(err)) {
-          console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);
-          deps.recordActivity(name, {
-            at: new Date().toISOString(),
-            via: 'aggregate',
-            method,
-            ok: false,
-            durationMs: Date.now() - startedAt,
-            error: errorDetailMessage(err),
-          });
-        }
+        console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);
         return [];
       }
     }),
