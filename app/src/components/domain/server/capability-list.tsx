@@ -1,12 +1,13 @@
 import type { UseMutationResult } from '@tanstack/react-query';
-import { ChevronRightIcon, Loader2Icon, PlayIcon } from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { type ReactElement, type ReactNode, useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
+import { DisclosureRow } from '@/components/disclosure-row';
+import { EmptyState } from '@/components/page';
 import { QueryError } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { Play } from '@/components/ui/icons';
 import { toastApiError } from '@/lib/toast';
-import { cn } from '@/lib/utils';
+import type { SlotNode } from '@/lib/utils';
 import { DataBlock } from './json-view';
 
 interface CapabilityListProps {
@@ -17,16 +18,15 @@ interface CapabilityListProps {
   refetch: () => void;
   /** What failed to load, for the error card, e.g. "resources". */
   what: string;
-  /** Number of items; 0 renders the empty state. */
-  count: number;
   emptyText: string;
-  children: ReactNode;
+  /** One {@link CapabilityRow} per capability; an empty list renders the empty state. */
+  rowsSlot: ReactElement[];
 }
 
 /**
  * Shared card shell for a downstream capability listing (tools, resources,
- * prompts): connecting skeleton, retryable error, empty state, else the caller's
- * list. A failed background refetch shows the error banner above the last-loaded
+ * prompts): loading skeleton, retryable error, empty state, else the caller's
+ * rows. A failed background refetch shows the error banner above the last-loaded
  * list rather than blanking it.
  */
 export function CapabilityList({
@@ -36,50 +36,46 @@ export function CapabilityList({
   error,
   refetch,
   what,
-  count,
   emptyText,
-  children,
+  rowsSlot,
 }: CapabilityListProps) {
   return (
     <CardLayout
       title={title}
       description={description}
+      loading={isPending}
+      emptySlot={<EmptyState compact title={emptyText} />}
+      contentClassName="gap-2"
       contentSlot={
-        <>
-          {isPending && (
-            <div className="flex flex-col gap-2">
-              <p className="text-sm text-muted-foreground">Connecting to the server — this may take a moment…</p>
-              <Skeleton className="h-5 w-2/3" />
-              <Skeleton className="h-5 w-1/2" />
-              <Skeleton className="h-5 w-3/5" />
-            </div>
-          )}
-          {error && <QueryError error={error} onRetry={refetch} what={what} />}
-          {!isPending && !error && count === 0 && <p className="text-sm text-muted-foreground">{emptyText}</p>}
-          {!isPending && count > 0 && <ul className="flex flex-col divide-y">{children}</ul>}
-        </>
+        error ? [<QueryError key="error" error={error} onRetry={refetch} what={what} />, ...rowsSlot] : rowsSlot
       }
     />
   );
 }
 
-/**
- * Shared collapsible row for one capability (tool, resource, prompt): a chevron
- * toggle with a caller-supplied header, revealing the caller's body (inputs, a
- * {@link RunButton}, and a {@link ResultBlock}) when expanded.
- */
-export function CapabilityRow({ header, children }: { header: ReactNode; children: ReactNode }) {
+interface CapabilityRowProps {
+  /** The capability's name, drawn in monospace. */
+  title: string;
+  /** Short facts beside the name, e.g. a resource's MIME type. */
+  meta?: ReactNode;
+  description?: ReactNode;
+  /** Revealed when expanded: inputs, a {@link RunButton}, and a {@link ResultBlock}. */
+  contentSlot: SlotNode;
+}
+
+/** Shared collapsible row for one capability (tool, resource, prompt). */
+export function CapabilityRow({ title, meta, description, contentSlot }: CapabilityRowProps) {
   const [open, setOpen] = useState(false);
   return (
-    <li className="py-2 first:pt-0 last:pb-0">
-      <button type="button" onClick={() => setOpen((v) => !v)} className="flex w-full items-start gap-2 text-left">
-        <ChevronRightIcon
-          className={cn('mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-90')}
-        />
-        <span className="min-w-0">{header}</span>
-      </button>
-      {open && <div className="mt-2 ml-6 flex flex-col gap-3">{children}</div>}
-    </li>
+    <DisclosureRow
+      open={open}
+      onOpenChange={setOpen}
+      title={<span className="font-mono">{title}</span>}
+      meta={meta}
+      description={description}
+      contentSlot={contentSlot}
+      contentClassName="gap-3"
+    />
   );
 }
 
@@ -96,16 +92,16 @@ export function RunButton({
   onClick: () => void;
 }) {
   return (
-    <div>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={pending || disabled}
-        onClick={onClick}
-        iconSlot={pending ? <Loader2Icon className="animate-spin" /> : <PlayIcon />}
-        content={label}
-      />
-    </div>
+    <Button
+      size="sm"
+      variant="outline"
+      className="self-start"
+      loading={pending}
+      disabled={disabled}
+      onClick={onClick}
+      iconSlot={<Play />}
+      content={label}
+    />
   );
 }
 

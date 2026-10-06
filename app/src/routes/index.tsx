@@ -1,13 +1,14 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { CompassIcon, PlusIcon } from 'lucide-react';
+import { CompassIcon, ServerIcon } from 'lucide-react';
 import { useState } from 'react';
 import { ConnectCard } from '@/components/domain/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
+import { EmptyState } from '@/components/page';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Plus } from '@/components/ui/icons';
 import { useServers } from '@/lib/queries';
 
 export const Route = createFileRoute('/')({
@@ -23,7 +24,7 @@ function ServersPage() {
     <PageLayout
       title="Servers"
       description="Installed MCP servers and their runtime state."
-      actionSlot={<Button onClick={() => setAddOpen(true)} iconSlot={<PlusIcon />} content="Add server" />}
+      actionSlot={<Button onClick={() => setAddOpen(true)} iconSlot={<Plus />} content="Add server" />}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState
@@ -31,11 +32,13 @@ function ServersPage() {
             what="servers"
             count={data?.length ?? 0}
             emptySlot={
-              <Card>
-                <CardContent className="flex flex-col items-center gap-3 py-10 text-center">
-                  <p className="text-sm text-muted-foreground">No servers installed yet.</p>
-                  <div className="flex gap-2">
-                    <Button onClick={() => setAddOpen(true)} iconSlot={<PlusIcon />} content="Add server" />
+              <EmptyState
+                icon={ServerIcon}
+                title="No servers installed yet"
+                description="Add one by hand, or install one from a registry."
+                actionSlot={
+                  <div className="flex flex-wrap justify-center gap-2">
+                    <Button onClick={() => setAddOpen(true)} iconSlot={<Plus />} content="Add server" />
                     <Button
                       variant="outline"
                       linkSlot={<Link to="/browse" />}
@@ -43,8 +46,8 @@ function ServersPage() {
                       content="Browse registries"
                     />
                   </div>
-                </CardContent>
-              </Card>
+                }
+              />
             }
           />
 

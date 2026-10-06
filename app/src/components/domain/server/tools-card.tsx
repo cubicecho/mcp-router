@@ -60,29 +60,28 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
 
   return (
     <CapabilityRow
-      header={
+      title={tool.name}
+      description={tool.description}
+      contentSlot={
         <>
-          <span className="font-mono text-sm">{tool.name}</span>
-          {tool.description && <p className="text-sm text-muted-foreground">{tool.description}</p>}
+          <Textarea
+            value={argsText}
+            rows={Math.min(10, Math.max(3, argsText.split('\n').length))}
+            className="font-mono text-xs"
+            aria-label={`Arguments for ${tool.name}`}
+            onChange={(event) => setArgsText(event.target.value)}
+          />
+          <RunButton label="Run" pending={pending} onClick={submit} />
+          {result && (
+            <ResultBlock
+              result={result}
+              isError={result.isError}
+              label={result.isError ? 'Tool returned an error' : 'Result'}
+            />
+          )}
         </>
       }
-    >
-      <Textarea
-        value={argsText}
-        rows={Math.min(10, Math.max(3, argsText.split('\n').length))}
-        className="font-mono text-xs"
-        aria-label={`Arguments for ${tool.name}`}
-        onChange={(event) => setArgsText(event.target.value)}
-      />
-      <RunButton label="Run" pending={pending} onClick={submit} />
-      {result && (
-        <ResultBlock
-          result={result}
-          isError={result.isError}
-          label={result.isError ? 'Tool returned an error' : 'Result'}
-        />
-      )}
-    </CapabilityRow>
+    />
   );
 }
 
@@ -102,12 +101,8 @@ export function ToolsCard({ scope }: { scope: CapabilityScope }) {
       error={error}
       refetch={refetch}
       what="tools"
-      count={tools.length}
       emptyText="No tools reported."
-    >
-      {tools.map((tool) => (
-        <ToolRow key={tool.name} scope={scope} tool={tool} />
-      ))}
-    </CapabilityList>
+      rowsSlot={tools.map((tool) => <ToolRow key={tool.name} scope={scope} tool={tool} />)}
+    />
   );
 }

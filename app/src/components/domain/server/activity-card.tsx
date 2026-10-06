@@ -1,17 +1,20 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { ChevronRightIcon, RotateCwIcon, Trash2Icon } from 'lucide-react';
+import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
+import { DisclosureRow } from '@/components/disclosure-row';
 import { OptionSelect } from '@/components/option-select';
+import { EmptyState } from '@/components/page';
 import { QueryError } from '@/components/query-state';
+import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Trash2 } from '@/components/ui/icons';
 import type { CapabilityScope } from '@/lib/api';
 import { formatRelativeTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
-import { cn } from '@/lib/utils';
 import { DataBlock } from './json-view';
 
 function formatAbsoluteTime(iso: string): string {
@@ -24,44 +27,31 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const hasDetail = entry.params !== undefined || entry.result !== undefined || entry.error !== undefined;
 
   return (
-    <li className="py-2 first:pt-0 last:pb-0">
-      <button
-        type="button"
-        disabled={!hasDetail}
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-center gap-2 text-left disabled:cursor-default"
-      >
-        <ChevronRightIcon
-          className={cn(
-            'size-4 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-90',
-            !hasDetail && 'invisible',
-          )}
-        />
-        <span className="font-mono text-sm">{entry.method}</span>
-        {entry.target && <span className="truncate font-mono text-xs text-muted-foreground">{entry.target}</span>}
-        <span className="ml-auto flex shrink-0 items-center gap-2">
+    <DisclosureRow
+      open={open}
+      onOpenChange={setOpen}
+      title={<span className="font-mono">{entry.method}</span>}
+      description={entry.target ? <span className="break-all font-mono text-xs">{entry.target}</span> : undefined}
+      actionSlot={
+        <>
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
           {entry.via !== 'direct' && <Badge variant="outline">{entry.via}</Badge>}
-          <span className="text-xs text-muted-foreground tabular-nums">{entry.durationMs}ms</span>
-          <span className="text-xs text-muted-foreground tabular-nums" title={formatAbsoluteTime(entry.at)}>
+          <span className="text-muted-foreground text-xs tabular-nums">{entry.durationMs}ms</span>
+          <span className="text-muted-foreground text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
           </span>
-        </span>
-      </button>
-      {open && hasDetail && (
-        <div className="mt-2 ml-6 flex flex-col gap-2">
-          {entry.error && (
-            <div>
-              <p className="text-xs font-medium text-destructive">Error</p>
-              <pre className="mt-1 overflow-x-auto rounded bg-muted p-2 text-xs whitespace-pre-wrap">{entry.error}</pre>
-            </div>
-          )}
-          {entry.params !== undefined && <DataBlock value={entry.params} label="Request" />}
-          {entry.result !== undefined && <DataBlock value={entry.result} label="Response" />}
-        </div>
-      )}
-    </li>
+        </>
+      }
+      contentSlot={
+        hasDetail ? (
+          <>
+            {entry.error && <Alert variant="destructive" title="Error" description={entry.error} />}
+            {entry.params !== undefined && <DataBlock value={entry.params} label="Request" />}
+            {entry.result !== undefined && <DataBlock value={entry.result} label="Response" />}
+          </>
+        ) : undefined
+      }
+    />
   );
 }
 
@@ -103,7 +93,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             size="sm"
             disabled={clear.isPending || entries.length === 0}
             onClick={handleClear}
-            iconSlot={<Trash2Icon />}
+            iconSlot={<Trash2 />}
             content="Clear"
           />
         </span>
@@ -118,16 +108,12 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
         <>
           {error && <QueryError error={error} onRetry={() => refetch()} what="activity" />}
           {data && entries.length === 0 && (
-            <p className="text-sm text-muted-foreground">
-              No activity yet. Calls made through <code className="font-mono">{endpoint}</code>
-              {scope.kind === 'server' && (
-                <>
-                  {' '}
-                  or the aggregate <code className="font-mono">/mcp</code> endpoint
-                </>
-              )}{' '}
-              will appear here.
-            </p>
+            <EmptyState
+              compact
+              title={`No activity yet. Calls made through ${endpoint}${
+                scope.kind === 'server' ? ' or the aggregate /mcp endpoint' : ''
+              } will appear here.`}
+            />
           )}
           {entries.length > 0 && (
             <>
@@ -157,13 +143,13 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
                 />
               </div>
               {filtered.length === 0 ? (
-                <p className="text-sm text-muted-foreground">No entries match the current filters.</p>
+                <EmptyState compact title="No entries match the current filters." />
               ) : (
-                <ul className="flex flex-col divide-y">
+                <div className="flex flex-col gap-2">
                   {filtered.map((entry) => (
                     <ActivityRow key={entry.id} entry={entry} />
                   ))}
-                </ul>
+                </div>
               )}
             </>
           )}

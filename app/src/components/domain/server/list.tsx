@@ -1,13 +1,15 @@
 import type { ServerStatus } from '@mcp-router/shared';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { Loader2Icon, PencilIcon, PlugZapIcon, RotateCwIcon, SearchIcon, Trash2Icon } from 'lucide-react';
+import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
-import { Input } from '@/components/ui/input';
+import { EmptyState } from '@/components/page';
+import { Pencil, Trash2 } from '@/components/ui/icons';
+import { SearchInput } from '@/components/ui/search-input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -107,9 +109,9 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             size="icon-sm"
             label={`Test connection to ${config.name}`}
             hint="Test connection"
-            disabled={test.isPending}
+            loading={test.isPending}
             onClick={handleTest}
-            iconSlot={test.isPending ? <Loader2Icon className="animate-spin" /> : <PlugZapIcon />}
+            iconSlot={<PlugZapIcon />}
           />
           <ActionButton
             variant="ghost"
@@ -117,7 +119,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             label={`Edit ${config.name}`}
             hint="Edit"
             onClick={() => onEdit(server)}
-            iconSlot={<PencilIcon />}
+            iconSlot={<Pencil />}
           />
           <ActionButton
             variant="ghost"
@@ -146,7 +148,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
                 onError: toastApiError,
               })
             }
-            iconSlot={<Trash2Icon className="text-destructive" />}
+            iconSlot={<Trash2 className="text-destructive" />}
           />
         </div>
       </TableCell>
@@ -170,16 +172,13 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
   return (
     <div className="flex flex-col gap-3">
       {servers.length > 5 && (
-        <div className="relative max-w-xs">
-          <SearchIcon className="absolute top-2.5 left-2.5 size-4 text-muted-foreground" />
-          <Input
-            value={filter}
-            placeholder="Filter servers…"
-            className="pl-8"
-            aria-label="Filter servers"
-            onChange={(event) => setFilter(event.target.value)}
-          />
-        </div>
+        <SearchInput
+          value={filter}
+          label="Filter servers"
+          placeholder="Filter servers…"
+          wrapperClassName="max-w-xs"
+          onChangeText={setFilter}
+        />
       )}
       <Table>
         <TableHeader>
@@ -203,7 +202,7 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
       </Table>
 
       {query && visible.length === 0 && (
-        <p className="py-4 text-center text-sm text-muted-foreground">No servers match “{filter.trim()}”.</p>
+        <EmptyState compact className="justify-center" title={`No servers match “${filter.trim()}”.`} />
       )}
 
       {editing && (

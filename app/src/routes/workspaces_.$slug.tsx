@@ -1,13 +1,11 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
-import { ArrowLeftIcon, PencilIcon, Trash2Icon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
+import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { ConnectCard } from '@/components/domain/connect-card';
-import { CopyButton } from '@/components/domain/copy-button';
-import { DetailRow } from '@/components/domain/detail-row';
 import { ActivityCard } from '@/components/domain/server/activity-card';
 import { PromptsCard } from '@/components/domain/server/prompts-card';
 import { ResourcesCard } from '@/components/domain/server/resources-card';
@@ -16,12 +14,15 @@ import { MembersCard } from '@/components/domain/workspace/members-card';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
+import { SettingRow } from '@/components/setting-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
+import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { toastApiError, toastCopyError } from '@/lib/toast';
 
 export const Route = createFileRoute('/workspaces_/$slug')({
   component: WorkspaceDetailPage,
@@ -58,7 +59,7 @@ function WorkspaceDetailPage() {
           label="Back to workspaces"
           tooltip={false}
           linkSlot={<Link to="/workspaces" />}
-          iconSlot={<ArrowLeftIcon />}
+          iconSlot={<ArrowLeft />}
         />
       }
       title={workspace?.name ?? slug}
@@ -77,7 +78,7 @@ function WorkspaceDetailPage() {
                       variant="outline"
                       size="sm"
                       onClick={() => setEditOpen(true)}
-                      iconSlot={<PencilIcon />}
+                      iconSlot={<Pencil />}
                       content="Edit"
                     />
                     <ConfirmButton
@@ -89,43 +90,64 @@ function WorkspaceDetailPage() {
                       title={`Delete workspace ${workspace.name}?`}
                       description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                       onConfirm={handleDelete}
-                      iconSlot={<Trash2Icon className="text-destructive" />}
+                      iconSlot={<Trash2 className="text-destructive" />}
                       content="Delete"
                     />
                   </span>
                 }
-                contentClassName="flex flex-col gap-3"
+                contentClassName="gap-4"
                 contentSlot={
                   <>
-                    <DetailRow label="Endpoint">
-                      <span className="flex items-center gap-1">
-                        <code className="rounded bg-muted px-1.5 py-0.5 text-xs break-all">{endpointUrl}</code>
-                        <CopyButton text={endpointUrl} label="Copy endpoint URL" />
-                      </span>
-                    </DetailRow>
-                    <DetailRow label="Status">
-                      {workspace.enabled ? (
-                        <Badge variant="outline">Enabled</Badge>
-                      ) : (
-                        <Badge variant="secondary">Disabled</Badge>
+                    <DescriptionList
+                      contentSlot={
+                        <>
+                          <PropertyRow
+                            label="Endpoint"
+                            value={endpointUrl}
+                            valueClassName="break-all font-mono"
+                            actionSlot={
+                              <CopyButton
+                                variant="ghost"
+                                value={endpointUrl}
+                                label="Copy endpoint URL"
+                                onError={toastCopyError}
+                              />
+                            }
+                          />
+                          <PropertyRow
+                            label="Status"
+                            value={
+                              workspace.enabled ? (
+                                <Badge variant="outline">Enabled</Badge>
+                              ) : (
+                                <Badge variant="secondary">Disabled</Badge>
+                              )
+                            }
+                          />
+                        </>
+                      }
+                    />
+                    <SettingRow
+                      title="Enabled"
+                      description="A disabled workspace's endpoint stops responding; its servers are not affected."
+                      actionSlot={({ titleId }) => (
+                        <Switch
+                          checked={workspace.enabled}
+                          disabled={update.isPending}
+                          aria-labelledby={titleId}
+                          aria-label={`Enable workspace ${slug}`}
+                          onCheckedChange={(enabled) =>
+                            update.mutate(
+                              { slug, enabled },
+                              {
+                                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
+                                onError: toastApiError,
+                              },
+                            )
+                          }
+                        />
                       )}
-                    </DetailRow>
-                    <DetailRow label="Enabled">
-                      <Switch
-                        checked={workspace.enabled}
-                        disabled={update.isPending}
-                        aria-label={`Enable workspace ${slug}`}
-                        onCheckedChange={(enabled) =>
-                          update.mutate(
-                            { slug, enabled },
-                            {
-                              onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
-                              onError: toastApiError,
-                            },
-                          )
-                        }
-                      />
-                    </DetailRow>
+                    />
                   </>
                 }
               />

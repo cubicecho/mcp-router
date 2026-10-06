@@ -1,19 +1,24 @@
-import { Link } from '@tanstack/react-router';
-import { CompassIcon, LayersIcon, LibraryIcon, LockIcon, RouteIcon, ServerIcon, SettingsIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
+import { createLink, useLocation } from '@tanstack/react-router';
+import { CompassIcon, LayersIcon, RouteIcon, ServerIcon } from 'lucide-react';
 import { ActionButton } from '@/components/action-button';
-import { Skeleton } from '@/components/ui/skeleton';
+import { BarNavItem, Sidebar, SidebarNavItem, SidebarSection } from '@/components/sidebar';
+import { SidebarLayout } from '@/components/split-layout';
+import { Library, Lock, Settings } from '@/components/ui/icons';
 import { ThemePicker } from '@/components/ui/theme-picker';
 import { clearToken, requireAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
+import type { SlotNode } from '@/lib/utils';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Servers', icon: ServerIcon },
   { to: '/browse', label: 'Browse', icon: CompassIcon },
   { to: '/workspaces', label: 'Workspaces', icon: LayersIcon },
-  { to: '/registries', label: 'Registries', icon: LibraryIcon },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon },
+  { to: '/registries', label: 'Registries', icon: Library },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
+
+const SidebarLink = createLink(SidebarNavItem);
+const BarLink = createLink(BarNavItem);
 
 /** Clears the stored bearer token and brings the token gate back — for shared machines. */
 function LockButton() {
@@ -35,90 +40,77 @@ function LockButton() {
       label="Lock (forget the stored token)"
       hint="Lock — forget the stored token"
       onClick={lock}
-      iconSlot={<LockIcon />}
+      iconSlot={<Lock />}
     />
   );
 }
 
-function HeaderStatus() {
-  const { data, isPending } = useRouterStatus();
-
-  if (isPending) {
-    return <Skeleton className="h-4 w-24" />;
-  }
-  if (!data) {
-    return null;
-  }
+function Brand() {
   return (
-    <span className="text-sm text-muted-foreground">
-      <span className="font-medium text-foreground">{data.runningCount}</span>/{data.serverCount} servers running
+    <span className="flex items-center gap-2 font-semibold">
+      <RouteIcon className="size-5" aria-hidden />
+      MCP Router
     </span>
   );
 }
 
-function MobileNav() {
-  return (
-    <nav className="flex items-center gap-1 md:hidden" aria-label="Main">
-      <RouteIcon className="mr-1 size-5" aria-hidden />
-      {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-        <Link
-          key={to}
-          to={to}
-          aria-label={label}
-          activeOptions={{ exact: to === '/' }}
-          className="rounded-md p-2 text-muted-foreground hover:bg-accent hover:text-accent-foreground"
-          activeProps={{ className: 'rounded-md p-2 bg-accent text-accent-foreground' }}
-        >
-          <Icon className="size-4" />
-        </Link>
-      ))}
-      <LockButton />
-      <div className="w-24">
-        <ThemePicker variant="compact" />
-      </div>
-    </nav>
-  );
-}
+export function AppLayout({ contentSlot }: { contentSlot: SlotNode }) {
+  const pathname = useLocation({ select: (location) => location.pathname });
+  const { data } = useRouterStatus();
+  const status = data ? `${data.runningCount}/${data.serverCount} servers running` : undefined;
+  // Servers owns "/" and the detail pages under /servers; every other place owns the paths under it.
+  const isActive = (to: string) =>
+    to === '/'
+      ? pathname === '/' || pathname.startsWith('/servers/')
+      : pathname === to || pathname.startsWith(`${to}/`);
 
-export function AppLayout({ children }: { children: ReactNode }) {
   return (
-    <div className="flex h-dvh">
-      <aside className="hidden w-56 shrink-0 flex-col border-r border-sidebar-border bg-sidebar text-sidebar-foreground md:flex">
-        <div className="flex items-center gap-2 px-4 py-4 font-semibold">
-          <RouteIcon className="size-5" />
-          MCP Router
-        </div>
-        <nav className="flex flex-col gap-1 px-2">
-          {NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-            <Link
-              key={to}
-              to={to}
-              activeOptions={{ exact: to === '/' }}
-              className="flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground"
-              activeProps={{
-                className:
-                  'flex items-center gap-2 rounded-md px-3 py-2 text-sm bg-sidebar-accent text-sidebar-accent-foreground font-medium',
-              }}
-            >
-              <Icon className="size-4" />
-              {label}
-            </Link>
-          ))}
-        </nav>
-        <div className="mt-auto flex items-center gap-1 px-4 py-3">
-          <div className="min-w-0 flex-1">
+    <SidebarLayout
+      sidebarPosition="start"
+      sidebarWidth="auto"
+      divider="none"
+      sidebarHideBelow="md"
+      sidebarSlot={
+        <Sidebar
+          label="Main"
+          headerSlot={<Brand />}
+          contentSlot={
+            <SidebarSection
+              as="nav"
+              label="Main"
+              contentSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+                <SidebarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
+              ))}
+            />
+          }
+          footerSlot={
+            <div className="flex flex-col gap-2">
+              {status && <span className="text-foreground/60 text-xs">{status}</span>}
+              <div className="flex items-center gap-1">
+                <div className="min-w-0 flex-1">
+                  <ThemePicker variant="compact" />
+                </div>
+                <LockButton />
+              </div>
+            </div>
+          }
+        />
+      }
+      brandSlot={<RouteIcon className="size-5" aria-label="MCP Router" />}
+      navSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
+        <BarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
+      ))}
+      navLabel="Main"
+      status={status}
+      actionSlot={
+        <>
+          <LockButton />
+          <div className="w-24">
             <ThemePicker variant="compact" />
           </div>
-          <LockButton />
-        </div>
-      </aside>
-      <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 items-center justify-between gap-2 border-b px-4 md:justify-end md:px-6">
-          <MobileNav />
-          <HeaderStatus />
-        </header>
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
-      </div>
-    </div>
+        </>
+      }
+      contentSlot={<main className="flex min-h-0 flex-1 flex-col overflow-auto">{contentSlot}</main>}
+    />
   );
 }

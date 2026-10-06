@@ -1,11 +1,13 @@
-import { EyeIcon, EyeOffIcon } from 'lucide-react';
 import { useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
-import { CopyButton } from '@/components/domain/copy-button';
 import { Button } from '@/components/ui/button';
+import { CodeBlock } from '@/components/ui/code';
+import { CopyButton } from '@/components/ui/copy-button';
+import { Eye, EyeOff } from '@/components/ui/icons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getToken } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
+import { toastCopyError } from '@/lib/toast';
 
 const TOKEN_PLACEHOLDER = '<YOUR_TOKEN>';
 const TOKEN_MASK = '••••••••••••';
@@ -72,12 +74,11 @@ function opencodeSnippet({ endpoint, label, token }: SnippetInput): string {
 
 function Snippet({ display, copyText }: { display: string; copyText: string }) {
   return (
-    <div className="relative">
-      <pre className="overflow-x-auto rounded-md bg-muted p-3 pr-12 font-mono text-xs leading-relaxed whitespace-pre-wrap break-all">
-        {display}
-      </pre>
-      <CopyButton text={copyText} label="Copy snippet" className="absolute top-2 right-2" />
-    </div>
+    <CodeBlock
+      wrap
+      content={display}
+      actionSlot={<CopyButton variant="ghost" value={copyText} label="Copy snippet" onError={toastCopyError} />}
+    />
   );
 }
 
@@ -122,7 +123,7 @@ export function ConnectCard({
             variant="outline"
             size="sm"
             onClick={() => setRevealed((v) => !v)}
-            iconSlot={revealed ? <EyeOffIcon /> : <EyeIcon />}
+            iconSlot={revealed ? <EyeOff /> : <Eye />}
             content={revealed ? 'Hide token' : 'Reveal token'}
           />
         )

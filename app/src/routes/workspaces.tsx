@@ -1,20 +1,21 @@
 import type { WorkspaceStatus } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { LayersIcon, PencilIcon, PlusIcon, Trash2Icon } from 'lucide-react';
+import { LayersIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
-import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
-import { CopyButton } from '@/components/domain/copy-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
+import { EmptyState } from '@/components/page';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { CopyButton } from '@/components/ui/copy-button';
+import { Pencil, Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { toastApiError, toastCopyError } from '@/lib/toast';
 
 export const Route = createFileRoute('/workspaces')({
   component: WorkspacesPage,
@@ -33,9 +34,7 @@ function WorkspacesPage() {
     <PageLayout
       title="Workspaces"
       description="Custom aggregates: expose a chosen subset of servers at their own URL, with optional per-workspace parameter overrides."
-      actionSlot={
-        <Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<PlusIcon />} content="New workspace" />
-      }
+      actionSlot={<Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<Plus />} content="New workspace" />}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState
@@ -43,16 +42,12 @@ function WorkspacesPage() {
             what="workspaces"
             count={data?.length ?? 0}
             emptySlot={
-              <CardLayout
-                iconSlot={<LayersIcon />}
+              <EmptyState
+                icon={LayersIcon}
                 title="No workspaces yet"
                 description="Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace."
-                contentSlot={
-                  <Button
-                    onClick={() => setDialog({ mode: 'create' })}
-                    iconSlot={<PlusIcon />}
-                    content="New workspace"
-                  />
+                actionSlot={
+                  <Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<Plus />} content="New workspace" />
                 }
               />
             }
@@ -88,8 +83,10 @@ function WorkspacesPage() {
                         <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
                           {workspace.path}
                           <CopyButton
-                            text={`${window.location.origin}${workspace.path}`}
+                            variant="ghost"
+                            value={`${window.location.origin}${workspace.path}`}
                             label={`Copy URL for ${workspace.path}`}
+                            onError={toastCopyError}
                           />
                         </span>
                       </TableCell>
@@ -109,7 +106,7 @@ function WorkspacesPage() {
                           size="icon-sm"
                           label={`Edit ${workspace.name}`}
                           onClick={() => setDialog({ mode: 'edit', workspace })}
-                          iconSlot={<PencilIcon />}
+                          iconSlot={<Pencil />}
                         />
                         <ConfirmButton
                           variant="ghost"
@@ -123,7 +120,7 @@ function WorkspacesPage() {
                               onError: toastApiError,
                             })
                           }
-                          iconSlot={<Trash2Icon className="text-destructive" />}
+                          iconSlot={<Trash2 className="text-destructive" />}
                         />
                       </TableCell>
                     </TableRow>
