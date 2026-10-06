@@ -14,7 +14,7 @@ import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { toolCallFailed, toolErrorText } from '../../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
-import { runUiCall, withDownstream } from '../calls.ts';
+import { runUiCall } from '../calls.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
@@ -116,7 +116,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   router.get('/:name/tools', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const tools = await withDownstream(manager, name, listAllTools);
+    const tools = await manager.withClient(name, listAllTools);
     manager.recordToolCount(name, tools.length);
     res.json({ tools });
   });
@@ -128,12 +128,12 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     const name = req.params.name;
     requireStatus(name);
     const [resources, templates] = await Promise.all([
-      emptyOnMissing(() => withDownstream(manager, name, listAllResources)),
+      emptyOnMissing(() => manager.withClient(name, listAllResources)),
       // Templates are a supplementary sub-listing: a genuine failure here must not
       // discard a successful resources list, so it is best-effort (missing → null
       // via emptyOnMissing; any other error → warn + null) rather than fatal to the
       // whole endpoint.
-      emptyOnMissing(() => withDownstream(manager, name, listAllResourceTemplates)).catch((cause: unknown) => {
+      emptyOnMissing(() => manager.withClient(name, listAllResourceTemplates)).catch((cause: unknown) => {
         console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
         return null;
       }),
@@ -147,7 +147,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   router.get('/:name/prompts', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const prompts = await emptyOnMissing(() => withDownstream(manager, name, listAllPrompts));
+    const prompts = await emptyOnMissing(() => manager.withClient(name, listAllPrompts));
     res.json({ prompts: prompts ?? [] });
   });
 

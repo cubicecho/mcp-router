@@ -14,15 +14,9 @@ import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructio
 import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
-/**
- * Stand a stub in for a server's downstream client. Both doors are stubbed:
- * `getClient` is what a route connects through, and `withClient` is what it then
- * sends the request through — which reaches the pool rather than `getClient`.
- */
+/** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */
 function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Client, unknown>>) {
-  const client = stub as unknown as Client;
-  vi.spyOn(manager, 'getClient').mockResolvedValue(client);
-  vi.spyOn(manager, 'withClient').mockImplementation(async (_name, run) => run(client));
+  vi.spyOn(manager, 'withClient').mockImplementation(async (_name, run) => run(stub as unknown as Client));
 }
 
 describe('REST API', () => {
