@@ -10,6 +10,7 @@ import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
+import { HttpError } from '../errors.ts';
 import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
 import { workspaceInstanceKey } from '../gateway/instance-key.ts';
 import { GatewayManager } from '../gateway/manager.ts';
@@ -367,6 +368,32 @@ describe('REST API', () => {
     const deleted = await authed(request(app).delete('/api/workspaces/renamed'));
     expect(deleted.status).toBe(204);
     expect((await authed(request(app).get('/api/workspaces/renamed'))).status).toBe(404);
+  });
+
+  it('logs a UI call the manager refused, and one that waited on a connect', async () => {
+    await authed(request(app).post('/api/servers')).send({
+      name: 'hosted',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    });
+
+    // A server that would not connect answers with the manager's own status.
+    vi.spyOn(manager, 'withClient').mockRejectedValueOnce(
+      new HttpError(502, 'Failed to connect to server "hosted"', 'stderr tail'),
+    );
+    const refused = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
+    expect(refused.status).toBe(502);
+    expect(manager.getActivity('hosted')).toEqual([]);
+
+    // A cold server spends the start of the request connecting.
+    const callTool = vi.fn(async () => ({ content: [] }));
+    vi.spyOn(manager, 'withClient').mockImplementationOnce(async (_key, run) => {
+      await new Promise((resolve) => setTimeout(resolve, 60));
+      return run({ callTool } as unknown as Client);
+    });
+    const slow = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
+    expect(slow.status).toBe(200);
+    expect(manager.getActivity('hosted')[0]?.durationMs).toBeLessThan(40);
   });
 
   it("runs a workspace's UI calls against the member's own instance, under its exposed name", async () => {
