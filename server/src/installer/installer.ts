@@ -55,6 +55,23 @@ export function deriveServerName(raw: string): string {
 }
 
 /**
+ * The local name an install gets: the one asked for, else one derived from where it comes from.
+ * A remote server has nothing to derive from, so it must be named.
+ */
+export function resolveServerName({ name, source }: Pick<InstallRequest, 'name' | 'source'>): string {
+  if (name !== undefined) {
+    return name;
+  }
+  if (source.type === 'registry') {
+    return deriveServerName(source.serverName);
+  }
+  if (source.type === 'npm' || source.type === 'pypi') {
+    return deriveServerName(source.package);
+  }
+  throw new HttpError(400, 'A "name" is required when installing a remote server');
+}
+
+/**
  * Resolve the bin entry of an installed package.json: a string bin is used
  * directly; for an object, prefer the entry matching the package basename,
  * else take the first one.
@@ -229,7 +246,7 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
       throw new HttpError(404, `Unknown registry "${source.registry}"`);
     }
     const entry = await deps.registryClient.getServer(registry, source.serverName);
-    const name = request.name ?? deriveServerName(source.serverName);
+    const name = resolveServerName(request);
     const selection = selectFromEntry(entry, request.packageSelector);
     let transport: ServerTransport;
     let env: Record<string, string> = {};
@@ -267,7 +284,7 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
       envMeta,
     };
   } else if (source.type === 'npm') {
-    const name = request.name ?? deriveServerName(source.package);
+    const name = resolveServerName(request);
     const transport = await installNpmPackage(deps, name, source.package, source.version);
     config = {
       name,
@@ -278,7 +295,7 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
       envMeta: {},
     };
   } else if (source.type === 'pypi') {
-    const name = request.name ?? deriveServerName(source.package);
+    const name = resolveServerName(request);
     const transport = buildPypiTransport(source.package, source.version);
     config = {
       name,
@@ -289,14 +306,12 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
       envMeta: {},
     };
   } else {
-    if (!request.name) {
-      throw new HttpError(400, 'A "name" is required when installing a remote server');
-    }
+    const name = resolveServerName(request);
     if (!request.transport) {
       throw new HttpError(400, 'A "transport" is required when installing a remote server');
     }
     config = {
-      name: request.name,
+      name,
       enabled: request.enabled,
       source,
       transport: request.transport,

@@ -12,7 +12,7 @@ import { Router } from 'express';
 import { errorMessage, HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
-import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
+import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
 import { runUiCall } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
@@ -42,16 +42,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
 
   router.post('/', async (req, res) => {
     const request = installRequestSchema.parse(req.body);
-    const name =
-      request.name ??
-      (request.source.type === 'registry'
-        ? deriveServerName(request.source.serverName)
-        : request.source.type === 'npm' || request.source.type === 'pypi'
-          ? deriveServerName(request.source.package)
-          : undefined);
-    if (!name) {
-      throw new HttpError(400, 'A "name" is required when installing a remote server');
-    }
+    const name = resolveServerName(request);
     if (store.getServer(name)) {
       throw new HttpError(409, `Server "${name}" already exists`);
     }
