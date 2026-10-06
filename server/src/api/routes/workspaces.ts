@@ -139,7 +139,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
       enabledMembers(workspace, store),
       method,
       {
-        getClient: (name) => manager.getClientForWorkspace(workspace.slug, name),
+        withClient: (name, run) => manager.withClientForWorkspace(workspace.slug, name, run),
         recordActivity: (name, entry) => manager.recordActivity(workspaceInstanceKey(workspace.slug, name), entry),
       },
       fn,

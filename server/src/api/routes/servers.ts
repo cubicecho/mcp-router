@@ -14,7 +14,7 @@ import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { toolCallFailed, toolErrorText } from '../../gateway/proxy.ts';
 import { buildServerConfig, deriveServerName, uninstall } from '../../installer/installer.ts';
-import { connect, runUiCall } from '../calls.ts';
+import { runUiCall, withDownstream } from '../calls.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
@@ -116,8 +116,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   router.get('/:name/tools', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const client = await connect(manager, name);
-    const tools = await listAllTools(client);
+    const tools = await withDownstream(manager, name, listAllTools);
     manager.recordToolCount(name, tools.length);
     res.json({ tools });
   });
@@ -128,14 +127,13 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   router.get('/:name/resources', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const client = await connect(manager, name);
     const [resources, templates] = await Promise.all([
-      emptyOnMissing(() => listAllResources(client)),
+      emptyOnMissing(() => withDownstream(manager, name, listAllResources)),
       // Templates are a supplementary sub-listing: a genuine failure here must not
       // discard a successful resources list, so it is best-effort (missing → null
       // via emptyOnMissing; any other error → warn + null) rather than fatal to the
       // whole endpoint.
-      emptyOnMissing(() => listAllResourceTemplates(client)).catch((cause: unknown) => {
+      emptyOnMissing(() => withDownstream(manager, name, listAllResourceTemplates)).catch((cause: unknown) => {
         console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
         return null;
       }),
@@ -149,8 +147,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   router.get('/:name/prompts', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const client = await connect(manager, name);
-    const prompts = await emptyOnMissing(() => listAllPrompts(client));
+    const prompts = await emptyOnMissing(() => withDownstream(manager, name, listAllPrompts));
     res.json({ prompts: prompts ?? [] });
   });
 

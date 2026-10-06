@@ -4,7 +4,7 @@ import { errorDetailMessage } from '../errors.ts';
 import { lacksCapability } from './capability.ts';
 
 export interface FanOutDeps {
-  getClient: (name: string) => Promise<Client>;
+  withClient: <R>(name: string, run: (client: Client) => Promise<R>) => Promise<R>;
   recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
 }
 
@@ -33,7 +33,7 @@ export async function collectFrom<T>(
     names.map(async (name) => {
       const startedAt = Date.now();
       try {
-        return await fn(await deps.getClient(name), name);
+        return await deps.withClient(name, (client) => fn(client, name));
       } catch (err) {
         if (!lacksCapability(err)) {
           console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);

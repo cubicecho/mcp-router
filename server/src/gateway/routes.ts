@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -170,7 +171,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
   };
 
   const proxyDeps = {
-    getClient: (name: string) => manager.getClient(name),
+    withClient: <R>(name: string, run: (client: Client) => Promise<R>) => manager.withClient(name, run),
     recordToolCount: (name: string, count: number) => manager.recordToolCount(name, count),
     recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
       manager.recordActivity(name, entry),
@@ -248,7 +249,8 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       return current?.enabled ? enabledMembers(current, store) : [];
     };
     const workspaceDeps = {
-      getClient: (name: string) => manager.getClientForWorkspace(slug, name),
+      withClient: <R>(name: string, run: (client: Client) => Promise<R>) =>
+        manager.withClientForWorkspace(slug, name, run),
       recordToolCount: (name: string, count: number) =>
         manager.recordToolCount(workspaceInstanceKey(slug, name), count),
       // Activity is logged under the workspace-scoped instance key so it surfaces in

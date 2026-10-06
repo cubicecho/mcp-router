@@ -19,6 +19,7 @@ import type {
   WorkspaceMember,
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPError } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
@@ -229,6 +230,25 @@ const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
 };
 
 /**
+ * True when a remote downstream refused a request because the session this client
+ * holds is gone — the server restarted, or reclaimed the session on its own.
+ *
+ * The two statuses are the spec's: `404` to a request carrying a session id the
+ * server no longer knows, and `400` to one carrying none from a server that now
+ * wants one (a client that connected while the server was stateless). Either way
+ * the request was turned away before it was dispatched, so running it again on a
+ * fresh session cannot run it twice. The SDK's transport does not re-initialize on
+ * its own: it keeps the dead id and fails every later request with it.
+ */
+export function sessionLost(client: Client, cause: unknown): boolean {
+  if (!(cause instanceof StreamableHTTPError)) {
+    return false;
+  }
+  const held = (client.transport as { sessionId?: string } | undefined)?.sessionId;
+  return held === undefined ? cause.code === 400 : cause.code === 404;
+}
+
+/**
  * One downstream MCP client per managed instance, over `@cubicecho/agent-mcp-pool`.
  *
  * The pool owns the lifecycle — reconciling rows against live children, lazy
@@ -244,6 +264,10 @@ export class GatewayManager {
   /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
   private readonly activity = new Map<string, ActivityEntry[]>();
   private activitySeq = 0;
+  /** Requests running on each client right now, which a redial lets finish before it closes the client under them. */
+  private readonly inFlight = new WeakMap<Client, Set<Promise<unknown>>>();
+  /** The close of each client found holding a lost session, so a burst of requests failing on one closes it once. */
+  private readonly redials = new WeakMap<Client, Promise<void>>();
 
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
@@ -343,6 +367,59 @@ export class GatewayManager {
   }
 
   /**
+   * Run one downstream request against the instance's client, on a fresh
+   * connection if the one it had turns out to hold a session the downstream has
+   * dropped (see {@link sessionLost}).
+   *
+   * The pool cannot see this happen: a refused request does not close the
+   * transport, so the row stays `ready`, and a remote row is never idle-reaped —
+   * without the redial every request to that server fails until someone restarts
+   * it by hand, and an aggregate quietly lists its other members without it.
+   *
+   * @param run The request. Called a second time, with the new client, after a redial.
+   */
+  async withClient<T>(name: string, run: (client: Client) => Promise<T>): Promise<T> {
+    const client = await this.getClient(name);
+    if (this.redials.has(client)) {
+      // Already known dead and on its way out: the pool hands it back until the
+      // close lands, and a request started on it now would be cut off by that close.
+      return run(await this.redial(name, client));
+    }
+    const running = this.inFlight.get(client) ?? new Set();
+    this.inFlight.set(client, running);
+    const attempt = run(client);
+    running.add(attempt);
+    try {
+      return await attempt;
+    } catch (cause) {
+      if (!sessionLost(client, cause)) {
+        throw cause;
+      }
+      return run(await this.redial(name, client));
+    } finally {
+      running.delete(attempt);
+    }
+  }
+
+  /** Close a client whose session is gone and dial the instance again. */
+  private async redial(name: string, stale: Client): Promise<Client> {
+    let closed = this.redials.get(stale);
+    if (!closed) {
+      console.warn(`Server "${this.meta.get(name)?.config.name ?? name}" dropped its session; reconnecting`);
+      // The requests still out on the stale client get their own answer first: each
+      // is most likely the same refusal, and closing the client under one that the
+      // server did accept would fail a call that was about to succeed.
+      //
+      // Then `stop`, for the reason `restart` uses it: the row is left idle with no
+      // backoff, so the `getClient` below is the dial and a failure is its own 502.
+      closed = Promise.allSettled([...(this.inFlight.get(stale) ?? [])]).then(() => this.pool.stop(name));
+      this.redials.set(stale, closed);
+    }
+    await closed;
+    return this.getClient(name);
+  }
+
+  /**
    * The downstream's `instructions` as of its last connect, if it has ever
    * connected in this process.
    *
@@ -368,6 +445,11 @@ export class GatewayManager {
   /** Connect (spawning if needed) and return the workspace-scoped client for a server. */
   getClientForWorkspace(slug: string, serverName: string): Promise<Client> {
     return this.getClient(workspaceInstanceKey(slug, serverName));
+  }
+
+  /** {@link withClient} for a server's workspace-scoped instance. */
+  withClientForWorkspace<T>(slug: string, serverName: string, run: (client: Client) => Promise<T>): Promise<T> {
+    return this.withClient(workspaceInstanceKey(slug, serverName), run);
   }
 
   /**

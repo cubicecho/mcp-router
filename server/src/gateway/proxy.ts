@@ -139,7 +139,7 @@ export function toolErrorText(result: unknown): string {
 }
 
 export interface ProxyDeps {
-  getClient: (name: string) => Promise<Client>;
+  withClient: <R>(name: string, run: (client: Client) => Promise<R>) => Promise<R>;
   recordToolCount: (name: string, count: number) => void;
   recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
 }
@@ -231,7 +231,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
     { name: `mcp-router/${name}`, version: SERVER_VERSION },
     { capabilities: advertised, instructions: downstream.instructions },
   );
-  const client = () => deps.getClient(name);
+  const withClient = <R>(run: (client: Client) => Promise<R>) => deps.withClient(name, run);
 
   // A handler per surface this endpoint declares, and none for a surface it does
   // not. The SDK enforces the pairing — `setRequestHandler` refuses a method the
@@ -245,18 +245,15 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         // A missing capability is a definitive "has no tools" — clear any count
         // from a previous incarnation; any other failure propagates, and track()
         // converts it to an MCP error.
-        const result = await emptyOnMissing(async () => (await client()).listTools(req.params));
+        const result = await emptyOnMissing(() => withClient((c) => c.listTools(req.params)));
         deps.recordToolCount(name, result?.tools.length ?? 0);
         return result ?? { tools: [] };
       }),
     );
 
     server.setRequestHandler(CallToolRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params },
-        async () => (await (await client()).callTool(req.params)) as CallToolResult,
+      track(deps, name, { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params }, () =>
+        withClient(async (c) => (await c.callTool(req.params)) as CallToolResult),
       ),
     );
   }
@@ -268,7 +265,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         name,
         { via: 'direct', method: 'resources/list', params: req.params, failuresOnly: true },
         async () => {
-          return (await emptyOnMissing(async () => (await client()).listResources(req.params))) ?? { resources: [] };
+          return (await emptyOnMissing(() => withClient((c) => c.listResources(req.params)))) ?? { resources: [] };
         },
       ),
     );
@@ -280,7 +277,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         { via: 'direct', method: 'resources/templates/list', params: req.params, failuresOnly: true },
         async () => {
           return (
-            (await emptyOnMissing(async () => (await client()).listResourceTemplates(req.params))) ?? {
+            (await emptyOnMissing(() => withClient((c) => c.listResourceTemplates(req.params)))) ?? {
               resourceTemplates: [],
             }
           );
@@ -290,7 +287,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
       track(deps, name, { via: 'direct', method: 'resources/read', target: req.params.uri, params: req.params }, () =>
-        client().then((c) => c.readResource(req.params)),
+        withClient((c) => c.readResource(req.params)),
       ),
     );
   }
@@ -303,7 +300,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         deps,
         name,
         { via: 'direct', method: 'resources/subscribe', target: req.params.uri, params: req.params },
-        () => client().then((c) => c.subscribeResource(req.params)),
+        () => withClient((c) => c.subscribeResource(req.params)),
       ),
     );
 
@@ -312,7 +309,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         deps,
         name,
         { via: 'direct', method: 'resources/unsubscribe', target: req.params.uri, params: req.params },
-        () => client().then((c) => c.unsubscribeResource(req.params)),
+        () => withClient((c) => c.unsubscribeResource(req.params)),
       ),
     );
   }
@@ -320,13 +317,13 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
   if (advertised.prompts) {
     server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
       track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params, failuresOnly: true }, async () => {
-        return (await emptyOnMissing(async () => (await client()).listPrompts(req.params))) ?? { prompts: [] };
+        return (await emptyOnMissing(() => withClient((c) => c.listPrompts(req.params)))) ?? { prompts: [] };
       }),
     );
 
     server.setRequestHandler(GetPromptRequestSchema, async (req) =>
       track(deps, name, { via: 'direct', method: 'prompts/get', target: req.params.name, params: req.params }, () =>
-        client().then((c) => c.getPrompt(req.params)),
+        withClient((c) => c.getPrompt(req.params)),
       ),
     );
   }
@@ -339,7 +336,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         name,
         { via: 'direct', method: 'completion/complete', params: req.params, failuresOnly: true },
         async () => {
-          return (await emptyOnMissing(async () => (await client()).complete(req.params))) ?? EMPTY_COMPLETION;
+          return (await emptyOnMissing(() => withClient((c) => c.complete(req.params)))) ?? EMPTY_COMPLETION;
         },
       ),
     );
@@ -352,7 +349,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Dow
         name,
         { via: 'direct', method: 'logging/setLevel', target: req.params.level, params: req.params },
         async () => {
-          await emptyOnMissing(async () => (await client()).setLoggingLevel(req.params.level));
+          await emptyOnMissing(() => withClient((c) => c.setLoggingLevel(req.params.level)));
           return {};
         },
       ),
@@ -418,11 +415,8 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
     const { serverName, name } = route(req.params.name, 'tool');
     const params = { ...req.params, name };
-    return track(
-      deps,
-      serverName,
-      { via: 'aggregate', method: 'tools/call', target: name, params },
-      async () => (await (await deps.getClient(serverName)).callTool(params)) as CallToolResult,
+    return track(deps, serverName, { via: 'aggregate', method: 'tools/call', target: name, params }, () =>
+      deps.withClient(serverName, async (client) => (await client.callTool(params)) as CallToolResult),
     );
   });
 
@@ -456,7 +450,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     const { serverName, name: uri } = route(req.params.uri, 'resource');
     const params = { ...req.params, uri };
     return track(deps, serverName, { via: 'aggregate', method: 'resources/read', target: uri, params }, () =>
-      deps.getClient(serverName).then((client) => client.readResource(params)),
+      deps.withClient(serverName, (client) => client.readResource(params)),
     );
   });
 
@@ -472,7 +466,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     const { serverName, name } = route(req.params.name, 'prompt');
     const params = { ...req.params, name };
     return track(deps, serverName, { via: 'aggregate', method: 'prompts/get', target: name, params }, () =>
-      deps.getClient(serverName).then((client) => client.getPrompt(params)),
+      deps.withClient(serverName, (client) => client.getPrompt(params)),
     );
   });
 
@@ -491,7 +485,8 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
       { via: 'aggregate', method: 'completion/complete', target: full, params, failuresOnly: true },
       async () => {
         return (
-          (await emptyOnMissing(async () => (await deps.getClient(serverName)).complete(params))) ?? EMPTY_COMPLETION
+          (await emptyOnMissing(() => deps.withClient(serverName, (client) => client.complete(params)))) ??
+          EMPTY_COMPLETION
         );
       },
     );
@@ -501,7 +496,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     const { serverName, name: uri } = route(req.params.uri, 'resource');
     const params = { ...req.params, uri };
     return track(deps, serverName, { via: 'aggregate', method: 'resources/subscribe', target: uri, params }, () =>
-      deps.getClient(serverName).then((client) => client.subscribeResource(params)),
+      deps.withClient(serverName, (client) => client.subscribeResource(params)),
     );
   });
 
@@ -509,7 +504,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     const { serverName, name: uri } = route(req.params.uri, 'resource');
     const params = { ...req.params, uri };
     return track(deps, serverName, { via: 'aggregate', method: 'resources/unsubscribe', target: uri, params }, () =>
-      deps.getClient(serverName).then((client) => client.unsubscribeResource(params)),
+      deps.withClient(serverName, (client) => client.unsubscribeResource(params)),
     );
   });
 
