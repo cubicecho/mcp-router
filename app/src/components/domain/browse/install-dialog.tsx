@@ -1,69 +1,21 @@
-import {
-  type InstallRequest,
-  type RegistryKeyValueInput,
-  type RegistryServer,
-  serverNameSchema,
-} from '@mcp-router/shared';
+import { type InstallRequest, type RegistryServer, serverNameSchema } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
-import { type KeyValueRow, KeyValueRows, rowsToRecord } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value-rows';
 import { FormField } from '@/components/form-field';
 import { OptionSelect } from '@/components/option-select';
 import { Button } from '@/components/ui/button';
 import { suggestLocalName } from '@/lib/format';
+import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
+import { buildOptions, defaultEnvValues, defaultSelector } from '@/lib/registry-options';
+import { serverNameError } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 const FORM_ID = 'install-server-form';
-
-interface PackageOption {
-  selector: string;
-  label: string;
-  envVars: RegistryKeyValueInput[];
-}
-
-function buildOptions(server: RegistryServer): PackageOption[] {
-  const packages = (server.packages ?? []).map((pkg, index) => ({
-    selector: String(index),
-    label: `${pkg.registryType}: ${pkg.identifier}${pkg.version ? `@${pkg.version}` : ''}`,
-    envVars: pkg.environmentVariables ?? [],
-  }));
-  const remotes = (server.remotes ?? []).map((remote, index) => ({
-    selector: `remote:${index}`,
-    label: `${remote.type}: ${remote.url}`,
-    envVars: [],
-  }));
-  return [...packages, ...remotes];
-}
-
-/** Default: the first npm package, else the first package, else the first remote ('' when there is nothing). */
-function defaultSelector(server: RegistryServer): string {
-  const packages = server.packages ?? [];
-  const npmIndex = packages.findIndex((pkg) => pkg.registryType === 'npm');
-  if (npmIndex >= 0) {
-    return String(npmIndex);
-  }
-  if (packages.length > 0) {
-    return '0';
-  }
-  if ((server.remotes ?? []).length > 0) {
-    return 'remote:0';
-  }
-  return '';
-}
-
-/** One value per declared env var, in declaration order, prefilled from the registry's value or default. */
-function defaultEnvValues(envVars: RegistryKeyValueInput[]): string[] {
-  return envVars.map((envVar) => envVar.value ?? envVar.default ?? '');
-}
-
-function nameError(value: string): string | undefined {
-  const result = serverNameSchema.safeParse(value);
-  return result.success ? undefined : (result.error.issues[0]?.message ?? 'Invalid name');
-}
 
 interface InstallDialogProps {
   registry: string;
@@ -145,8 +97,8 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
             form={form}
             name="name"
             label="Local name"
-            description={`Route segment for this server: /mcp/${nameError(name) ? '…' : name}`}
-            validators={{ onChange: ({ value }) => nameError(value) }}
+            description={`Route segment for this server: /mcp/${serverNameError(name) ? '…' : name}`}
+            validators={{ onChange: ({ value }) => serverNameError(value) }}
           />
 
           {options.length > 1 && (

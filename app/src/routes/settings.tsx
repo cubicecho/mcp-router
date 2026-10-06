@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
+import { formatUptime } from '@/lib/format';
 import { useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
@@ -24,15 +25,6 @@ const CONFIG_TREE = `config/
 ├── registries.json      # { registries: [{ name, url }] }
 └── servers/
     └── <name>.json      # one file per installed server`;
-
-function formatUptime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
-  if (hours > 0) {
-    return `${hours}h ${minutes}m`;
-  }
-  return `${minutes}m ${Math.floor(seconds % 60)}s`;
-}
 
 /** Inline editor for the default idle timeout, entered in minutes. */
 function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {

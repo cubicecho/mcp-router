@@ -13,15 +13,10 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from '@/components/ui/icons';
 import type { CapabilityScope } from '@/lib/api';
 import { endpointPath } from '@/lib/endpoint';
-import { formatRelativeTime } from '@/lib/format';
+import { formatAbsoluteTime, formatRelativeTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { DataBlock } from './json-view';
-
-function formatAbsoluteTime(iso: string): string {
-  const date = new Date(iso);
-  return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
-}
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const [open, setOpen] = useState(false);
