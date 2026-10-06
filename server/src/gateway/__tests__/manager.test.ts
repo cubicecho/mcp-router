@@ -383,22 +383,22 @@ describe('GatewayManager lifecycle over the pool', () => {
     try {
       // Nothing has handshaken yet, and both arrive nowhere but in the initialize
       // result — so there is nothing to know and it does not go and find out.
-      expect(manager.instructions('echo')).toBeUndefined();
-      expect(manager.capabilities('echo')).toBeUndefined();
+      expect(manager.handshake('echo').instructions).toBeUndefined();
+      expect(manager.handshake('echo').capabilities).toBeUndefined();
       expect(manager.status('echo')?.state).toBe('stopped');
 
       await manager.getClient('echo');
-      expect(manager.instructions('echo')).toBe(ECHO_INSTRUCTIONS);
+      expect(manager.handshake('echo').instructions).toBe(ECHO_INSTRUCTIONS);
       // The fixture registers tools and nothing else, so that is what the 1:1
       // endpoint in front of it has to declare.
-      expect(manager.capabilities('echo')).toMatchObject({ tools: expect.anything() });
-      expect(manager.capabilities('echo')?.resources).toBeUndefined();
+      expect(manager.handshake('echo').capabilities).toMatchObject({ tools: expect.anything() });
+      expect(manager.handshake('echo').capabilities?.resources).toBeUndefined();
 
       // A changed command is a different server; its old guidance and its old
       // method list are not evidence about the new one.
       await manager.reconcile([echoConfig('echo', { env: { CHANGED: '1' } })]);
-      expect(manager.instructions('echo')).toBeUndefined();
-      expect(manager.capabilities('echo')).toBeUndefined();
+      expect(manager.handshake('echo').instructions).toBeUndefined();
+      expect(manager.handshake('echo').capabilities).toBeUndefined();
     } finally {
       await manager.stopAll();
     }
@@ -444,8 +444,8 @@ describe('GatewayManager lifecycle over the pool', () => {
       await manager.reconcile([remote({ UNUSED: '1' })]);
 
       expect(manager.status('remote')?.toolCount).toBe(1);
-      expect(manager.instructions('remote')).toBe(ECHO_INSTRUCTIONS);
-      expect(manager.capabilities('remote')).toMatchObject({ tools: expect.anything() });
+      expect(manager.handshake('remote').instructions).toBe(ECHO_INSTRUCTIONS);
+      expect(manager.handshake('remote').capabilities).toMatchObject({ tools: expect.anything() });
       await manager.getClient('remote');
       expect(initializes).toBe(1);
     } finally {

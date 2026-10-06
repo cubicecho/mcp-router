@@ -25,6 +25,7 @@ import { SERVER_VERSION } from '../version.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import { emptyOnMissing } from './capability.ts';
 import { collectFrom, type WithClient } from './fan-out.ts';
+import type { Handshake } from './handshake.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
 
@@ -203,30 +204,12 @@ async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: (
 }
 
 /**
- * What a 1:1 endpoint re-emits from the downstream's own initialize result. Both
- * travel nowhere else, so both are read from a connection rather than from config.
- */
-export interface DownstreamIdentity {
-  /**
-   * The downstream's own instructions, forwarded unchanged — nothing is renamed on
-   * this endpoint, so its guidance is true of it as written. Absent when the server
-   * has none, or has not connected yet.
-   */
-  instructions?: string;
-  /**
-   * What the downstream declared it supports. Absent when it has not connected, in
-   * which case the endpoint advertises everything it is able to relay instead.
-   */
-  capabilities?: ServerCapabilities;
-}
-
-/**
  * MCP server proxying a single downstream server 1:1 (used for /mcp/:name).
  *
- * @param downstream The server's own instructions and capabilities, as of its last
- *   connect. Empty for a server that has never connected in this process.
+ * @param downstream What the server said at its last connect. Its instructions are
+ *   forwarded unchanged, since nothing is renamed on this endpoint.
  */
-export function createProxyServer(name: string, deps: ProxyDeps, downstream: DownstreamIdentity = {}): Server {
+export function createProxyServer(name: string, deps: ProxyDeps, downstream: Handshake = {}): Server {
   const advertised = proxyCapabilities(downstream.capabilities);
   const server = new Server(
     { name: `mcp-router/${name}`, version: SERVER_VERSION },

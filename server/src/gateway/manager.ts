@@ -6,7 +6,6 @@ import {
   type McpServerState,
   type McpStatus,
   MINIMAL_CHILD_ENV,
-  type ServerCapabilities,
   sameConnection,
 } from '@cubicecho/agent-mcp-pool';
 import type {
@@ -24,6 +23,7 @@ import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
+import type { Handshake } from './handshake.ts';
 import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
@@ -41,26 +41,14 @@ interface ServerMeta {
   /** Tool count from the last proxied `tools/list`; cleared when the connection is restarted. */
   toolCount?: number;
   /**
-   * The downstream's own `instructions`, as of the last connect.
+   * What the downstream said at its last connect.
    *
-   * Kept because it is only ever knowable from a live connection — it arrives in
-   * the initialize result and nowhere else — while the proxy `Server` that has to
-   * re-emit it is constructed when a client initializes, which for the aggregate
-   * is long before most of its members have been spawned. Cleared with the config
-   * it was read under; a server whose command or env changed is a different
-   * server, and stale guidance is worse than none.
+   * Kept because the proxy `Server` that re-emits it is built when a client
+   * initializes, which for an aggregate is long before most members have spawned.
+   * Cleared with the config it was read under: a server whose command or env
+   * changed is a different server, and stale guidance is worse than none.
    */
-  instructions?: string;
-  /**
-   * What the downstream declared it supports, as of the last connect.
-   *
-   * Kept for the same reason and on the same terms as `instructions`: it arrives
-   * in the initialize result and nowhere else, while the 1:1 proxy `Server` that
-   * has to re-declare it is constructed per client session. Cleared with the
-   * config it was read under — a server whose command changed may well answer a
-   * different set of methods.
-   */
-  capabilities?: ServerCapabilities;
+  handshake?: Handshake;
   /** Count of proxied calls recorded via recordActivity this process (reset on restart). */
   callCount: number;
   /** ISO timestamp of the most recent recorded call. */
@@ -246,12 +234,10 @@ export class GatewayManager {
         continue;
       }
       if (needsRestart(meta.config, next)) {
-        // The pool is about to replace the child; a count, an instructions string
-        // and a capability set read from the old one stop being true at the same
-        // moment.
+        // The pool is about to replace the child; a count and a handshake read
+        // from the old one stop being true at the same moment.
         meta.toolCount = undefined;
-        meta.instructions = undefined;
-        meta.capabilities = undefined;
+        meta.handshake = undefined;
       }
       meta.config = next;
     }
@@ -291,8 +277,7 @@ export class GatewayManager {
   private observe(key: InstanceKey, client: Client): void {
     const meta = this.meta.get(key);
     if (meta) {
-      meta.instructions = client.getInstructions();
-      meta.capabilities = client.getServerCapabilities();
+      meta.handshake = { instructions: client.getInstructions(), capabilities: client.getServerCapabilities() };
     }
   }
 
@@ -323,26 +308,15 @@ export class GatewayManager {
   }
 
   /**
-   * The downstream's `instructions` as of its last connect, if it has ever
-   * connected in this process.
+   * What the downstream said at its last connect; empty if it has not connected
+   * in this process.
    *
    * Deliberately does not connect: the aggregate endpoint asks this for every
    * member while a client is initializing, and spawning a dozen children to
    * write a preamble the session may never act on is not a trade worth making.
-   * The 1:1 endpoint, which has exactly one server and is certain to use it,
-   * connects first and then asks.
    */
-  instructions(key: InstanceKey): string | undefined {
-    return this.meta.get(key)?.instructions;
-  }
-
-  /**
-   * The downstream's declared capabilities as of its last connect, if it has ever
-   * connected in this process. Deliberately does not connect, for the same reason
-   * {@link instructions} does not.
-   */
-  capabilities(key: InstanceKey): ServerCapabilities | undefined {
-    return this.meta.get(key)?.capabilities;
+  handshake(key: InstanceKey): Handshake {
+    return this.meta.get(key)?.handshake ?? {};
   }
 
   /** {@link withClient} for a server's workspace-scoped instance. */

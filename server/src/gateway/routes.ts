@@ -8,11 +8,12 @@ import type { ConfigStore } from '../config/store.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import { BoundedEventStore } from './event-store.ts';
 import type { WithClient } from './fan-out.ts';
+import type { Handshake } from './handshake.ts';
 import { workspaceInstanceKey } from './instance-key.ts';
 import type { GatewayManager } from './manager.ts';
 import { enabledMembers } from './members.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
-import { createAggregateServer, createProxyServer, type DownstreamIdentity, mergeInstructions } from './proxy.ts';
+import { createAggregateServer, createProxyServer, mergeInstructions } from './proxy.ts';
 
 export interface McpRouterDeps {
   store: ConfigStore;
@@ -187,9 +188,9 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
    * relay: the failure belongs on the first request that needs the server, where it carries its
    * own status and the child's stderr, not on initialize.
    */
-  const proxyIdentity = async (name: string): Promise<DownstreamIdentity> => {
+  const connectedHandshake = async (name: string): Promise<Handshake> => {
     await manager.getClient(name).catch(() => {});
-    return { instructions: manager.instructions(name), capabilities: manager.capabilities(name) };
+    return manager.handshake(name);
   };
 
   /**
@@ -202,7 +203,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
    *   for a workspace, whose members are keyed `w:<slug>:<server>`).
    */
   const aggregateInstructions = (members: [name: string, key: string][]): string | undefined =>
-    mergeInstructions(members.map(([name, key]) => [name, manager.instructions(key)]));
+    mergeInstructions(members.map(([name, key]) => [name, manager.handshake(key).instructions]));
 
   router.all('/', async (req, res) => {
     if (await resume(req, res)) {
@@ -292,7 +293,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await start(
       req,
       res,
-      async () => createProxyServer(name, proxyDeps, await proxyIdentity(name)),
+      async () => createProxyServer(name, proxyDeps, await connectedHandshake(name)),
       // 1:1 endpoint: no namespacing, forward the owning server's notifications as-is.
       (server) =>
         manager.onNotification((key, notification) => {
