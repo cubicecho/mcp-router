@@ -1,6 +1,6 @@
-import type { ActivityEntry } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { errorDetailMessage } from '../errors.ts';
+import type { ActivityRecord } from './activity-log.ts';
 import { lacksCapability } from './capability.ts';
 
 /**
@@ -12,7 +12,7 @@ export type WithClient = <R>(name: string, run: (client: Client) => Promise<R>) 
 
 export interface FanOutDeps {
   withClient: WithClient;
-  recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
+  recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
 /**

@@ -22,6 +22,7 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import { errorDetailMessage } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
+import type { ActivityRecord } from './activity-log.ts';
 import { emptyOnMissing } from './capability.ts';
 import { collectFrom, type WithClient } from './fan-out.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
@@ -141,7 +142,7 @@ export function toolErrorText(result: unknown): string {
 export interface ProxyDeps {
   withClient: WithClient;
   recordToolCount: (name: string, count: number) => void;
-  recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
+  recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
 interface TrackContext {

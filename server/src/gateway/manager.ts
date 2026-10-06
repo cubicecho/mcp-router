@@ -23,6 +23,7 @@ import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
+import type { ActivityRecord } from './activity-log.ts';
 import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
@@ -480,7 +481,7 @@ export class GatewayManager {
   }
 
   /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
-  recordActivity(key: InstanceKey, entry: Omit<ActivityEntry, 'id'>): void {
+  recordActivity(key: InstanceKey, entry: ActivityRecord): void {
     // Only log for a currently-managed server: an in-flight call that completes
     // after the server was removed (reconcile drops it from both maps) must not
     // resurrect a stray activity entry that then leaks forever. A call that

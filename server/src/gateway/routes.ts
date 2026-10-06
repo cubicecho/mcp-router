@@ -5,6 +5,7 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
+import type { ActivityRecord } from './activity-log.ts';
 import { BoundedEventStore } from './event-store.ts';
 import type { WithClient } from './fan-out.ts';
 import { workspaceInstanceKey } from './instance-key.ts';
@@ -173,8 +174,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
   const proxyDeps = {
     withClient: ((name, run) => manager.withClient(name, run)) satisfies WithClient,
     recordToolCount: (name: string, count: number) => manager.recordToolCount(name, count),
-    recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
-      manager.recordActivity(name, entry),
+    recordActivity: (name: string, entry: ActivityRecord) => manager.recordActivity(name, entry),
   };
 
   /**
@@ -254,7 +254,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
         manager.recordToolCount(workspaceInstanceKey(slug, name), count),
       // Activity is logged under the workspace-scoped instance key so it surfaces in
       // the workspace's own Activity view, isolated from the base server's log.
-      recordActivity: (name: string, entry: Parameters<GatewayManager['recordActivity']>[1]) =>
+      recordActivity: (name: string, entry: ActivityRecord) =>
         manager.recordActivity(workspaceInstanceKey(slug, name), entry),
       serverNames: memberNames,
     };
