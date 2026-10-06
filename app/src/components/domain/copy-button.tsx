@@ -18,8 +18,13 @@ export function CopyButton({ text, label, className }: { text: string; label: st
   };
 
   return (
-    <ActionButton variant="ghost" size="icon-sm" label={label} className={className} onClick={copy}>
-      {copied ? <CheckIcon /> : <CopyIcon />}
-    </ActionButton>
+    <ActionButton
+      variant="ghost"
+      size="icon-sm"
+      label={label}
+      className={className}
+      onClick={copy}
+      iconSlot={copied ? <CheckIcon /> : <CopyIcon />}
+    />
   );
 }

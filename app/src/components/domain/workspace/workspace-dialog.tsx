@@ -198,17 +198,18 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       size="lg"
       title={isEdit ? `Edit ${workspace.name}` : 'New workspace'}
       description="A workspace exposes a custom aggregate of the servers you choose at its own URL, with optional per-workspace parameter overrides. Each server runs isolated per workspace, independent of its global enabled state."
-      footerActions={(close) => (
+      footerActionsSlot={(close) => (
         <>
-          <Button type="button" variant="ghost" onClick={close}>
-            Cancel
-          </Button>
-          <Button type="submit" form={FORM_ID} disabled={pending || !slugValid}>
-            {pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create workspace'}
-          </Button>
+          <Button type="button" variant="ghost" onClick={close} content="Cancel" />
+          <Button
+            type="submit"
+            form={FORM_ID}
+            disabled={pending || !slugValid}
+            content={pending ? 'Saving…' : isEdit ? 'Save changes' : 'Create workspace'}
+          />
         </>
       )}
-      content={
+      contentSlot={
         <form id={FORM_ID} onSubmit={handleSubmit} className="flex flex-col gap-5">
           <FormField
             label="Workspace name"
@@ -219,14 +220,14 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                 {isEdit && slugValid && slug !== workspace.slug && ' — renaming moves the URL'}
               </>
             }
-            control={
+            controlSlot={
               <Input value={name} placeholder="Acme backend" onChange={(event) => setName(event.target.value)} />
             }
           />
 
           <FormField
             label="Description (optional)"
-            control={
+            controlSlot={
               <Input
                 value={description}
                 placeholder="What this workspace is for"
@@ -239,14 +240,14 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
             orientation="horizontal"
             label="Enabled"
             description="When off, the workspace's endpoint returns 404 without deleting it."
-            control={<Switch checked={enabled} onCheckedChange={setEnabled} />}
+            controlSlot={<Switch checked={enabled} onCheckedChange={setEnabled} />}
           />
 
           <FormField
             asGroup
             label="Servers"
             description="Choose which servers this workspace exposes. Expand a server to override its parameters for this workspace only."
-            control={
+            controlSlot={
               <div className="divide-y rounded-md border">
                 {(servers ?? []).length === 0 && (
                   <p className="p-3 text-sm text-muted-foreground">No servers installed yet.</p>
@@ -315,10 +316,14 @@ function MemberRow({
         </div>
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>
         {included && (
-          <Button type="button" variant="ghost" size="sm" onClick={onExpandToggle}>
-            {expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
-            Overrides
-          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={onExpandToggle}
+            iconSlot={expanded ? <ChevronDownIcon /> : <ChevronRightIcon />}
+            content="Overrides"
+          />
         )}
       </div>
 
@@ -330,7 +335,7 @@ function MemberRow({
                 label="Env overrides (KEY=VALUE per line)"
                 labelClassName="text-xs"
                 description="Merged over the server's env; workspace values win."
-                control={
+                controlSlot={
                   <Textarea
                     rows={3}
                     className="resize-y font-mono text-xs"
@@ -344,7 +349,7 @@ function MemberRow({
                 label="Arguments (one per line)"
                 labelClassName="text-xs"
                 description="Replaces the server's args entirely when set."
-                control={
+                controlSlot={
                   <Textarea
                     rows={3}
                     className="resize-y font-mono text-xs"
@@ -361,7 +366,7 @@ function MemberRow({
                 label="URL override"
                 labelClassName="text-xs"
                 description="Replaces the server's URL for this workspace — e.g. append a path to scope a shared upstream. Leave as the base URL to inherit it."
-                control={
+                controlSlot={
                   <Input
                     className="font-mono text-xs"
                     placeholder={baseUrl ?? 'https://example.com/mcp'}
@@ -374,7 +379,7 @@ function MemberRow({
                 label="Header overrides (KEY=VALUE per line)"
                 labelClassName="text-xs"
                 description="Merged over the server's request headers."
-                control={
+                controlSlot={
                   <Textarea
                     rows={3}
                     className="resize-y font-mono text-xs"

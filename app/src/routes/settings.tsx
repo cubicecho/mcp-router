@@ -67,9 +67,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
       </form.Field>
       <span className="text-muted-foreground">minutes</span>
       <form.AppForm>
-        <form.SubmitButton size="sm" variant="outline" disabled={!changed}>
-          Save
-        </form.SubmitButton>
+        <form.SubmitButton size="sm" variant="outline" disabled={!changed} content="Save" />
       </form.AppForm>
     </form>
   );
@@ -93,13 +91,13 @@ function SettingsPage() {
       title="Settings"
       description="Router status and configuration."
       width="prose"
-      content={
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <CardLayout
             title="Router"
             loading={status.isPending}
             contentClassName="flex flex-col gap-3"
-            content={
+            contentSlot={
               status.error ? (
                 <QueryError error={status.error} onRetry={() => status.refetch()} what="status" />
               ) : (
@@ -141,7 +139,7 @@ function SettingsPage() {
               </>
             }
             contentClassName="flex flex-col gap-4"
-            content={
+            contentSlot={
               <>
                 <pre className="overflow-x-auto rounded-md bg-muted p-3 font-mono text-xs leading-relaxed">
                   {`config/
@@ -155,9 +153,12 @@ function SettingsPage() {
                   reload — it re-reads everything from disk and reconciles running servers.
                 </p>
                 <div>
-                  <Button disabled={reload.isPending} onClick={handleReload}>
-                    <RotateCwIcon /> {reload.isPending ? 'Reloading…' : 'Reload config'}
-                  </Button>
+                  <Button
+                    disabled={reload.isPending}
+                    onClick={handleReload}
+                    iconSlot={<RotateCwIcon />}
+                    content={reload.isPending ? 'Reloading…' : 'Reload config'}
+                  />
                 </div>
               </>
             }

@@ -77,15 +77,19 @@ export function KeyValueRows({
             size="icon-sm"
             label={`Remove ${row.key || unnamed}`}
             onClick={() => onChange(rows.filter((_, i) => i !== index))}
-          >
-            <XIcon />
-          </ActionButton>
+            iconSlot={<XIcon />}
+          />
         </div>
       ))}
       <div>
-        <Button type="button" variant="outline" size="sm" onClick={() => onChange([...rows, { key: '', value: '' }])}>
-          <PlusIcon /> {addLabel}
-        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={() => onChange([...rows, { key: '', value: '' }])}
+          iconSlot={<PlusIcon />}
+          content={addLabel}
+        />
       </div>
     </div>
   );

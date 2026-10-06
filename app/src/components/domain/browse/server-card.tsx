@@ -40,7 +40,7 @@ export function RegistryServerCard({
       contentClassName="flex-1"
       title={<span className="break-all text-base">{server.title ?? server.name}</span>}
       description={<span className="break-all font-mono text-xs">{server.name}</span>}
-      action={
+      actionSlot={
         <span className="flex shrink-0 items-center gap-1">
           {installed && (
             <Badge className="border-transparent bg-emerald-500/15 text-emerald-600 dark:text-emerald-400">
@@ -50,7 +50,7 @@ export function RegistryServerCard({
           {server.version && <Badge variant="outline">v{server.version}</Badge>}
         </span>
       }
-      content={
+      contentSlot={
         <>
           {server.description && <p className="line-clamp-3 text-sm text-muted-foreground">{server.description}</p>}
           {distribution.length > 0 && (
@@ -68,25 +68,27 @@ export function RegistryServerCard({
         </>
       }
       footerClassName="justify-start"
-      footer={
+      footerSlot={
         <span className="flex items-center gap-2">
           {installed ? (
-            <Button size="sm" variant="outline" asChild>
-              <Link to="/servers/$name" params={{ name: installed.config.name }}>
-                View {installed.config.name}
-              </Link>
-            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              linkSlot={<Link to="/servers/$name" params={{ name: installed.config.name }} />}
+              content={`View ${installed.config.name}`}
+            />
           ) : (
-            <Button size="sm" onClick={() => setInstallOpen(true)}>
-              <DownloadIcon /> Install
-            </Button>
+            <Button size="sm" onClick={() => setInstallOpen(true)} iconSlot={<DownloadIcon />} content="Install" />
           )}
           {linkUrl && (
-            <Button size="sm" variant="ghost" asChild>
-              <a href={linkUrl} target="_blank" rel="noreferrer">
-                <ExternalLinkIcon /> {server.websiteUrl ? 'Website' : 'Repository'}
-              </a>
-            </Button>
+            <Button
+              size="sm"
+              variant="ghost"
+              // biome-ignore lint/a11y/useAnchorContent: Button draws its content inside the link it is handed
+              linkSlot={<a href={linkUrl} target="_blank" rel="noreferrer" />}
+              iconSlot={<ExternalLinkIcon />}
+              content={server.websiteUrl ? 'Website' : 'Repository'}
+            />
           )}
         </span>
       }

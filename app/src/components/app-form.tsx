@@ -14,7 +14,7 @@ import { Textarea } from '@/components/ui/textarea';
 export const { fieldContext, formContext, useFieldContext, useFormContext } = createFormHookContexts();
 
 /** Everything `FormField` draws, minus the two parts a bound field works out for itself. */
-export type FieldProps = Omit<ComponentProps<typeof FormField>, 'control' | 'error'>;
+export type FieldProps = Omit<ComponentProps<typeof FormField>, 'controlSlot' | 'error'>;
 
 /**
  * The keys above, as values, so a call site can spread control props and field props into one
@@ -88,7 +88,8 @@ export function useFieldError(): string | undefined {
   return messageOf(errors[0]);
 }
 
-type InputFieldProps = FieldProps & Omit<ComponentProps<typeof Input>, 'id' | 'value' | 'onChange' | 'onBlur'>;
+type InputFieldProps = FieldProps &
+  Omit<ComponentProps<typeof Input>, 'id' | 'value' | 'defaultValue' | 'onChange' | 'onChangeText' | 'onBlur'>;
 
 /** A text input. For numbers see {@link NumberField}, which keeps the store numeric. */
 function BoundInputField(props: InputFieldProps) {
@@ -100,12 +101,12 @@ function BoundInputField(props: InputFieldProps) {
     <FormField
       {...fieldProps}
       error={error}
-      control={
+      controlSlot={
         <Input
           {...input}
           value={field.state.value ?? ''}
           onBlur={field.handleBlur}
-          onChange={(event) => field.handleChange(event.target.value)}
+          onChangeText={(text) => field.handleChange(text)}
         />
       }
     />
@@ -127,7 +128,7 @@ function parseNumber(text: string): number | null {
 }
 
 type NumberFieldProps = FieldProps &
-  Omit<ComponentProps<typeof Input>, 'id' | 'value' | 'onChange' | 'onBlur' | 'type'>;
+  Omit<ComponentProps<typeof Input>, 'id' | 'value' | 'defaultValue' | 'onChange' | 'onChangeText' | 'onBlur' | 'type'>;
 
 /**
  * A number input whose store stays numeric.
@@ -150,13 +151,15 @@ function BoundNumberField(props: NumberFieldProps) {
   const [draft, setDraft] = useState<string | undefined>(undefined);
 
   const stored = field.state.value ?? null;
-  const value = draft !== undefined && parseNumber(draft) === stored ? draft : (stored ?? '');
+  // `String`, not the raw number: the DOM `<input>` this was written against took either, and
+  // `TextInput` takes only a string — so the registry's `Input` does too, on both platforms.
+  const value = draft !== undefined && parseNumber(draft) === stored ? draft : stored === null ? '' : String(stored);
 
   return (
     <FormField
       {...fieldProps}
       error={error}
-      control={
+      controlSlot={
         <Input
           // `inputMode` is what gets a phone keypad; `type` is what gets the spinners and the
           // browser's own numeric parsing. They are not the same knob and both are wanted.
@@ -169,9 +172,9 @@ function BoundNumberField(props: NumberFieldProps) {
             setDraft(undefined);
             field.handleBlur();
           }}
-          onChange={(event) => {
-            setDraft(event.target.value);
-            field.handleChange(parseNumber(event.target.value));
+          onChangeText={(text) => {
+            setDraft(text);
+            field.handleChange(parseNumber(text));
           }}
         />
       }
@@ -194,7 +197,8 @@ const TEXTAREA_BOX: Record<number, string | undefined> = {
   6: 'h-34',
 };
 
-type TextareaFieldProps = FieldProps & Omit<ComponentProps<typeof Textarea>, 'id' | 'value' | 'onChange' | 'onBlur'>;
+type TextareaFieldProps = FieldProps &
+  Omit<ComponentProps<typeof Textarea>, 'id' | 'value' | 'defaultValue' | 'onChange' | 'onChangeText' | 'onBlur'>;
 
 function BoundTextareaField(props: TextareaFieldProps) {
   const [fieldProps, textarea] = splitProps(props);
@@ -209,12 +213,12 @@ function BoundTextareaField(props: TextareaFieldProps) {
       loadingClassName={TEXTAREA_BOX[textarea.rows ?? 0] ?? 'h-16'}
       {...fieldProps}
       error={error}
-      control={
+      controlSlot={
         <Textarea
           {...textarea}
           value={field.state.value ?? ''}
           onBlur={field.handleBlur}
-          onChange={(event) => field.handleChange(event.target.value)}
+          onChangeText={(text) => field.handleChange(text)}
         />
       }
     />
@@ -223,8 +227,18 @@ function BoundTextareaField(props: TextareaFieldProps) {
 
 type SelectFieldProps = FieldProps & {
   options: readonly SelectEntry[];
-  placeholder?: string;
-  triggerClassName?: string;
+  placeholder?: string | undefined;
+  triggerClassName?: string | undefined;
+  /** A search box above the list, for the long one. `OptionSelect`'s own prop, passed through. */
+  searchable?: boolean | undefined;
+  searchPlaceholder?: string | undefined;
+  /**
+   * Told when the menu opens, so a field whose list is fetched can ask for it then. Named here
+   * as well as on the control because a form is where most fetched lists are, and a field that
+   * had to drop to `FormField`'s function form to get one word through would be the hand-wiring
+   * this component exists to end.
+   */
+  onOpenChange?: ((open: boolean) => void) | undefined;
 };
 
 /**
@@ -234,7 +248,15 @@ type SelectFieldProps = FieldProps & {
  * on the root instead, silently, leaving a trigger with no `aria-invalid` and an error message
  * nothing points at.
  */
-function BoundSelectField({ options, placeholder, triggerClassName, ...rest }: SelectFieldProps) {
+function BoundSelectField({
+  options,
+  placeholder,
+  triggerClassName,
+  searchable,
+  searchPlaceholder,
+  onOpenChange,
+  ...rest
+}: SelectFieldProps) {
   const field = useFieldContext<string>();
   const error = useFieldError();
 
@@ -242,7 +264,7 @@ function BoundSelectField({ options, placeholder, triggerClassName, ...rest }: S
     <FormField
       {...rest}
       error={error}
-      control={(wired) => (
+      controlSlot={(wired) => (
         <OptionSelect
           {...wired}
           options={options}
@@ -250,6 +272,9 @@ function BoundSelectField({ options, placeholder, triggerClassName, ...rest }: S
           onValueChange={field.handleChange}
           onBlur={field.handleBlur}
           placeholder={placeholder}
+          searchable={searchable}
+          searchPlaceholder={searchPlaceholder}
+          onOpenChange={onOpenChange}
           className={triggerClassName}
         />
       )}
@@ -258,7 +283,7 @@ function BoundSelectField({ options, placeholder, triggerClassName, ...rest }: S
 }
 
 type CheckboxFieldProps = FieldProps &
-  Omit<ComponentProps<typeof Checkbox>, 'id' | 'checked' | 'onCheckedChange' | 'onBlur'>;
+  Omit<ComponentProps<typeof Checkbox>, 'id' | 'checked' | 'defaultChecked' | 'onCheckedChange' | 'onBlur'>;
 
 /** Horizontal by default: a 16px box on a line of its own above its caption is not a field. */
 function BoundCheckboxField(props: CheckboxFieldProps) {
@@ -271,7 +296,7 @@ function BoundCheckboxField(props: CheckboxFieldProps) {
       orientation="horizontal"
       {...fieldProps}
       error={error}
-      control={
+      controlSlot={
         <Checkbox
           {...checkbox}
           checked={field.state.value ?? false}
@@ -284,7 +309,7 @@ function BoundCheckboxField(props: CheckboxFieldProps) {
 }
 
 type SwitchFieldProps = FieldProps &
-  Omit<ComponentProps<typeof Switch>, 'id' | 'checked' | 'onCheckedChange' | 'onBlur'>;
+  Omit<ComponentProps<typeof Switch>, 'id' | 'checked' | 'defaultChecked' | 'onCheckedChange' | 'onBlur'>;
 
 function BoundSwitchField(props: SwitchFieldProps) {
   const [fieldProps, control] = splitProps(props);
@@ -297,7 +322,7 @@ function BoundSwitchField(props: SwitchFieldProps) {
       loadingClassName="h-5 w-8 rounded-full"
       {...fieldProps}
       error={error}
-      control={
+      controlSlot={
         <Switch
           {...control}
           checked={field.state.value ?? false}
@@ -309,10 +334,9 @@ function BoundSwitchField(props: SwitchFieldProps) {
   );
 }
 
-type SubmitButtonProps = Omit<ComponentProps<typeof Button>, 'type' | 'children'> & {
-  children?: ReactNode;
+type SubmitButtonProps = Omit<ComponentProps<typeof Button>, 'type' | 'loading' | 'loadingLabel'> & {
   /** What it says mid-flight. The label is replaced, not appended to. */
-  pendingLabel?: ReactNode;
+  pendingLabel?: string | undefined;
 };
 
 /**
@@ -329,7 +353,7 @@ type SubmitButtonProps = Omit<ComponentProps<typeof Button>, 'type' | 'children'
  * `<Button type="submit">` that re-derives `canSubmit` and `isSubmitting`, which is the
  * duplication this exists to remove.
  */
-export function SubmitButton({ children = 'Save', pendingLabel = 'Saving…', disabled, ...props }: SubmitButtonProps) {
+export function SubmitButton({ content = 'Save', pendingLabel = 'Saving…', disabled, ...props }: SubmitButtonProps) {
   const form = useFormContext();
   const canSubmit = useStore(form.store, (state) => state.canSubmit);
   const isSubmitting = useStore(form.store, (state) => state.isSubmitting);
@@ -337,9 +361,14 @@ export function SubmitButton({ children = 'Save', pendingLabel = 'Saving…', di
   // Ahead of the spread as well as OR-ed, so that neither a caller nor a future prop can put a
   // `disabled={false}` back over the store's answer.
   return (
-    <Button type="submit" {...props} disabled={disabled || !canSubmit || isSubmitting}>
-      {isSubmitting ? pendingLabel : children}
-    </Button>
+    <Button
+      type="submit"
+      {...props}
+      disabled={disabled || !canSubmit}
+      loading={isSubmitting}
+      loadingLabel={pendingLabel}
+      content={content}
+    />
   );
 }
 
@@ -406,13 +435,13 @@ type Validate<TValue> = (context: { value: TValue; fieldApi: AnyFieldApi; signal
  * type in full.
  */
 type Validators<TValues, TName extends DeepKeys<TValues>> = {
-  onMount?: Validate<DeepValue<TValues, TName>>;
-  onChange?: Validate<DeepValue<TValues, TName>>;
-  onChangeAsync?: Validate<DeepValue<TValues, TName>>;
-  onBlur?: Validate<DeepValue<TValues, TName>>;
-  onBlurAsync?: Validate<DeepValue<TValues, TName>>;
-  onSubmit?: Validate<DeepValue<TValues, TName>>;
-  onSubmitAsync?: Validate<DeepValue<TValues, TName>>;
+  onMount?: Validate<DeepValue<TValues, TName>> | undefined;
+  onChange?: Validate<DeepValue<TValues, TName>> | undefined;
+  onChangeAsync?: Validate<DeepValue<TValues, TName>> | undefined;
+  onBlur?: Validate<DeepValue<TValues, TName>> | undefined;
+  onBlurAsync?: Validate<DeepValue<TValues, TName>> | undefined;
+  onSubmit?: Validate<DeepValue<TValues, TName>> | undefined;
+  onSubmitAsync?: Validate<DeepValue<TValues, TName>> | undefined;
 };
 
 type Listen<TValue> = (context: { value: TValue; fieldApi: AnyFieldApi }) => void;
@@ -432,15 +461,15 @@ type Listen<TValue> = (context: { value: TValue; fieldApi: AnyFieldApi }) => voi
  * this registry builds.
  */
 type Listeners<TValues, TName extends DeepKeys<TValues>> = {
-  onMount?: Listen<DeepValue<TValues, TName>>;
-  onUnmount?: Listen<DeepValue<TValues, TName>>;
-  onChange?: Listen<DeepValue<TValues, TName>>;
+  onMount?: Listen<DeepValue<TValues, TName>> | undefined;
+  onUnmount?: Listen<DeepValue<TValues, TName>> | undefined;
+  onChange?: Listen<DeepValue<TValues, TName>> | undefined;
   /** How long to wait after the last change before running `onChange`, in milliseconds. */
-  onChangeDebounceMs?: number;
-  onBlur?: Listen<DeepValue<TValues, TName>>;
+  onChangeDebounceMs?: number | undefined;
+  onBlur?: Listen<DeepValue<TValues, TName>> | undefined;
   /** How long to wait after the last blur before running `onBlur`, in milliseconds. */
-  onBlurDebounceMs?: number;
-  onSubmit?: Listen<DeepValue<TValues, TName>>;
+  onBlurDebounceMs?: number | undefined;
+  onSubmit?: Listen<DeepValue<TValues, TName>> | undefined;
 };
 
 /**
@@ -469,10 +498,10 @@ type FormBinding<TForm extends BindableForm, TName extends DeepKeys<ValuesOf<TFo
   form: TForm;
   /** A key of the form's values. Checked: `naem` is a type error, not a field that stays empty. */
   name: TName;
-  validators?: Validators<ValuesOf<TForm>, TName>;
+  validators?: Validators<ValuesOf<TForm>, TName> | undefined;
   /** How long to wait before running the async validators, in milliseconds. */
-  asyncDebounceMs?: number;
-  listeners?: Listeners<ValuesOf<TForm>, TName>;
+  asyncDebounceMs?: number | undefined;
+  listeners?: Listeners<ValuesOf<TForm>, TName> | undefined;
 };
 
 /**
@@ -525,9 +554,9 @@ export function bindToForm<TProps extends object, TValue = unknown>(
     // what it is protecting.
     const Subscribe = form.Field as ComponentType<{
       name: unknown;
-      validators?: unknown;
-      asyncDebounceMs?: number;
-      listeners?: unknown;
+      validators?: unknown | undefined;
+      asyncDebounceMs?: number | undefined;
+      listeners?: unknown | undefined;
       children: (field: AnyFieldApi) => ReactNode;
     }>;
 

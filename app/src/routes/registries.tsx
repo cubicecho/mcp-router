@@ -41,7 +41,7 @@ function AddRegistryForm() {
     <CardLayout
       title="Add registry"
       description="Any service implementing the MCP registry API (GET /v0/servers)."
-      content={
+      contentSlot={
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -66,9 +66,7 @@ function AddRegistryForm() {
             validators={{ onSubmit: ({ value }) => registryFieldError('url', value) }}
           />
           <form.AppForm>
-            <form.SubmitButton className="mt-[1.375rem]" pendingLabel="Adding…">
-              <PlusIcon /> Add
-            </form.SubmitButton>
+            <form.SubmitButton className="mt-[1.375rem]" pendingLabel="Adding…" iconSlot={<PlusIcon />} content="Add" />
           </form.AppForm>
         </form>
       }
@@ -85,7 +83,7 @@ function RegistriesPage() {
     <PageLayout
       title="Registries"
       description="Sources to browse and install MCP servers from."
-      content={
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState query={registries} what="registries" count={data ? 1 : 0} />
 
@@ -129,9 +127,8 @@ function RegistriesPage() {
                             onError: toastApiError,
                           })
                         }
-                      >
-                        <Trash2Icon className="text-destructive" />
-                      </ConfirmButton>
+                        iconSlot={<Trash2Icon className="text-destructive" />}
+                      />
                     </TableCell>
                   </TableRow>
                 ))}

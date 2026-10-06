@@ -42,14 +42,14 @@ function TokenForm() {
     <div className="flex min-h-screen items-center justify-center p-4">
       <CardLayout
         className="w-full max-w-sm"
-        icon={<KeyRoundIcon />}
+        iconSlot={<KeyRoundIcon />}
         title="Authentication required"
         description={
           <>
             Enter the router token (from <code>MCP_ROUTER_TOKEN</code> or <code>settings.json</code>).
           </>
         }
-        content={
+        contentSlot={
           <form
             onSubmit={(event) => {
               event.preventDefault();
@@ -61,7 +61,7 @@ function TokenForm() {
               {(field) => (
                 <FormField
                   label="Token"
-                  control={
+                  controlSlot={
                     <PasswordInput
                       id="token"
                       autoFocus
@@ -77,9 +77,7 @@ function TokenForm() {
               )}
             </form.Field>
             <form.AppForm>
-              <form.SubmitButton disabled={empty} pendingLabel="Unlocking…">
-                Unlock
-              </form.SubmitButton>
+              <form.SubmitButton disabled={empty} pendingLabel="Unlocking…" content="Unlock" />
             </form.AppForm>
           </form>
         }

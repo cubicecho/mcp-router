@@ -74,31 +74,43 @@ function ServerDetailPage() {
 
   return (
     <PageLayout
-      icon={
-        <ActionButton asChild variant="ghost" size="icon-sm" label="Back to servers" tooltip={false}>
-          <Link to="/">
-            <ArrowLeftIcon />
-          </Link>
-        </ActionButton>
+      iconSlot={
+        <ActionButton
+          variant="ghost"
+          size="icon-sm"
+          label="Back to servers"
+          tooltip={false}
+          linkSlot={<Link to="/" />}
+          iconSlot={<ArrowLeftIcon />}
+        />
       }
       title={server?.config.displayName ?? name}
       description={server?.config.description}
       loading={query.isPending}
-      content={
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState query={query} what="server" count={server ? 1 : 0} rows={1} />
           {server && (
             <>
               <CardLayout
                 title="Overview"
-                action={
+                actionSlot={
                   <span className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                      <PencilIcon /> Edit
-                    </Button>
-                    <Button variant="outline" size="sm" disabled={restart.isPending} onClick={handleRestart}>
-                      <RotateCwIcon /> Restart
-                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditOpen(true)}
+                      iconSlot={<PencilIcon />}
+                      content="Edit"
+                    />
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      disabled={restart.isPending}
+                      onClick={handleRestart}
+                      iconSlot={<RotateCwIcon />}
+                      content="Restart"
+                    />
                     <ConfirmButton
                       variant="outline"
                       size="sm"
@@ -108,13 +120,13 @@ function ServerDetailPage() {
                       title={`Delete ${name}?`}
                       description="This stops the server, deletes its config file, and removes its install directory. This cannot be undone."
                       onConfirm={handleDelete}
-                    >
-                      <Trash2Icon className="text-destructive" /> Delete
-                    </ConfirmButton>
+                      iconSlot={<Trash2Icon className="text-destructive" />}
+                      content="Delete"
+                    />
                   </span>
                 }
                 contentClassName="flex flex-col gap-3"
-                content={
+                contentSlot={
                   <>
                     <DetailRow label="Endpoint">
                       <span className="flex items-center gap-1">
@@ -177,7 +189,7 @@ function ServerDetailPage() {
                 <CardLayout
                   title="Environment variables"
                   description="Passed to the server process. Secret values are masked; changes take effect after a restart."
-                  content={
+                  contentSlot={
                     <EnvEditor
                       key={name}
                       env={server.config.env}

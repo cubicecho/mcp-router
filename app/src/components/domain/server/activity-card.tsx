@@ -88,14 +88,24 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
   return (
     <CardLayout
       title="Activity"
-      action={
+      actionSlot={
         <span className="flex items-center gap-2">
-          <Button variant="outline" size="sm" disabled={isRefetching} onClick={() => refetch()}>
-            <RotateCwIcon /> Refresh
-          </Button>
-          <Button variant="outline" size="sm" disabled={clear.isPending || entries.length === 0} onClick={handleClear}>
-            <Trash2Icon /> Clear
-          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={isRefetching}
+            onClick={() => refetch()}
+            iconSlot={<RotateCwIcon />}
+            content="Refresh"
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            disabled={clear.isPending || entries.length === 0}
+            onClick={handleClear}
+            iconSlot={<Trash2Icon />}
+            content="Clear"
+          />
         </span>
       }
       description={
@@ -104,7 +114,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
           : "Recent MCP calls proxied through this workspace's members (kept in memory; the newest 200 per member are retained)."
       }
       loading={isPending}
-      content={
+      contentSlot={
         <>
           {error && <QueryError error={error} onRetry={() => refetch()} what="activity" />}
           {data && entries.length === 0 && (

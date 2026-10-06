@@ -51,28 +51,35 @@ function WorkspaceDetailPage() {
 
   return (
     <PageLayout
-      icon={
-        <ActionButton asChild variant="ghost" size="icon-sm" label="Back to workspaces" tooltip={false}>
-          <Link to="/workspaces">
-            <ArrowLeftIcon />
-          </Link>
-        </ActionButton>
+      iconSlot={
+        <ActionButton
+          variant="ghost"
+          size="icon-sm"
+          label="Back to workspaces"
+          tooltip={false}
+          linkSlot={<Link to="/workspaces" />}
+          iconSlot={<ArrowLeftIcon />}
+        />
       }
       title={workspace?.name ?? slug}
       description={workspace?.description}
       loading={query.isPending}
-      content={
+      contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <QueryState query={query} what="workspace" count={workspace ? 1 : 0} rows={1} />
           {workspace && (
             <>
               <CardLayout
                 title="Overview"
-                action={
+                actionSlot={
                   <span className="flex items-center gap-2">
-                    <Button variant="outline" size="sm" onClick={() => setEditOpen(true)}>
-                      <PencilIcon /> Edit
-                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => setEditOpen(true)}
+                      iconSlot={<PencilIcon />}
+                      content="Edit"
+                    />
                     <ConfirmButton
                       variant="outline"
                       size="sm"
@@ -82,13 +89,13 @@ function WorkspaceDetailPage() {
                       title={`Delete workspace ${workspace.name}?`}
                       description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                       onConfirm={handleDelete}
-                    >
-                      <Trash2Icon className="text-destructive" /> Delete
-                    </ConfirmButton>
+                      iconSlot={<Trash2Icon className="text-destructive" />}
+                      content="Delete"
+                    />
                   </span>
                 }
                 contentClassName="flex flex-col gap-3"
-                content={
+                contentSlot={
                   <>
                     <DetailRow label="Endpoint">
                       <span className="flex items-center gap-1">

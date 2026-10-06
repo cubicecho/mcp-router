@@ -65,7 +65,7 @@ export function PackageInstallCard({
     <CardLayout
       title={copy.title}
       description={copy.description}
-      content={
+      contentSlot={
         <form
           onSubmit={(event) => {
             event.preventDefault();
@@ -109,9 +109,7 @@ export function PackageInstallCard({
               </form.Field>
             </div>
             <form.AppForm>
-              <form.SubmitButton pendingLabel="Installing…" disabled={!pkg.trim() || !nameValid}>
-                Install
-              </form.SubmitButton>
+              <form.SubmitButton pendingLabel="Installing…" disabled={!pkg.trim() || !nameValid} content="Install" />
             </form.AppForm>
           </div>
         </form>

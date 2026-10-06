@@ -1,21 +1,11 @@
 import { Link } from '@tanstack/react-router';
-import {
-  CompassIcon,
-  LayersIcon,
-  LibraryIcon,
-  LockIcon,
-  MoonIcon,
-  RouteIcon,
-  ServerIcon,
-  SettingsIcon,
-  SunIcon,
-} from 'lucide-react';
-import { type ReactNode, useState } from 'react';
+import { CompassIcon, LayersIcon, LibraryIcon, LockIcon, RouteIcon, ServerIcon, SettingsIcon } from 'lucide-react';
+import type { ReactNode } from 'react';
 import { ActionButton } from '@/components/action-button';
 import { Skeleton } from '@/components/ui/skeleton';
+import { ThemePicker } from '@/components/ui/theme-picker';
 import { clearToken, requireAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
-import { isDark, setDark } from '@/lib/theme';
 
 const NAV_ITEMS = [
   { to: '/', label: 'Servers', icon: ServerIcon },
@@ -24,26 +14,6 @@ const NAV_ITEMS = [
   { to: '/registries', label: 'Registries', icon: LibraryIcon },
   { to: '/settings', label: 'Settings', icon: SettingsIcon },
 ] as const;
-
-function ThemeToggle() {
-  const [dark, setDarkState] = useState(isDark);
-
-  const toggle = () => {
-    setDark(!dark);
-    setDarkState(!dark);
-  };
-
-  return (
-    <ActionButton
-      variant="ghost"
-      size="icon-sm"
-      label={dark ? 'Switch to light theme' : 'Switch to dark theme'}
-      onClick={toggle}
-    >
-      {dark ? <SunIcon /> : <MoonIcon />}
-    </ActionButton>
-  );
-}
 
 /** Clears the stored bearer token and brings the token gate back — for shared machines. */
 function LockButton() {
@@ -65,9 +35,8 @@ function LockButton() {
       label="Lock (forget the stored token)"
       hint="Lock — forget the stored token"
       onClick={lock}
-    >
-      <LockIcon />
-    </ActionButton>
+      iconSlot={<LockIcon />}
+    />
   );
 }
 
@@ -104,7 +73,9 @@ function MobileNav() {
         </Link>
       ))}
       <LockButton />
-      <ThemeToggle />
+      <div className="w-24">
+        <ThemePicker variant="compact" />
+      </div>
     </nav>
   );
 }
@@ -134,9 +105,11 @@ export function AppLayout({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <div className="mt-auto flex items-center justify-end gap-1 px-4 py-3">
+        <div className="mt-auto flex items-center gap-1 px-4 py-3">
+          <div className="min-w-0 flex-1">
+            <ThemePicker variant="compact" />
+          </div>
           <LockButton />
-          <ThemeToggle />
         </div>
       </aside>
       <div className="flex min-w-0 flex-1 flex-col">

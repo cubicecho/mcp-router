@@ -51,8 +51,10 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
     <CardLayout
       title="Servers"
       description="The servers this workspace exposes. Disable one to drop it from the aggregate without removing its overrides. Edit the workspace to change membership or per-workspace parameters."
-      empty={<p className="text-sm text-muted-foreground">This workspace has no servers yet. Edit it to add some.</p>}
-      content={
+      emptySlot={
+        <p className="text-sm text-muted-foreground">This workspace has no servers yet. Edit it to add some.</p>
+      }
+      contentSlot={
         memberEntries.length > 0 ? (
           <ul className="flex flex-col divide-y">
             {memberEntries.map(([name, member]) => {

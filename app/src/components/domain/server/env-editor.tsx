@@ -119,9 +119,8 @@ export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorPro
                   size="icon-sm"
                   label={isRevealed ? `Hide ${row.key}` : `Reveal ${row.key}`}
                   onClick={() => toggleReveal(row.id)}
-                >
-                  {isRevealed ? <EyeOffIcon /> : <EyeIcon />}
-                </ActionButton>
+                  iconSlot={isRevealed ? <EyeOffIcon /> : <EyeIcon />}
+                />
               )}
               {(row.isNew || meta === undefined) && (
                 <ActionButton
@@ -129,21 +128,23 @@ export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorPro
                   size="icon-sm"
                   label={`Remove ${row.key || 'new variable'}`}
                   onClick={() => removeRow(row.id)}
-                >
-                  <XIcon />
-                </ActionButton>
+                  iconSlot={<XIcon />}
+                />
               )}
             </div>
           </div>
         );
       })}
       <div className="flex items-center justify-between pt-1">
-        <Button type="button" variant="outline" size="sm" onClick={addRow}>
-          <PlusIcon /> Add variable
-        </Button>
-        <Button type="button" size="sm" disabled={saving} onClick={handleSave}>
-          {saving ? 'Saving…' : 'Save'}
-        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={addRow}
+          iconSlot={<PlusIcon />}
+          content="Add variable"
+        />
+        <Button type="button" size="sm" disabled={saving} onClick={handleSave} content={saving ? 'Saving…' : 'Save'} />
       </div>
     </div>
   );

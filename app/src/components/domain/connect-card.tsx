@@ -115,16 +115,19 @@ export function ConnectCard({
     <CardLayout
       title="Connect a client"
       description={description}
-      action={
+      actionSlot={
         authEnabled &&
-        token && (
-          <Button variant="outline" size="sm" onClick={() => setRevealed((v) => !v)}>
-            {revealed ? <EyeOffIcon /> : <EyeIcon />}
-            {revealed ? 'Hide token' : 'Reveal token'}
-          </Button>
+        !!token && (
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setRevealed((v) => !v)}
+            iconSlot={revealed ? <EyeOffIcon /> : <EyeIcon />}
+            content={revealed ? 'Hide token' : 'Reveal token'}
+          />
         )
       }
-      content={
+      contentSlot={
         <>
           <Tabs defaultValue="claude-code">
             <TabsList>

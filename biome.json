@@ -79,6 +79,9 @@
     {
       "includes": [
         "app/src/components/ui/**",
+        "app/cubeui-*.css",
+        "app/src/lib/color.ts",
+        "app/src/lib/utils.ts",
         "app/src/components/action-button.tsx",
         "app/src/components/app-form.tsx",
         "app/src/components/card-layout.tsx",
