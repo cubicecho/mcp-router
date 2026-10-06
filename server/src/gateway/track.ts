@@ -43,6 +43,16 @@ export interface TrackContext {
  */
 export async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext, run: () => Promise<T>): Promise<T> {
   const startedAt = Date.now();
+  const record = (outcome: Pick<ActivityRecord, 'ok' | 'result' | 'error'>): void =>
+    deps.recordActivity(name, {
+      at: new Date().toISOString(),
+      via: ctx.via,
+      method: ctx.method,
+      target: ctx.target,
+      durationMs: Date.now() - startedAt,
+      params: ctx.params,
+      ...outcome,
+    });
   try {
     const result = await run();
     // tools/call resolves (does not throw) for tool-level errors, flagging them
@@ -52,29 +62,10 @@ export async function track<T>(deps: ProxyDeps, name: string, ctx: TrackContext,
     if (ctx.failuresOnly && !failed) {
       return result;
     }
-    deps.recordActivity(name, {
-      at: new Date().toISOString(),
-      via: ctx.via,
-      method: ctx.method,
-      target: ctx.target,
-      ok: !failed,
-      durationMs: Date.now() - startedAt,
-      params: ctx.params,
-      result,
-      error: failed ? toolErrorText(result) : undefined,
-    });
+    record({ ok: !failed, result, error: failed ? toolErrorText(result) : undefined });
     return result;
   } catch (err) {
-    deps.recordActivity(name, {
-      at: new Date().toISOString(),
-      via: ctx.via,
-      method: ctx.method,
-      target: ctx.target,
-      ok: false,
-      durationMs: Date.now() - startedAt,
-      params: ctx.params,
-      error: errorDetailMessage(err),
-    });
+    record({ ok: false, error: errorDetailMessage(err) });
     throw toMcpError(err);
   }
 }
