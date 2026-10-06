@@ -492,14 +492,14 @@ notifications, DELETE termination. These are the remaining items.
   `ready`, and a remote row is never idle-reaped: the server stayed unreachable
   until something else replaced the connection (70 minutes, the one time it was
   measured), and an aggregate or workspace listed its other members without it. `GatewayManager.withClient(name, run)` is now how every
-  proxied, fanned-out and UI request reaches a downstream: on `sessionLost` it
-  lets the requests already out on the stale client settle, `stop`s the row
-  once, dials again and runs the request a second time. Safe for `tools/call`
+  proxied, fanned-out and UI request reaches a downstream: on a lost session
+  the requests already out on the stale client are left to settle, the row is
+  redialled once and the request runs a second time. Safe for `tools/call`
   because both statuses are a refusal before dispatch. Covered in
   `gateway/__tests__/manager.test.ts` against a real stateful HTTP server (404,
   400, a concurrent burst, and an unrelated failure that must not redial). Spec:
-  a client that gets `404` for its session id MUST start a new session. Upstream:
-  [agent-mcp-pool#98](https://github.com/cubicecho/agent-mcp-pool/pull/98) adds
-  the same redial to the pool as `use(id, run)` and inside its own `call()`;
-  once that is released, `withClient` becomes a call to `pool.use()` and
-  `sessionLost`, `inFlight` and `redials` go.
+  a client that gets `404` for its session id MUST start a new session. The redial
+  itself now lives in the pool
+  ([agent-mcp-pool#98](https://github.com/cubicecho/agent-mcp-pool/pull/98),
+  released in 3.6.0) and `withClient` is a call to `pool.use()`, keeping only
+  the router's error wording and its read of the handshake.
