@@ -1,8 +1,9 @@
+import type { ServerPrompt } from '@mcp-router/shared';
 import { useState } from 'react';
 import { FormField } from '@/components/form-field';
 import { EmptyState } from '@/components/page';
 import { Input } from '@/components/ui/input';
-import type { CapabilityScope, ServerPrompt } from '@/lib/api';
+import type { CapabilityScope } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 

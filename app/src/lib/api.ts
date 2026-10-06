@@ -13,7 +13,10 @@ import type {
   ResourceReadRequest,
   ResourceReadResponse,
   RouterStatus,
+  ServerPromptsResponse,
+  ServerResourcesResponse,
   ServerStatus,
+  ServerToolsResponse,
   ToolCallRequest,
   ToolCallResponse,
   UpdateServerRequest,
@@ -128,40 +131,8 @@ function scopeBase(scope: CapabilityScope): string {
     : `/api/workspaces/${encodeURIComponent(scope.slug)}`;
 }
 
-/** One tool of a downstream server, as reported by MCP tools/list. */
-export interface ServerTool {
-  name: string;
-  description?: string;
-  inputSchema?: unknown;
-}
-
-export interface ServerToolsResponse {
-  tools: ServerTool[];
-}
-
 export function getTools(scope: CapabilityScope): Promise<ServerToolsResponse> {
   return request(`${scopeBase(scope)}/tools`);
-}
-
-/** One resource of a downstream server, as reported by MCP resources/list. */
-export interface ServerResource {
-  uri: string;
-  name?: string;
-  description?: string;
-  mimeType?: string;
-}
-
-/** One resource template of a downstream server, as reported by MCP resources/templates/list. */
-export interface ServerResourceTemplate {
-  uriTemplate: string;
-  name?: string;
-  description?: string;
-  mimeType?: string;
-}
-
-export interface ServerResourcesResponse {
-  resources: ServerResource[];
-  resourceTemplates: ServerResourceTemplate[];
 }
 
 export function getResources(scope: CapabilityScope): Promise<ServerResourcesResponse> {
@@ -170,17 +141,6 @@ export function getResources(scope: CapabilityScope): Promise<ServerResourcesRes
 
 export function readResource(scope: CapabilityScope, body: ResourceReadRequest): Promise<ResourceReadResponse> {
   return request(`${scopeBase(scope)}/resources/read`, { method: 'POST', body });
-}
-
-/** One prompt of a downstream server, as reported by MCP prompts/list. */
-export interface ServerPrompt {
-  name: string;
-  description?: string;
-  arguments?: { name: string; description?: string; required?: boolean }[];
-}
-
-export interface ServerPromptsResponse {
-  prompts: ServerPrompt[];
 }
 
 export function getPrompts(scope: CapabilityScope): Promise<ServerPromptsResponse> {

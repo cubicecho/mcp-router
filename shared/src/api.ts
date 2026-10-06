@@ -93,6 +93,64 @@ export const activityResponseSchema = z.object({
 });
 export type ActivityResponse = z.infer<typeof activityResponseSchema>;
 
+// --- GET /api/servers/:name/{tools,resources,prompts} (and the same under /api/workspaces/:slug) ---
+
+/** One tool of a downstream server, as reported by MCP tools/list. */
+export const serverToolSchema = z
+  .object({
+    name: z.string(),
+    description: z.string().optional(),
+    inputSchema: z.unknown().optional(),
+  })
+  .passthrough();
+export type ServerTool = z.infer<typeof serverToolSchema>;
+
+export const serverToolsResponseSchema = z.object({ tools: z.array(serverToolSchema) });
+export type ServerToolsResponse = z.infer<typeof serverToolsResponseSchema>;
+
+/** One resource of a downstream server, as reported by MCP resources/list. */
+export const serverResourceSchema = z
+  .object({
+    uri: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    mimeType: z.string().optional(),
+  })
+  .passthrough();
+export type ServerResource = z.infer<typeof serverResourceSchema>;
+
+/** One resource template of a downstream server, as reported by MCP resources/templates/list. */
+export const serverResourceTemplateSchema = z
+  .object({
+    uriTemplate: z.string(),
+    name: z.string().optional(),
+    description: z.string().optional(),
+    mimeType: z.string().optional(),
+  })
+  .passthrough();
+export type ServerResourceTemplate = z.infer<typeof serverResourceTemplateSchema>;
+
+export const serverResourcesResponseSchema = z.object({
+  resources: z.array(serverResourceSchema),
+  resourceTemplates: z.array(serverResourceTemplateSchema),
+});
+export type ServerResourcesResponse = z.infer<typeof serverResourcesResponseSchema>;
+
+/** One prompt of a downstream server, as reported by MCP prompts/list. */
+export const serverPromptSchema = z
+  .object({
+    name: z.string(),
+    description: z.string().optional(),
+    arguments: z
+      .array(z.object({ name: z.string(), description: z.string().optional(), required: z.boolean().optional() }))
+      .optional(),
+  })
+  .passthrough();
+export type ServerPrompt = z.infer<typeof serverPromptSchema>;
+
+export const serverPromptsResponseSchema = z.object({ prompts: z.array(serverPromptSchema) });
+export type ServerPromptsResponse = z.infer<typeof serverPromptsResponseSchema>;
+
 // --- POST /api/servers/:name/tools/call ---
 
 /** Run one tool of a downstream server from the UI. */

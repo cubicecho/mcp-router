@@ -1,7 +1,8 @@
+import type { ServerTool } from '@mcp-router/shared';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import type { CapabilityScope, ServerTool } from '@/lib/api';
+import type { CapabilityScope } from '@/lib/api';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
