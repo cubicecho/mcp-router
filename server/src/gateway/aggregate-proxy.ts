@@ -1,7 +1,6 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
   CallToolRequestSchema,
   CompleteRequestSchema,
@@ -103,7 +102,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
       'tool',
       req.params.name,
       (name) => ({ ...req.params, name }),
-      async (client, params) => (await client.callTool(params)) as CallToolResult,
+      (client, params) => client.callTool(params),
     ),
   );
 
