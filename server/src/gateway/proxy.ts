@@ -23,7 +23,7 @@ import {
 import { errorDetailMessage } from '../errors.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { emptyOnMissing } from './capability.ts';
-import { collectFrom } from './fan-out.ts';
+import { collectFrom, type WithClient } from './fan-out.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
 
@@ -139,7 +139,7 @@ export function toolErrorText(result: unknown): string {
 }
 
 export interface ProxyDeps {
-  withClient: <R>(name: string, run: (client: Client) => Promise<R>) => Promise<R>;
+  withClient: WithClient;
   recordToolCount: (name: string, count: number) => void;
   recordActivity: (name: string, entry: Omit<ActivityEntry, 'id'>) => void;
 }
