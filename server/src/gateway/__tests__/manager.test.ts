@@ -210,6 +210,16 @@ describe('GatewayManager workspaces', () => {
     expect(manager.status(workspaceInstanceKey('acme', 'gh'))?.config.enabled).toBe(false);
   });
 
+  it('refuses a client for a disabled workspace instance', async () => {
+    const manager = new GatewayManager(() => settings);
+    await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {} }, { enabled: false })]);
+
+    await expect(manager.getClient(workspaceInstanceKey('acme', 'gh'))).rejects.toMatchObject({
+      status: 404,
+      message: 'Server "w:acme:gh" is disabled',
+    });
+  });
+
   it('drops workspace instances whose base server no longer exists', async () => {
     const manager = new GatewayManager(() => settings);
     await manager.reconcile([stdioConfig('gh')], [workspace({ gh: {}, ghost: {} })]);
