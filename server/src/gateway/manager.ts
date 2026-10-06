@@ -321,7 +321,7 @@ export class GatewayManager {
   /**
    * Connect (spawning if needed) and return the downstream client for the given
    * instance key. Resets the idle timer. For base servers the key is the server
-   * name; for workspace-scoped instances use {@link getClientForWorkspace}.
+   * name; a workspace-scoped instance is keyed by {@link workspaceInstanceKey}.
    */
   async getClient(name: string): Promise<Client> {
     let client: Client;
@@ -397,11 +397,6 @@ export class GatewayManager {
    */
   capabilities(name: string): ServerCapabilities | undefined {
     return this.meta.get(name)?.capabilities;
-  }
-
-  /** Connect (spawning if needed) and return the workspace-scoped client for a server. */
-  getClientForWorkspace(slug: string, serverName: string): Promise<Client> {
-    return this.getClient(workspaceInstanceKey(slug, serverName));
   }
 
   /** {@link withClient} for a server's workspace-scoped instance. */

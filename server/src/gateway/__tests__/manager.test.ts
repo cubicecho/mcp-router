@@ -644,7 +644,7 @@ describe('GatewayManager lifecycle over the pool', () => {
     await manager.reconcile([echoConfig('echo')], [workspace]);
     try {
       await manager.getClient('echo');
-      await manager.getClientForWorkspace('acme', 'echo');
+      await manager.getClient(workspaceInstanceKey('acme', 'echo'));
 
       const base = manager.status('echo')?.pid;
       const scoped = manager.status(workspaceInstanceKey('acme', 'echo'))?.pid;
