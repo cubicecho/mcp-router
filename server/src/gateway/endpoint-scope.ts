@@ -1,8 +1,9 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
+import type { AggregateDeps } from './aggregate-proxy.ts';
 import { type InstanceKey, workspaceInstanceKey } from './instance-key.ts';
+import { mergeInstructions } from './instructions.ts';
 import type { GatewayManager } from './manager.ts';
 import { namespaceNotification, pushNotification } from './notifications.ts';
-import { type AggregateDeps, mergeInstructions } from './proxy.ts';
 
 /** For one endpoint: which server names it exposes, and which instance each one reaches. */
 export interface EndpointScope {

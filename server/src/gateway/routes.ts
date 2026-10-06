@@ -1,6 +1,8 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
+import { createAggregateServer } from './aggregate-proxy.ts';
+import { createProxyServer } from './direct-proxy.ts';
 import {
   type EndpointScope,
   globalScope,
@@ -13,7 +15,6 @@ import type { Handshake } from './handshake.ts';
 import type { GatewayManager } from './manager.ts';
 import { enabledMembers } from './members.ts';
 import { pushNotification } from './notifications.ts';
-import { createAggregateServer, createProxyServer } from './proxy.ts';
 import { SessionRegistry } from './session-registry.ts';
 
 export interface McpRouterDeps {

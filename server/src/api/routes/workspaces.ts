@@ -20,7 +20,7 @@ import { collectFrom } from '../../gateway/fan-out.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
-import { toolCallFailed, toolErrorText } from '../../gateway/proxy.ts';
+import { toolCallFailed, toolErrorText } from '../../gateway/tool-result.ts';
 import { runUiCall, type UiCallContext } from '../calls.ts';
 import type { ApiDeps } from '../deps.ts';
 
