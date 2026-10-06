@@ -6,14 +6,10 @@ import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DescriptionList, PropertyRow } from '@/components/description-list';
-import { ConnectCard } from '@/components/domain/connect-card';
-import { ActivityCard } from '@/components/domain/server/activity-card';
+import { CapabilityTabs } from '@/components/domain/capability-tabs';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
-import { PromptsCard } from '@/components/domain/server/prompts-card';
-import { ResourcesCard } from '@/components/domain/server/resources-card';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
-import { ToolsCard } from '@/components/domain/server/tools-card';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { SettingRow } from '@/components/setting-row';
@@ -22,7 +18,6 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
@@ -221,34 +216,7 @@ function ServerDetailPage() {
                 />
               )}
 
-              <Tabs defaultValue="tools">
-                <TabsList>
-                  <TabsTrigger value="tools">Tools</TabsTrigger>
-                  <TabsTrigger value="resources">Resources</TabsTrigger>
-                  <TabsTrigger value="prompts">Prompts</TabsTrigger>
-                  <TabsTrigger value="activity">Activity</TabsTrigger>
-                  <TabsTrigger value="connect">Connect</TabsTrigger>
-                </TabsList>
-                <TabsContent value="tools">
-                  <ToolsCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="resources">
-                  <ResourcesCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="prompts">
-                  <PromptsCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="activity">
-                  <ActivityCard scope={scope} />
-                </TabsContent>
-                <TabsContent value="connect">
-                  <ConnectCard
-                    endpoint={endpoint}
-                    label={name}
-                    description={`Point an MCP client directly at ${name} (tools keep their original names).`}
-                  />
-                </TabsContent>
-              </Tabs>
+              <CapabilityTabs scope={scope} />
 
               {editOpen && <AddServerDialog key={name} open server={server} onOpenChange={setEditOpen} />}
             </>
