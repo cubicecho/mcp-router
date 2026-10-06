@@ -32,8 +32,6 @@ export const queryKeys = {
   capabilityActivity: (scope: CapabilityScope) => [...scopeKey(scope), 'activity'] as const,
   registries: ['registries'] as const,
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
-  registryServerDetail: (registry: string, serverName: string) =>
-    ['registries', registry, 'servers', serverName] as const,
   workspaces: ['workspaces'] as const,
   workspace: (slug: string) => ['workspaces', slug] as const,
 };

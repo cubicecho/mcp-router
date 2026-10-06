@@ -34,12 +34,10 @@ function urlError(value: string): string | undefined {
 export function AddServerDialog({
   open,
   onOpenChange,
-  onSaved,
   server,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onSaved?: (name: string) => void;
   /** When provided, the dialog edits this server (prefilled) instead of creating one. */
   server?: ServerStatus;
 }) {
@@ -88,7 +86,6 @@ export function AddServerDialog({
           });
           toast.success(`Updated ${server.config.name}`);
           onOpenChange(false);
-          onSaved?.(server.config.name);
           return;
         }
         const body: InstallRequest = {
@@ -101,7 +98,6 @@ export function AddServerDialog({
         const status = await install.mutateAsync(body);
         toast.success(`Added ${status.config.name}`);
         onOpenChange(false);
-        onSaved?.(status.config.name);
       } catch (error) {
         toastApiError(error);
       }

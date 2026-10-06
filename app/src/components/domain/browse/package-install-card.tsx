@@ -12,18 +12,16 @@ import { toastApiError } from '@/lib/toast';
 
 type Ecosystem = 'npm' | 'pypi';
 
-const COPY: Record<Ecosystem, { title: string; description: string; packagePlaceholder: string; runner: string }> = {
+const COPY: Record<Ecosystem, { title: string; description: string; packagePlaceholder: string }> = {
   npm: {
     title: 'Install from npm',
     description: 'Install any npm package that provides an MCP server binary.',
     packagePlaceholder: '@modelcontextprotocol/server-everything',
-    runner: 'node',
   },
   pypi: {
     title: 'Install from PyPI',
     description: 'Run any PyPI package that provides an MCP server, via uvx.',
     packagePlaceholder: 'mcp-server-fetch',
-    runner: 'uvx',
   },
 };
 

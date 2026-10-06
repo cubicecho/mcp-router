@@ -8,8 +8,6 @@ import type {
   PromptGetResponse,
   Registry,
   RegistryListResponse,
-  RegistryServer,
-  RegistryServerEntry,
   ResourceReadRequest,
   ResourceReadResponse,
   RouterStatus,
@@ -201,16 +199,6 @@ export function searchRegistryServers(
   }
   const suffix = query.size > 0 ? `?${query.toString()}` : '';
   return request(`/api/registries/${encodeURIComponent(registry)}/servers${suffix}`);
-}
-
-export async function getRegistryServerDetail(registry: string, serverName: string): Promise<RegistryServer> {
-  // Tolerate both the bare server object and the { server, _meta } entry wrapper.
-  const data = await request<RegistryServer | RegistryServerEntry>(
-    `/api/registries/${encodeURIComponent(registry)}/servers/${encodeURIComponent(serverName)}`,
-  );
-  return 'server' in data && typeof data.server === 'object'
-    ? (data as RegistryServerEntry).server
-    : (data as RegistryServer);
 }
 
 // --- workspaces ---
