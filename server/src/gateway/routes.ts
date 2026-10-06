@@ -5,15 +5,20 @@ import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
-import type { ActivityRecord } from './activity-log.ts';
-import type { WithClient } from './downstream.ts';
+import {
+  type EndpointScope,
+  globalScope,
+  relayNotifications,
+  scopedDeps,
+  scopedInstructions,
+  workspaceScope,
+} from './endpoint-scope.ts';
 import { BoundedEventStore } from './event-store.ts';
 import type { Handshake } from './handshake.ts';
-import { workspaceInstanceKey } from './instance-key.ts';
 import type { GatewayManager } from './manager.ts';
 import { enabledMembers } from './members.ts';
-import { namespaceNotification, pushNotification } from './notifications.ts';
-import { createAggregateServer, createProxyServer, mergeInstructions } from './proxy.ts';
+import { pushNotification } from './notifications.ts';
+import { createAggregateServer, createProxyServer } from './proxy.ts';
 
 export interface McpRouterDeps {
   store: ConfigStore;
@@ -172,60 +177,36 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await transport.handleRequest(req, res, req.body);
   };
 
-  const proxyDeps = {
-    withClient: ((name, run) => manager.withClient(name, run)) satisfies WithClient,
-    recordToolCount: (name: string, count: number) => manager.recordToolCount(name, count),
-    recordActivity: (name: string, entry: ActivityRecord) => manager.recordActivity(name, entry),
-  };
+  const everyServer = globalScope(manager);
 
   /**
    * What a 1:1 session re-emits from the downstream's own handshake, connecting first to get it.
    *
-   * `instructions` and `capabilities` travel only in the initialize result, so this is the one
-   * chance to have them — and this endpoint is a client that asked for exactly this server, so
-   * the spawn it costs is one the session was going to pay anyway. A downstream that will not
-   * connect still gets its session, and falls back to advertising everything the proxy can
-   * relay: the failure belongs on the first request that needs the server, where it carries its
-   * own status and the child's stderr, not on initialize.
+   * This endpoint is a client that asked for exactly this server, so the spawn it costs is one
+   * the session was going to pay anyway. A downstream that will not connect still gets its
+   * session, and falls back to advertising everything the proxy can relay: the failure belongs
+   * on the first request that needs the server, where it carries its own status and the child's
+   * stderr, not on initialize.
    */
   const connectedHandshake = async (name: string): Promise<Handshake> => {
     await manager.getClient(name).catch(() => {});
     return manager.handshake(name);
   };
 
-  /**
-   * The merged instructions for an aggregate session, from whatever its members have already
-   * said. Never connects: spawning every member to write a preamble the session may never act
-   * on is the trade this endpoint exists to avoid, so a member not yet spawned in this process
-   * contributes nothing and is picked up by the next session to initialize after it wakes.
-   *
-   * @param members Instance keys to read, each with the name it is exposed under (they differ
-   *   for a workspace, whose members are keyed `w:<slug>:<server>`).
-   */
-  const aggregateInstructions = (members: [name: string, key: string][]): string | undefined =>
-    mergeInstructions(members.map(([name, key]) => [name, manager.handshake(key).instructions]));
+  /** Start an aggregate session over everything the scope exposes. */
+  const startAggregate = (req: Request, res: Response, scope: EndpointScope): Promise<void> =>
+    start(
+      req,
+      res,
+      () => createAggregateServer(scopedDeps(manager, scope), scopedInstructions(manager, scope)),
+      (server) => relayNotifications(manager, scope, server),
+    );
 
   router.all('/', async (req, res) => {
     if (await resume(req, res)) {
       return;
     }
-    const serverNames = () => manager.enabledNames();
-    await start(
-      req,
-      res,
-      () =>
-        createAggregateServer(
-          { ...proxyDeps, serverNames },
-          aggregateInstructions(serverNames().map((name) => [name, name])),
-        ),
-      (server) =>
-        manager.onNotification((key, notification) => {
-          // enabledNames() lists only base keys, so workspace instances never match here.
-          if (serverNames().includes(key)) {
-            pushNotification(server, namespaceNotification(notification, key));
-          }
-        }),
-    );
+    await startAggregate(req, res, everyServer);
   });
 
   // Custom aggregate for a workspace: only its enabled members that still exist, run
@@ -249,35 +230,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       const current = store.getWorkspace(slug);
       return current?.enabled ? enabledMembers(current, store) : [];
     };
-    const workspaceDeps = {
-      withClient: ((name, run) => manager.withClientForWorkspace(slug, name, run)) satisfies WithClient,
-      recordToolCount: (name: string, count: number) =>
-        manager.recordToolCount(workspaceInstanceKey(slug, name), count),
-      // Activity is logged under the workspace-scoped instance key so it surfaces in
-      // the workspace's own Activity view, isolated from the base server's log.
-      recordActivity: (name: string, entry: ActivityRecord) =>
-        manager.recordActivity(workspaceInstanceKey(slug, name), entry),
-      serverNames: memberNames,
-    };
-    await start(
-      req,
-      res,
-      () =>
-        createAggregateServer(
-          workspaceDeps,
-          aggregateInstructions(memberNames().map((name) => [name, workspaceInstanceKey(slug, name)])),
-        ),
-      (server) =>
-        manager.onNotification((key, notification) => {
-          // Downstream notifications arrive under the workspace instance key.
-          for (const name of memberNames()) {
-            if (key === workspaceInstanceKey(slug, name)) {
-              pushNotification(server, namespaceNotification(notification, name));
-              return;
-            }
-          }
-        }),
-    );
+    await startAggregate(req, res, workspaceScope(slug, memberNames));
   });
 
   router.all('/:name', async (req, res) => {
@@ -293,7 +246,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     await start(
       req,
       res,
-      async () => createProxyServer(name, proxyDeps, await connectedHandshake(name)),
+      async () => createProxyServer(name, scopedDeps(manager, everyServer), await connectedHandshake(name)),
       // 1:1 endpoint: no namespacing, forward the owning server's notifications as-is.
       (server) =>
         manager.onNotification((key, notification) => {
