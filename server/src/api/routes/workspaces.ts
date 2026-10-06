@@ -147,8 +147,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     );
 
   // Run one workspace tool/resource/prompt call from the UI: resolve the namespaced
-  // name to a member, then invoke + record activity against its workspace instance
-  // key (reusing runUiCall, whose `name` is any managed instance key).
+  // name to a member, then invoke + record activity against its workspace instance key.
   const runWorkspaceUiCall = async (
     workspace: WorkspaceConfig,
     full: string,

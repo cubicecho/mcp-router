@@ -23,7 +23,7 @@ import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
-import { isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
+import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
 
 const CRASH_BACKOFF_MS = 5_000;
 /** Max activity entries kept per server (in-memory ring buffer). */
@@ -170,7 +170,7 @@ export function toConnection(config: ServerConfig): McpConnection {
  * of the base server's. `slug` is left unset and never read: the pool indexes no
  * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
  */
-function toPoolConfig(key: string, config: ServerConfig, settings: SettingsFile): McpServerConfig {
+function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
   const stdio = config.transport.type === 'stdio';
   return {
     id: key,
@@ -231,9 +231,9 @@ const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
 export class GatewayManager {
   private readonly pool: McpPool;
   private readonly getSettings: () => SettingsFile;
-  private readonly meta = new Map<string, ServerMeta>();
+  private readonly meta = new Map<InstanceKey, ServerMeta>();
   /** In-memory per-server ring buffer of proxied calls, for the Activity tab. */
-  private readonly activity = new Map<string, ActivityEntry[]>();
+  private readonly activity = new Map<InstanceKey, ActivityEntry[]>();
   private activitySeq = 0;
 
   constructor(getSettings: () => SettingsFile) {
@@ -314,14 +314,14 @@ export class GatewayManager {
    * instance key. Resets the idle timer. For base servers the key is the server
    * name; a workspace-scoped instance is keyed by {@link workspaceInstanceKey}.
    */
-  async getClient(name: string): Promise<Client> {
+  async getClient(key: InstanceKey): Promise<Client> {
     let client: Client;
     try {
-      client = await this.pool.client(name);
+      client = await this.pool.client(key);
     } catch (cause) {
-      this.fail(name, cause);
+      this.fail(key, cause);
     }
-    this.observe(name, client);
+    this.observe(key, client);
     return client;
   }
 
@@ -333,8 +333,8 @@ export class GatewayManager {
    * hang them off — the pool reaps, respawns and redials on its own, and each of
    * those is a fresh handshake that may say something new.
    */
-  private observe(name: string, client: Client): void {
-    const meta = this.meta.get(name);
+  private observe(key: InstanceKey, client: Client): void {
+    const meta = this.meta.get(key);
     if (meta) {
       meta.instructions = client.getInstructions();
       meta.capabilities = client.getServerCapabilities();
@@ -355,15 +355,15 @@ export class GatewayManager {
    *
    * @param run The request. Called a second time, with the new client, after a redial.
    */
-  async withClient<T>(name: string, run: (client: Client) => Promise<T>): Promise<T> {
+  async withClient<T>(key: InstanceKey, run: (client: Client) => Promise<T>): Promise<T> {
     try {
-      return await this.pool.use(name, (client) => {
-        this.observe(name, client);
+      return await this.pool.use(key, (client) => {
+        this.observe(key, client);
         return run(client);
       });
     } catch (cause) {
       // Only the pool's own refusals are rewritten; whatever `run` rejected with is the caller's.
-      this.fail(name, cause);
+      this.fail(key, cause);
     }
   }
 
@@ -377,8 +377,8 @@ export class GatewayManager {
    * The 1:1 endpoint, which has exactly one server and is certain to use it,
    * connects first and then asks.
    */
-  instructions(name: string): string | undefined {
-    return this.meta.get(name)?.instructions;
+  instructions(key: InstanceKey): string | undefined {
+    return this.meta.get(key)?.instructions;
   }
 
   /**
@@ -386,8 +386,8 @@ export class GatewayManager {
    * connected in this process. Deliberately does not connect, for the same reason
    * {@link instructions} does not.
    */
-  capabilities(name: string): ServerCapabilities | undefined {
-    return this.meta.get(name)?.capabilities;
+  capabilities(key: InstanceKey): ServerCapabilities | undefined {
+    return this.meta.get(key)?.capabilities;
   }
 
   /** {@link withClient} for a server's workspace-scoped instance. */
@@ -407,9 +407,9 @@ export class GatewayManager {
    * asked to be retried. Clearing that backoff is what pressing Restart on a
    * crash-looping server is for.
    */
-  async restart(name: string): Promise<Client> {
-    await this.pool.stop(name);
-    return this.getClient(name);
+  async restart(key: InstanceKey): Promise<Client> {
+    await this.pool.stop(key);
+    return this.getClient(key);
   }
 
   /**
@@ -420,7 +420,7 @@ export class GatewayManager {
    * `backoff` and `connect-failed` are the pair worth keeping apart — the first
    * means the pool declined to dial, the second that it dialled and could not.
    */
-  private fail(key: string, cause: unknown): never {
+  private fail(key: InstanceKey, cause: unknown): never {
     if (!(cause instanceof McpPoolError)) {
       throw cause;
     }
@@ -438,13 +438,13 @@ export class GatewayManager {
   }
 
   /** The pool's connection rows by instance key. Secrets are left out: nothing here reads the row's config. */
-  private connectionState(): Map<string, McpServerState> {
+  private connectionState(): Map<InstanceKey, McpServerState> {
     return new Map(this.pool.state().map((row) => [row.id, row]));
   }
 
-  status(name: string): ServerStatus | undefined {
-    const meta = this.meta.get(name);
-    return meta ? toStatus(meta, this.connectionState().get(name)) : undefined;
+  status(key: InstanceKey): ServerStatus | undefined {
+    const meta = this.meta.get(key);
+    return meta ? toStatus(meta, this.connectionState().get(key)) : undefined;
   }
 
   statusAll(): ServerStatus[] {
@@ -468,31 +468,31 @@ export class GatewayManager {
    * messages to their upstream client; survives downstream respawns because the
    * pool re-installs the handler on every connect.
    */
-  onNotification(listener: (key: string, notification: Notification) => void): () => void {
+  onNotification(listener: (key: InstanceKey, notification: Notification) => void): () => void {
     return this.pool.onNotification(listener);
   }
 
-  recordToolCount(name: string, count: number): void {
-    const meta = this.meta.get(name);
+  recordToolCount(key: InstanceKey, count: number): void {
+    const meta = this.meta.get(key);
     if (meta) {
       meta.toolCount = count;
     }
   }
 
   /** Append a proxied call to the server's in-memory activity log (bounded, newest last). */
-  recordActivity(name: string, entry: Omit<ActivityEntry, 'id'>): void {
+  recordActivity(key: InstanceKey, entry: Omit<ActivityEntry, 'id'>): void {
     // Only log for a currently-managed server: an in-flight call that completes
     // after the server was removed (reconcile drops it from both maps) must not
     // resurrect a stray activity entry that then leaks forever. A call that
     // completes right after a Clear legitimately re-populates the log — the
     // server still exists, so that is new activity, not a leak.
-    const meta = this.meta.get(name);
+    const meta = this.meta.get(key);
     if (!meta) {
       return;
     }
     meta.callCount += 1;
     meta.lastCalledAt = entry.at;
-    const log = this.activity.get(name) ?? [];
+    const log = this.activity.get(key) ?? [];
     log.push({
       ...entry,
       id: ++this.activitySeq,
@@ -506,16 +506,16 @@ export class GatewayManager {
     if (log.length > ACTIVITY_LIMIT) {
       log.splice(0, log.length - ACTIVITY_LIMIT);
     }
-    this.activity.set(name, log);
+    this.activity.set(key, log);
   }
 
   /** Recorded activity for a server, newest first (at most ACTIVITY_LIMIT). */
-  getActivity(name: string): ActivityEntry[] {
-    return [...(this.activity.get(name) ?? [])].reverse();
+  getActivity(key: InstanceKey): ActivityEntry[] {
+    return [...(this.activity.get(key) ?? [])].reverse();
   }
 
-  clearActivity(name: string): void {
-    this.activity.delete(name);
+  clearActivity(key: InstanceKey): void {
+    this.activity.delete(key);
   }
 
   /** Names of all enabled base servers (for the global aggregate endpoint). */
