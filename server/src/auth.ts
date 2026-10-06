@@ -1,4 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
+import type { SettingsFile } from '@mcp-router/shared';
 import type { RequestHandler } from 'express';
 
 export interface AuthConfig {
@@ -16,6 +17,20 @@ const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
 export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
   const value = env.SECURE_LOCAL_NET;
   return value !== undefined && TRUTHY_ENV.has(value.trim().toLowerCase());
+}
+
+/**
+ * The auth actually in force: settings.json, as overridden by the environment.
+ * `SECURE_LOCAL_NET` turns it off, and `MCP_ROUTER_TOKEN` replaces the stored token.
+ */
+export function effectiveAuth(
+  settings: Pick<SettingsFile, 'authEnabled' | 'authToken'>,
+  env: NodeJS.ProcessEnv = process.env,
+): AuthConfig {
+  return {
+    enabled: settings.authEnabled && !authDisabledByEnv(env),
+    token: env.MCP_ROUTER_TOKEN ?? settings.authToken,
+  };
 }
 
 /** Constant-time comparison that does not leak token length (compares sha256 digests). */

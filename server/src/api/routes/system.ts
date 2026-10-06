@@ -1,7 +1,7 @@
 import type { RouterStatus } from '@mcp-router/shared';
 import { updateSettingsRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
-import { authDisabledByEnv } from '../../auth.ts';
+import { effectiveAuth } from '../../auth.ts';
 import { SERVER_VERSION } from '../../version.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
@@ -16,7 +16,7 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
       uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
       serverCount: store.getServers().length,
       runningCount: manager.runningCount(),
-      authEnabled: store.getSettings().authEnabled && !authDisabledByEnv(),
+      authEnabled: effectiveAuth(store.getSettings()).enabled,
       idleTimeoutMs: store.getSettings().idleTimeoutMs,
     };
     res.json(status);
