@@ -45,7 +45,7 @@ export function createRegistryRoutes({ store, registryClient }: ApiDeps): Router
   // URL-encoded (%2F) and raw-slash forms via a named wildcard.
   router.get('/:name/servers/*serverName', async (req, res) => {
     const registry = requireRegistry(req.params.name);
-    const segments = req.params.serverName as unknown as string[];
+    const segments: unknown = req.params.serverName;
     const serverName = Array.isArray(segments) ? segments.join('/') : String(segments);
     const entry = await registryClient.getServer(registry, serverName);
     res.json(entry);

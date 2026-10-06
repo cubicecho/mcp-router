@@ -16,6 +16,7 @@ import type {
 } from '@mcp-router/shared';
 import { serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
 import { errorMessage, HttpError } from '../errors.ts';
+import { isRecord } from '../is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
 const execFileAsync = promisify(execFile);
@@ -80,10 +81,8 @@ export function resolveBinEntry(packageName: string, bin: unknown): string {
   if (typeof bin === 'string' && bin.length > 0) {
     return bin;
   }
-  if (typeof bin === 'object' && bin !== null) {
-    const entries = Object.entries(bin as Record<string, unknown>).filter(
-      (entry): entry is [string, string] => typeof entry[1] === 'string',
-    );
+  if (isRecord(bin)) {
+    const entries = Object.entries(bin).filter((entry): entry is [string, string] => typeof entry[1] === 'string');
     const basename = packageName.split('/').pop() ?? packageName;
     const match = entries.find(([key]) => key === basename) ?? entries[0];
     if (match) {
@@ -192,19 +191,22 @@ export async function installNpmPackage(
   try {
     await exec('npm', ['install', '--prefix', dir, spec, '--no-audit', '--no-fund']);
   } catch (cause) {
-    const stderr = (cause as { stderr?: string }).stderr;
+    const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
     throw new HttpError(500, `npm install of "${spec}" failed`, stderr?.slice(-1000) ?? errorMessage(cause), { cause });
   }
   const packageDir = path.join(dir, 'node_modules', ...packageName.split('/'));
-  let packageJson: { bin?: unknown };
+  let packageJson: unknown;
   try {
-    packageJson = JSON.parse(await readFile(path.join(packageDir, 'package.json'), 'utf8')) as { bin?: unknown };
+    packageJson = JSON.parse(await readFile(path.join(packageDir, 'package.json'), 'utf8'));
   } catch (cause) {
     throw new HttpError(500, `Installed package "${packageName}" has no readable package.json`, errorMessage(cause), {
       cause,
     });
   }
-  const binPath = path.resolve(packageDir, resolveBinEntry(packageName, packageJson.bin));
+  const binPath = path.resolve(
+    packageDir,
+    resolveBinEntry(packageName, isRecord(packageJson) ? packageJson.bin : undefined),
+  );
   return { type: 'stdio', command: 'node', args: [binPath, ...extraArgs] };
 }
 
