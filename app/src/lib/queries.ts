@@ -2,7 +2,11 @@ import type {
   CreateRegistryRequest,
   CreateWorkspaceRequest,
   InstallRequest,
+  PromptGetRequest,
+  ResourceReadRequest,
+  ToolCallRequest,
   UpdateServerRequest,
+  UpdateSettingsRequest,
   UpdateWorkspaceRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
@@ -187,7 +191,7 @@ export function useTestServerConnection() {
 export function useCallTool(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.callTool>[1]) => api.callTool(scope, body),
+    mutationFn: (body: ToolCallRequest) => api.callTool(scope, body),
     onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
@@ -196,7 +200,7 @@ export function useCallTool(scope: CapabilityScope) {
 export function useReadResource(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.readResource>[1]) => api.readResource(scope, body),
+    mutationFn: (body: ResourceReadRequest) => api.readResource(scope, body),
     onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
@@ -205,7 +209,7 @@ export function useReadResource(scope: CapabilityScope) {
 export function useGetPrompt(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.getPrompt>[1]) => api.getPrompt(scope, body),
+    mutationFn: (body: PromptGetRequest) => api.getPrompt(scope, body),
     onSuccess: () => invalidate(queryKeys.capabilityActivity(scope), queryKeys.servers, queryKeys.status),
   });
 }
@@ -261,7 +265,7 @@ export function useDeleteWorkspace() {
 export function useUpdateSettings() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: Parameters<typeof api.updateSettings>[0]) => api.updateSettings(body),
+    mutationFn: (body: UpdateSettingsRequest) => api.updateSettings(body),
     onSuccess: () => invalidate(queryKeys.status),
   });
 }
