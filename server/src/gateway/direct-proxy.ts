@@ -33,6 +33,22 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
   );
   const withClient = <R>(run: (client: Client) => Promise<R>) => deps.withClient(name, run);
 
+  /** A call that names what it acts on: always recorded, under that target. */
+  const targetedCall = <R>(method: string, target: string, params: unknown, run: (client: Client) => Promise<R>) =>
+    track(deps, name, { via: 'direct', method, target, params }, () => withClient(run));
+
+  /**
+   * A routine read: only its failures are recorded, and a downstream that lacks the capability
+   * answers `empty` instead of failing.
+   */
+  const quietRead = <R, E>(method: string, params: unknown, empty: E, run: (client: Client) => Promise<R>) =>
+    track(
+      deps,
+      name,
+      { via: 'direct', method, params, failuresOnly: true },
+      async () => (await emptyOnMissing(() => withClient(run))) ?? empty,
+    );
+
   // A handler per surface this endpoint declares, and none for a surface it does
   // not. The SDK enforces the pairing — `setRequestHandler` refuses a method the
   // server's own capabilities do not cover — and it is the honest answer either
@@ -52,43 +68,28 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
     );
 
     server.setRequestHandler(CallToolRequestSchema, async (req) =>
-      track(deps, name, { via: 'direct', method: 'tools/call', target: req.params.name, params: req.params }, () =>
-        withClient(async (c) => (await c.callTool(req.params)) as CallToolResult),
+      targetedCall(
+        'tools/call',
+        req.params.name,
+        req.params,
+        async (c) => (await c.callTool(req.params)) as CallToolResult,
       ),
     );
   }
 
   if (advertised.resources) {
     server.setRequestHandler(ListResourcesRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'resources/list', params: req.params, failuresOnly: true },
-        async () => {
-          return (await emptyOnMissing(() => withClient((c) => c.listResources(req.params)))) ?? { resources: [] };
-        },
-      ),
+      quietRead('resources/list', req.params, { resources: [] }, (c) => c.listResources(req.params)),
     );
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'resources/templates/list', params: req.params, failuresOnly: true },
-        async () => {
-          return (
-            (await emptyOnMissing(() => withClient((c) => c.listResourceTemplates(req.params)))) ?? {
-              resourceTemplates: [],
-            }
-          );
-        },
+      quietRead('resources/templates/list', req.params, { resourceTemplates: [] }, (c) =>
+        c.listResourceTemplates(req.params),
       ),
     );
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
-      track(deps, name, { via: 'direct', method: 'resources/read', target: req.params.uri, params: req.params }, () =>
-        withClient((c) => c.readResource(req.params)),
-      ),
+      targetedCall('resources/read', req.params.uri, req.params, (c) => c.readResource(req.params)),
     );
   }
 
@@ -96,49 +97,28 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
   // is a request that exists to fail.
   if (advertised.resources?.subscribe) {
     server.setRequestHandler(SubscribeRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'resources/subscribe', target: req.params.uri, params: req.params },
-        () => withClient((c) => c.subscribeResource(req.params)),
-      ),
+      targetedCall('resources/subscribe', req.params.uri, req.params, (c) => c.subscribeResource(req.params)),
     );
 
     server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'resources/unsubscribe', target: req.params.uri, params: req.params },
-        () => withClient((c) => c.unsubscribeResource(req.params)),
-      ),
+      targetedCall('resources/unsubscribe', req.params.uri, req.params, (c) => c.unsubscribeResource(req.params)),
     );
   }
 
   if (advertised.prompts) {
     server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
-      track(deps, name, { via: 'direct', method: 'prompts/list', params: req.params, failuresOnly: true }, async () => {
-        return (await emptyOnMissing(() => withClient((c) => c.listPrompts(req.params)))) ?? { prompts: [] };
-      }),
+      quietRead('prompts/list', req.params, { prompts: [] }, (c) => c.listPrompts(req.params)),
     );
 
     server.setRequestHandler(GetPromptRequestSchema, async (req) =>
-      track(deps, name, { via: 'direct', method: 'prompts/get', target: req.params.name, params: req.params }, () =>
-        withClient((c) => c.getPrompt(req.params)),
-      ),
+      targetedCall('prompts/get', req.params.name, req.params, (c) => c.getPrompt(req.params)),
     );
   }
 
   if (advertised.completions) {
     // Completions fire per keystroke; like list ops, only their failures are recorded.
     server.setRequestHandler(CompleteRequestSchema, async (req) =>
-      track(
-        deps,
-        name,
-        { via: 'direct', method: 'completion/complete', params: req.params, failuresOnly: true },
-        async () => {
-          return (await emptyOnMissing(() => withClient((c) => c.complete(req.params)))) ?? EMPTY_COMPLETION;
-        },
-      ),
+      quietRead('completion/complete', req.params, EMPTY_COMPLETION, (c) => c.complete(req.params)),
     );
   }
 
