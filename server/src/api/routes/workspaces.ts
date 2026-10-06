@@ -15,8 +15,8 @@ import { Router } from 'express';
 import { HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import type { DownstreamClient } from '../../gateway/downstream.ts';
+import { type EndpointScope, scopedDeps, workspaceScope } from '../../gateway/endpoint-scope.ts';
 import { collectFrom } from '../../gateway/fan-out.ts';
-import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
@@ -128,6 +128,10 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   // aggregate does — `<server>__`-namespaced. Test calls route by that namespace
   // back to the owning member and record activity under its workspace instance key.
 
+  /** The scope the /mcp/w/:slug aggregate serves, taken from the workspace as this request read it. */
+  const scopeOf = (workspace: WorkspaceConfig): EndpointScope =>
+    workspaceScope(workspace.slug, () => enabledMembers(workspace, store));
+
   // Fan a listing out over a workspace's enabled members, exactly as the
   // /mcp/w/:slug aggregate does — same skip-and-record rules (see collectFrom),
   // but against each member's workspace-scoped instance.
@@ -135,17 +139,16 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     workspace: WorkspaceConfig,
     method: string,
     fn: (client: DownstreamClient, name: string) => Promise<T[]>,
-  ): Promise<T[]> =>
-    collectFrom(
-      enabledMembers(workspace, store),
+  ): Promise<T[]> => {
+    const scope = scopeOf(workspace);
+    return collectFrom(
+      scope.names(),
       method,
-      {
-        withClient: (name, run) => manager.withClientForWorkspace(workspace.slug, name, run),
-        recordActivity: (name, entry) => manager.recordActivity(workspaceInstanceKey(workspace.slug, name), entry),
-      },
+      scopedDeps(manager, scope),
       fn,
       (name) => `member "${name}" of workspace "${workspace.slug}"`,
     );
+  };
 
   // Run one workspace tool/resource/prompt call from the UI: resolve the namespaced
   // name to a member, then invoke + record activity against its workspace instance key.
@@ -156,19 +159,21 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     ctx: Omit<UiCallContext, 'target'>,
     run: (client: DownstreamClient, name: string) => Promise<unknown>,
   ): Promise<unknown> => {
-    const split = splitNamespacedName(full, enabledMembers(workspace, store));
+    const scope = scopeOf(workspace);
+    const split = splitNamespacedName(full, scope.names());
     if (!split) {
       throw new HttpError(400, `Unknown ${kind} "${full}" (expected <server>__<name>)`);
     }
-    const key = workspaceInstanceKey(workspace.slug, split.serverName);
-    return runUiCall(manager, key, { ...ctx, target: split.name }, (client) => run(client, split.name));
+    return runUiCall(manager, scope.keyFor(split.serverName), { ...ctx, target: split.name }, (client) =>
+      run(client, split.name),
+    );
   };
 
   router.get('/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
       const all = await listAllTools(client);
-      manager.recordToolCount(workspaceInstanceKey(workspace.slug, name), all.length);
+      manager.recordToolCount(scopeOf(workspace).keyFor(name), all.length);
       return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
     });
     res.json({ tools });
@@ -254,16 +259,18 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   // monotonic per process, so a descending id sort orders across members.
   router.get('/:slug/activity', (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
+    const scope = scopeOf(workspace);
     const entries = existingMembers(workspace, store)
-      .flatMap((name) => manager.getActivity(workspaceInstanceKey(workspace.slug, name)))
+      .flatMap((name) => manager.getActivity(scope.keyFor(name)))
       .sort((a, b) => b.id - a.id);
     res.json(activityResponseSchema.parse({ entries }));
   });
 
   router.delete('/:slug/activity', (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
+    const scope = scopeOf(workspace);
     for (const name of existingMembers(workspace, store)) {
-      manager.clearActivity(workspaceInstanceKey(workspace.slug, name));
+      manager.clearActivity(scope.keyFor(name));
     }
     res.status(204).end();
   });
