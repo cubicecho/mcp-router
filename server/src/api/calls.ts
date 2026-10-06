@@ -1,4 +1,4 @@
-import { errorMessage, HttpError } from '../errors.ts';
+import { errorDetailMessage, errorMessage, HttpError } from '../errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
@@ -16,8 +16,8 @@ export interface UiCallContext {
  * Run one downstream call invoked from the UI (tool call, resource read, prompt
  * get) and record it to the activity log under via 'ui', exactly like proxied
  * calls. A thrown downstream error becomes a 502; a server that could not be
- * reached at all keeps the status the manager gave it. A workspace member's key
- * records under its own instance.
+ * reached at all keeps the status the manager gave it, and is recorded too. A
+ * workspace member's key records under its own instance.
  */
 export async function runUiCall(
   manager: GatewayManager,
@@ -46,11 +46,6 @@ export async function runUiCall(
     });
     return result;
   } catch (cause) {
-    // The manager's own refusal — unknown, disabled, backed off, would not connect —
-    // already carries its status, and no call was made to record.
-    if (cause instanceof HttpError) {
-      throw cause;
-    }
     manager.recordActivity(key, {
       at: new Date().toISOString(),
       via: 'ui',
@@ -59,8 +54,14 @@ export async function runUiCall(
       ok: false,
       durationMs: Date.now() - startedAt,
       params: ctx.params,
-      error: errorMessage(cause),
+      error: errorDetailMessage(cause),
     });
+    // The manager's own refusal — disabled, backed off, would not connect — already
+    // carries its status. It is logged all the same, as it is for a proxied call:
+    // "why did my call fail?" is what the Activity view is for.
+    if (cause instanceof HttpError) {
+      throw cause;
+    }
     throw new HttpError(502, ctx.failLabel, errorMessage(cause), { cause });
   }
 }

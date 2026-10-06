@@ -383,7 +383,15 @@ describe('REST API', () => {
     );
     const refused = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
     expect(refused.status).toBe(502);
-    expect(manager.getActivity('hosted')).toEqual([]);
+    expect(manager.getActivity('hosted')).toMatchObject([
+      {
+        via: 'ui',
+        method: 'tools/call',
+        target: 'echo',
+        ok: false,
+        error: 'Failed to connect to server "hosted": stderr tail',
+      },
+    ]);
 
     // A cold server spends the start of the request connecting.
     const callTool = vi.fn(async () => ({ content: [] }));
