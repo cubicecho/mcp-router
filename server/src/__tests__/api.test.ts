@@ -14,6 +14,17 @@ import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructio
 import { GatewayManager, workspaceInstanceKey } from '../gateway/manager.ts';
 import { SERVER_VERSION } from '../version.ts';
 
+/**
+ * Stand a stub in for a server's downstream client. Both doors are stubbed:
+ * `getClient` is what a route connects through, and `withClient` is what it then
+ * sends the request through — which reaches the pool rather than `getClient`.
+ */
+function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Client, unknown>>) {
+  const client = stub as unknown as Client;
+  vi.spyOn(manager, 'getClient').mockResolvedValue(client);
+  vi.spyOn(manager, 'withClient').mockImplementation(async (_name, run) => run(client));
+}
+
 describe('REST API', () => {
   let dataDir: string;
   let store: ConfigStore;
@@ -193,14 +204,13 @@ describe('REST API', () => {
       transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
     });
 
-    vi.spyOn(manager, 'getClient').mockResolvedValue({
+    stubDownstream(manager, {
       listResources: async () => ({ resources: [{ uri: 'file:///a.txt', name: 'A' }] }),
       listResourceTemplates: async () => ({
         resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }],
       }),
       listPrompts: async () => ({ prompts: [{ name: 'greet', description: 'Say hi' }] }),
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
-    } as any);
+    });
 
     const resources = await authed(request(app).get('/api/servers/hosted/resources'));
     expect(resources.status).toBe(200);
@@ -221,12 +231,11 @@ describe('REST API', () => {
 
     const unsupported = () =>
       Promise.reject(new Error('Server does not support resources (required for resources/list)'));
-    vi.spyOn(manager, 'getClient').mockResolvedValue({
+    stubDownstream(manager, {
       listResources: unsupported,
       listResourceTemplates: unsupported,
       listPrompts: unsupported,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
-    } as any);
+    });
 
     const resources = await authed(request(app).get('/api/servers/hosted/resources'));
     expect(resources.status).toBe(200);
@@ -254,11 +263,10 @@ describe('REST API', () => {
         messages: [{ role: 'user', content: { type: 'text', text: args?.topic ?? '' } }],
       }),
     );
-    vi.spyOn(manager, 'getClient').mockResolvedValue({
+    stubDownstream(manager, {
       readResource,
       getPrompt,
-      // biome-ignore lint/suspicious/noExplicitAny: minimal stub of the downstream client
-    } as any);
+    });
 
     const read = await authed(request(app).post('/api/servers/hosted/resources/read')).send({ uri: 'file:///a.txt' });
     expect(read.status).toBe(200);
