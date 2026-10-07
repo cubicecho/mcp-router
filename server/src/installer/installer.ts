@@ -54,7 +54,7 @@ export function deriveServerName(raw: string): string {
     .replace(/^[^a-z0-9]+/, '')
     .slice(0, 64);
   const result = serverNameSchema.safeParse(sanitized);
-  if (!result.success) {
+  if (result.success === false) {
     throw new HttpError(400, `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`);
   }
   return result.data;
@@ -160,7 +160,8 @@ export function selectFromEntry(
       }
       return { remote };
     }
-    if (!/^\d+$/.test(selector)) {
+    const isIndex = /^\d+$/.test(selector);
+    if (isIndex === false) {
       throw new HttpError(400, `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`);
     }
     const pkg = packages[Number(selector)];

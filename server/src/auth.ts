@@ -76,7 +76,7 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
 export function createAuthMiddleware(getAuth: () => AuthConfig): RequestHandler {
   return (req, res, next) => {
     const { enabled, token } = getAuth();
-    if (!enabled) {
+    if (enabled === false) {
       next();
       return;
     }

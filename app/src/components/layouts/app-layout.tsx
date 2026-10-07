@@ -24,7 +24,7 @@ const BarLink = createLink(BarNavItem);
 function LockButton() {
   const { data } = useRouterStatus();
 
-  if (!data?.authEnabled) {
+  if (data?.authEnabled !== true) {
     return null;
   }
 

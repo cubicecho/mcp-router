@@ -32,7 +32,7 @@ async function main(): Promise<void> {
     const settings = store.getSettings();
     if (authDisabledByEnv()) {
       console.log('Auth: disabled (SECURE_LOCAL_NET env var) — /api and /mcp are open on this network');
-    } else if (!settings.authEnabled) {
+    } else if (settings.authEnabled === false) {
       console.log('Auth: disabled (authEnabled: false in settings.json)');
     } else if (process.env.MCP_ROUTER_TOKEN) {
       console.log('Auth: bearer token from MCP_ROUTER_TOKEN env var (overrides settings.json)');

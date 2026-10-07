@@ -73,7 +73,8 @@ export class RegistryClient {
     if (response.status === 404 && notFoundMessage) {
       throw new HttpError(404, notFoundMessage);
     }
-    if (!response.ok) {
+    const requestFailed = response.ok === false;
+    if (requestFailed) {
       throw new HttpError(
         502,
         `Registry "${registry.name}" responded with HTTP ${response.status}`,

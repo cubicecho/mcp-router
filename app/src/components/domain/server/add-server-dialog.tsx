@@ -162,7 +162,7 @@ export function AddServerDialog({
           <form.AppForm>
             <form.SubmitButton
               form={FORM_ID}
-              disabled={!ready}
+              disabled={ready === false}
               pendingLabel={isEdit ? 'Saving…' : 'Adding…'}
               content={isEdit ? 'Save changes' : 'Add server'}
             />
@@ -178,7 +178,7 @@ export function AddServerDialog({
           }}
           className="flex flex-col gap-4"
         >
-          {!isEdit && (
+          {isEdit === false && (
             <FormField
               className="rounded-lg border border-dashed bg-muted/40 p-3"
               label="Paste a config"

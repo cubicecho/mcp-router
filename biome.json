@@ -5,6 +5,7 @@
     "clientKind": "git",
     "useIgnoreFile": true
   },
+  "plugins": ["./no-negation.grit"],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",

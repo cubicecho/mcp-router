@@ -74,7 +74,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
   const result: Record<string, WorkspaceMember> = {};
   for (const server of servers) {
     const draft = drafts.find((candidate) => candidate.name === server.config.name);
-    if (!draft?.included) {
+    if (draft?.included !== true) {
       continue;
     }
     const member: WorkspaceMember = { enabled: true };
@@ -195,7 +195,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       size="lg"
       title={isEdit ? `Edit ${workspace.name}` : 'New workspace'}
       description="A workspace exposes a custom aggregate of the servers you choose at its own URL, with optional per-workspace parameter overrides. Each server runs isolated per workspace, independent of its global enabled state."
-      hasUnsavedChanges={() => !form.state.isDefaultValue}
+      hasUnsavedChanges={() => form.state.isDefaultValue === false}
       footerActionsSlot={(close) => (
         <>
           <Button type="button" variant="ghost" onClick={close} content="Cancel" />

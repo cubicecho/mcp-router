@@ -130,7 +130,7 @@ export class SessionRegistry {
     buildServer: () => Server | Promise<Server>,
     wire: WireRelay,
   ): Promise<void> {
-    if (!isInitializeRequest(req.body)) {
+    if (isInitializeRequest(req.body) === false) {
       res.status(400).json({ error: 'Missing or expired mcp-session-id' });
       return;
     }
