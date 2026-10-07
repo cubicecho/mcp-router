@@ -1,29 +1,46 @@
 import {
   type ActivityResponse,
-  type ApiError,
+  activityResponseSchema,
+  apiErrorSchema,
   type CreateRegistryRequest,
   type CreateWorkspaceRequest,
   HttpStatus,
   type InstallRequest,
   type PromptGetRequest,
   type PromptGetResponse,
+  promptGetResponseSchema,
   type Registry,
   type RegistryListResponse,
   type RegistrySearchParams,
+  type ReloadResponse,
   type ResourceReadRequest,
   type ResourceReadResponse,
   type RouterStatus,
+  registryListResponseSchema,
+  registrySchema,
+  reloadResponseSchema,
+  resourceReadResponseSchema,
+  routerStatusSchema,
   type ServerPromptsResponse,
   type ServerResourcesResponse,
   type ServerStatus,
   type ServerToolsResponse,
+  serverPromptsResponseSchema,
+  serverResourcesResponseSchema,
+  serverStatusSchema,
+  serverToolsResponseSchema,
   type ToolCallRequest,
   type ToolCallResponse,
+  toolCallResponseSchema,
   type UpdateServerRequest,
   type UpdateSettingsRequest,
+  type UpdateSettingsResponse,
   type UpdateWorkspaceRequest,
+  updateSettingsResponseSchema,
   type WorkspaceStatus,
+  workspaceStatusSchema,
 } from '@mcp-router/shared';
+import { z } from 'zod';
 import { getToken, requireAuth } from './auth.ts';
 
 /** Non-2xx responses throw this; carries the HTTP status and the server's { error, detail? } envelope. */
@@ -44,7 +61,8 @@ interface RequestOptions {
   body?: unknown;
 }
 
-async function request<T>(path: string, options: RequestOptions = {}): Promise<T> {
+/** Send a request and hand back the response once it is known to have succeeded. */
+async function send(path: string, options: RequestOptions = {}): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) {
@@ -66,52 +84,61 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
 
   const requestFailed = response.ok === false;
   if (requestFailed) {
-    let message = response.statusText || `Request failed (${response.status})`;
-    let detail: string | undefined;
-    try {
-      const payload = (await response.json()) as Partial<ApiError>;
-      if (typeof payload.error === 'string' && payload.error.length > 0) {
-        message = payload.error;
-      }
-      if (typeof payload.detail === 'string') {
-        detail = payload.detail;
-      }
-    } catch {
-      // non-JSON error body — keep the status text
-    }
-    throw new ApiRequestError(response.status, message, detail);
+    const envelope = apiErrorSchema.safeParse(await response.json().catch(() => undefined));
+    const statusMessage = response.statusText || `Request failed (${response.status})`;
+    throw new ApiRequestError(response.status, envelope.data?.error || statusMessage, envelope.data?.detail);
   }
+  return response;
+}
 
-  const text = await response.text();
-  return (text.length > 0 ? JSON.parse(text) : undefined) as T;
+/**
+ * Send a request and read its JSON answer through the shared schema for that route, so a
+ * server and an app that disagree about a shape fail here and not somewhere in a component.
+ */
+async function request<Schema extends z.ZodTypeAny>(
+  path: string,
+  schema: Schema,
+  options: RequestOptions = {},
+): Promise<z.infer<Schema>> {
+  const response = await send(path, options);
+  const result = schema.safeParse(await response.json());
+  if (result.success === false) {
+    throw new Error(`Unexpected response from ${options.method ?? 'GET'} ${path}`, { cause: result.error });
+  }
+  return result.data;
+}
+
+/** Send a request whose answer has no body. */
+async function requestNoContent(path: string, options: RequestOptions = {}): Promise<void> {
+  await send(path, options);
 }
 
 export function getStatus(): Promise<RouterStatus> {
-  return request('/api/status');
+  return request('/api/status', routerStatusSchema);
 }
 
 export function listServers(): Promise<ServerStatus[]> {
-  return request('/api/servers');
+  return request('/api/servers', z.array(serverStatusSchema));
 }
 
 export function getServer(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}`);
+  return request(`/api/servers/${encodeURIComponent(name)}`, serverStatusSchema);
 }
 
 export function installServer(body: InstallRequest): Promise<ServerStatus> {
-  return request('/api/servers', { method: 'POST', body });
+  return request('/api/servers', serverStatusSchema, { method: 'POST', body });
 }
 
 export function updateServer(name: string, body: UpdateServerRequest): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}`, { method: 'PATCH', body });
+  return request(`/api/servers/${encodeURIComponent(name)}`, serverStatusSchema, { method: 'PATCH', body });
 }
 
 export function deleteServer(name: string): Promise<void> {
-  return request(`/api/servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  return requestNoContent(`/api/servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
 export function restartServer(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}/restart`, { method: 'POST' });
+  return request(`/api/servers/${encodeURIComponent(name)}/restart`, serverStatusSchema, { method: 'POST' });
 }
 
 /**
@@ -134,49 +161,47 @@ function scopeBase(scope: CapabilityScope): string {
 }
 
 export function getTools(scope: CapabilityScope): Promise<ServerToolsResponse> {
-  return request(`${scopeBase(scope)}/tools`);
+  return request(`${scopeBase(scope)}/tools`, serverToolsResponseSchema);
 }
 
 export function getResources(scope: CapabilityScope): Promise<ServerResourcesResponse> {
-  return request(`${scopeBase(scope)}/resources`);
+  return request(`${scopeBase(scope)}/resources`, serverResourcesResponseSchema);
 }
 
 export function readResource(scope: CapabilityScope, body: ResourceReadRequest): Promise<ResourceReadResponse> {
-  return request(`${scopeBase(scope)}/resources/read`, { method: 'POST', body });
+  return request(`${scopeBase(scope)}/resources/read`, resourceReadResponseSchema, { method: 'POST', body });
 }
 
 export function getPrompts(scope: CapabilityScope): Promise<ServerPromptsResponse> {
-  return request(`${scopeBase(scope)}/prompts`);
+  return request(`${scopeBase(scope)}/prompts`, serverPromptsResponseSchema);
 }
 
 export function getPrompt(scope: CapabilityScope, body: PromptGetRequest): Promise<PromptGetResponse> {
-  return request(`${scopeBase(scope)}/prompts/get`, { method: 'POST', body });
+  return request(`${scopeBase(scope)}/prompts/get`, promptGetResponseSchema, { method: 'POST', body });
 }
 
 export function callTool(scope: CapabilityScope, body: ToolCallRequest): Promise<ToolCallResponse> {
-  return request(`${scopeBase(scope)}/tools/call`, { method: 'POST', body });
+  return request(`${scopeBase(scope)}/tools/call`, toolCallResponseSchema, { method: 'POST', body });
 }
 
 export function getActivity(scope: CapabilityScope): Promise<ActivityResponse> {
-  return request(`${scopeBase(scope)}/activity`);
+  return request(`${scopeBase(scope)}/activity`, activityResponseSchema);
 }
 
 export function clearActivity(scope: CapabilityScope): Promise<void> {
-  return request(`${scopeBase(scope)}/activity`, { method: 'DELETE' });
+  return requestNoContent(`${scopeBase(scope)}/activity`, { method: 'DELETE' });
 }
 
-export async function listRegistries(): Promise<Registry[]> {
-  // Tolerate both a bare array and the registries.json file shape.
-  const data = await request<Registry[] | { registries: Registry[] }>('/api/registries');
-  return Array.isArray(data) ? data : data.registries;
+export function listRegistries(): Promise<Registry[]> {
+  return request('/api/registries', z.array(registrySchema));
 }
 
 export function createRegistry(body: CreateRegistryRequest): Promise<Registry> {
-  return request('/api/registries', { method: 'POST', body });
+  return request('/api/registries', registrySchema, { method: 'POST', body });
 }
 
 export function deleteRegistry(name: string): Promise<void> {
-  return request(`/api/registries/${encodeURIComponent(name)}`, { method: 'DELETE' });
+  return requestNoContent(`/api/registries/${encodeURIComponent(name)}`, { method: 'DELETE' });
 }
 
 export function searchRegistryServers(
@@ -194,33 +219,33 @@ export function searchRegistryServers(
     query.set('limit', String(params.limit));
   }
   const suffix = query.size > 0 ? `?${query.toString()}` : '';
-  return request(`/api/registries/${encodeURIComponent(registry)}/servers${suffix}`);
+  return request(`/api/registries/${encodeURIComponent(registry)}/servers${suffix}`, registryListResponseSchema);
 }
 
 export function listWorkspaces(): Promise<WorkspaceStatus[]> {
-  return request('/api/workspaces');
+  return request('/api/workspaces', z.array(workspaceStatusSchema));
 }
 
 export function getWorkspace(slug: string): Promise<WorkspaceStatus> {
-  return request(`/api/workspaces/${encodeURIComponent(slug)}`);
+  return request(`/api/workspaces/${encodeURIComponent(slug)}`, workspaceStatusSchema);
 }
 
 export function createWorkspace(body: CreateWorkspaceRequest): Promise<WorkspaceStatus> {
-  return request('/api/workspaces', { method: 'POST', body });
+  return request('/api/workspaces', workspaceStatusSchema, { method: 'POST', body });
 }
 
 export function updateWorkspace(slug: string, body: UpdateWorkspaceRequest): Promise<WorkspaceStatus> {
-  return request(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'PATCH', body });
+  return request(`/api/workspaces/${encodeURIComponent(slug)}`, workspaceStatusSchema, { method: 'PATCH', body });
 }
 
 export function deleteWorkspace(slug: string): Promise<void> {
-  return request(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'DELETE' });
+  return requestNoContent(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'DELETE' });
 }
 
-export function updateSettings(body: UpdateSettingsRequest): Promise<{ idleTimeoutMs: number }> {
-  return request('/api/settings', { method: 'PATCH', body });
+export function updateSettings(body: UpdateSettingsRequest): Promise<UpdateSettingsResponse> {
+  return request('/api/settings', updateSettingsResponseSchema, { method: 'PATCH', body });
 }
 
-export function reloadConfig(): Promise<unknown> {
-  return request('/api/reload', { method: 'POST' });
+export function reloadConfig(): Promise<ReloadResponse> {
+  return request('/api/reload', reloadResponseSchema, { method: 'POST' });
 }

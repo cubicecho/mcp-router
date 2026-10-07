@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ApiRequestError, getStatus, listServers, updateServer } from '@/lib/api';
+import { ApiRequestError, deleteServer, getStatus, listServers, updateServer } from '@/lib/api';
 import { getNeedsAuth, setToken, TOKEN_STORAGE_KEY } from '@/lib/auth';
 
 function jsonResponse(status: number, body: unknown): Response {
@@ -8,6 +8,24 @@ function jsonResponse(status: number, body: unknown): Response {
     headers: { 'Content-Type': 'application/json' },
   });
 }
+
+const routerStatus = {
+  version: '1',
+  uptimeSeconds: 1,
+  serverCount: 0,
+  runningCount: 0,
+  authEnabled: true,
+  idleTimeoutMs: 300_000,
+};
+
+const serverStatus = {
+  config: {
+    name: 'a',
+    source: { type: 'remote' },
+    transport: { type: 'streamable-http', url: 'http://localhost:8080/mcp' },
+  },
+  state: 'stopped',
+};
 
 describe('api client', () => {
   const fetchMock = vi.fn<typeof fetch>();
@@ -27,9 +45,7 @@ describe('api client', () => {
 
   it('attaches the bearer token from localStorage', async () => {
     window.localStorage.setItem(TOKEN_STORAGE_KEY, 'secret-token');
-    fetchMock.mockResolvedValue(
-      jsonResponse(200, { version: '1', uptimeSeconds: 1, serverCount: 0, runningCount: 0, authEnabled: true }),
-    );
+    fetchMock.mockResolvedValue(jsonResponse(200, routerStatus));
 
     await getStatus();
 
@@ -82,7 +98,7 @@ describe('api client', () => {
   });
 
   it('sends JSON bodies with the content-type header', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { config: { name: 'a' }, state: 'stopped' }));
+    fetchMock.mockResolvedValue(jsonResponse(200, serverStatus));
 
     await updateServer('a', { env: { FOO: 'bar' } });
 
@@ -91,5 +107,17 @@ describe('api client', () => {
     expect(init.method).toBe('PATCH');
     expect(init.headers).toMatchObject({ 'Content-Type': 'application/json' });
     expect(JSON.parse(init.body as string)).toEqual({ env: { FOO: 'bar' } });
+  });
+
+  it('rejects a 2xx answer that does not have the shape the route promises', async () => {
+    fetchMock.mockResolvedValue(jsonResponse(200, { ...routerStatus, uptimeSeconds: 'soon' }));
+
+    await expect(getStatus()).rejects.toThrow('Unexpected response from GET /api/status');
+  });
+
+  it('resolves with nothing for a 204', async () => {
+    fetchMock.mockResolvedValue(new Response(null, { status: 204 }));
+
+    await expect(deleteServer('a')).resolves.toBeUndefined();
   });
 });

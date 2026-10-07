@@ -250,21 +250,35 @@ export interface Health {
   version: string;
 }
 
-export interface RouterStatus {
-  version: string;
-  uptimeSeconds: number;
-  serverCount: number;
-  runningCount: number;
-  authEnabled: boolean;
+export const routerStatusSchema = z.object({
+  version: z.string(),
+  uptimeSeconds: z.number(),
+  serverCount: z.number(),
+  runningCount: z.number(),
+  authEnabled: z.boolean(),
   /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
-  idleTimeoutMs: number;
-}
+  idleTimeoutMs: z.number(),
+});
+export type RouterStatus = z.infer<typeof routerStatusSchema>;
 
 /** The subset of settings.json editable from the UI. */
 export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
 });
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
+
+/** What `PATCH /api/settings` answers: the editable settings as they now stand. */
+export const updateSettingsResponseSchema = z.object({
+  idleTimeoutMs: z.number(),
+});
+export type UpdateSettingsResponse = z.infer<typeof updateSettingsResponseSchema>;
+
+/** What `POST /api/reload` answers. */
+export const reloadResponseSchema = z.object({
+  reloaded: z.boolean(),
+  serverCount: z.number(),
+});
+export type ReloadResponse = z.infer<typeof reloadResponseSchema>;
 
 /** Query of GET /api/registries/:name/servers, passed through to the registry. */
 export interface RegistrySearchParams {
@@ -274,7 +288,8 @@ export interface RegistrySearchParams {
 }
 
 /** Standard error envelope for non-2xx responses. */
-export interface ApiError {
-  error: string;
-  detail?: string;
-}
+export const apiErrorSchema = z.object({
+  error: z.string(),
+  detail: z.string().optional(),
+});
+export type ApiError = z.infer<typeof apiErrorSchema>;
