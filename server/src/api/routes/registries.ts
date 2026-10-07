@@ -1,6 +1,6 @@
 import { createRegistryRequestSchema, HttpStatus } from '@mcp-router/shared';
 import { Router } from 'express';
-import { notFound } from '../../errors.ts';
+import { notFound } from '../../core/errors.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /** Registry management and browsing, mounted at /api/registries. */

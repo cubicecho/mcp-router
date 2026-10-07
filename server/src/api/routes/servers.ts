@@ -8,7 +8,7 @@ import {
   updateServerRequestSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
-import { conflict, errorMessage, notFound } from '../../errors.ts';
+import { conflict, errorMessage, notFound } from '../../core/errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';

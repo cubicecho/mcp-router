@@ -1,5 +1,5 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { ACTIVITY_DEFAULTS } from '../defaults.ts';
+import { ACTIVITY_DEFAULTS } from '../core/defaults.ts';
 import type { InstanceKey } from './instance-key.ts';
 
 /** The UTF-16 code units that open a surrogate pair. */

@@ -3,7 +3,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ServerConfig } from '@mcp-router/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../config/store.ts';
+import { ConfigStore } from '../store.ts';
 
 const TEST_SERVER: ServerConfig = {
   name: 'echo',

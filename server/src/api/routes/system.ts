@@ -1,8 +1,8 @@
 import type { RouterStatus } from '@mcp-router/shared';
 import { MS_PER_SECOND, updateSettingsRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
-import { effectiveAuth } from '../../auth.ts';
-import { SERVER_VERSION } from '../../version.ts';
+import { effectiveAuth } from '../../auth/middleware.ts';
+import { SERVER_VERSION } from '../../core/version.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /** Router-wide endpoints: status, global settings, and a config reload. */

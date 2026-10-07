@@ -7,9 +7,9 @@ import {
   registryListResponseSchema,
   registryServerEntrySchema,
 } from '@mcp-router/shared';
-import { REGISTRY_DEFAULTS } from '../defaults.ts';
-import { errorMessage, notFound, upstreamFailed, upstreamTimeout } from '../errors.ts';
-import { isRecord } from '../is-record.ts';
+import { REGISTRY_DEFAULTS } from '../core/defaults.ts';
+import { errorMessage, notFound, upstreamFailed, upstreamTimeout } from '../core/errors.ts';
+import { isRecord } from '../core/is-record.ts';
 
 /**
  * Client for MCP-registry-API-compatible services

@@ -3,8 +3,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { Registry, RegistryServerEntry } from '@mcp-router/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { HttpError } from '../errors.ts';
-import type { ExecFileFn, InstallerDeps } from '../installer/installer.ts';
+import { HttpError } from '../../core/errors.ts';
+import type { RegistryClient } from '../../registry/client.ts';
+import type { ExecFileFn, InstallerDeps } from '../installer.ts';
 import {
   buildPypiTransport,
   buildServerConfig,
@@ -15,8 +16,7 @@ import {
   resolveBinEntry,
   selectFromEntry,
   uninstall,
-} from '../installer/installer.ts';
-import type { RegistryClient } from '../registry/client.ts';
+} from '../installer.ts';
 
 describe('resolveBinEntry', () => {
   it('uses a string bin directly', () => {

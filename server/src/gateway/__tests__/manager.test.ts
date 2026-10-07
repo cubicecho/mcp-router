@@ -6,7 +6,7 @@ import { serverConfigSchema, settingsFileSchema, workspaceConfigSchema } from '@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { describe, expect, it } from 'vitest';
-import { SERVER_VERSION } from '../../version.ts';
+import { SERVER_VERSION } from '../../core/version.ts';
 import { workspaceInstanceKey } from '../instance-key.ts';
 import { GatewayManager } from '../manager.ts';
 import { ECHO_INSTRUCTIONS } from './fixtures/echo-instructions.ts';

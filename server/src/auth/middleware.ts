@@ -1,8 +1,8 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import type { SettingsFile } from '@mcp-router/shared';
 import type { RequestHandler } from 'express';
-import { authDisabledByEnv, envToken } from './config/env.ts';
-import { forbidden, sendError, unauthenticated } from './errors.ts';
+import { authDisabledByEnv, envToken } from '../config/env.ts';
+import { forbidden, sendError, unauthenticated } from '../core/errors.ts';
 
 export interface AuthConfig {
   enabled: boolean;

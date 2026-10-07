@@ -1,5 +1,5 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { errorDetailMessage } from '../errors.ts';
+import { errorDetailMessage } from '../core/errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import { McpMethod } from './mcp-method.ts';
 import { toolCallFailed, toolErrorText } from './tool-result.ts';

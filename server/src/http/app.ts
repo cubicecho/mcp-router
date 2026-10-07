@@ -2,15 +2,15 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { Health } from '@mcp-router/shared';
 import express from 'express';
-import { errorMiddleware } from './api/error-middleware.ts';
-import { createApiRouter } from './api/router.ts';
-import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from './auth.ts';
-import type { ConfigStore } from './config/store.ts';
-import { HTTP_DEFAULTS } from './defaults.ts';
-import type { GatewayManager } from './gateway/manager.ts';
-import { createMcpRouter } from './gateway/routes.ts';
-import { RegistryClient } from './registry/client.ts';
-import { SERVER_VERSION } from './version.ts';
+import { errorMiddleware } from '../api/error-middleware.ts';
+import { createApiRouter } from '../api/router.ts';
+import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from '../auth/middleware.ts';
+import type { ConfigStore } from '../config/store.ts';
+import { HTTP_DEFAULTS } from '../core/defaults.ts';
+import { SERVER_VERSION } from '../core/version.ts';
+import type { GatewayManager } from '../gateway/manager.ts';
+import { createMcpRouter } from '../gateway/routes.ts';
+import { RegistryClient } from '../registry/client.ts';
 
 export interface AppDeps {
   store: ConfigStore;
@@ -21,7 +21,7 @@ export interface AppDeps {
 }
 
 /** Build the Express app (separate from listen() so tests can drive it with supertest). */
-export function buildApp(deps: AppDeps): express.Express {
+export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
   const registryClient = deps.registryClient ?? new RegistryClient();
   const app = express();
@@ -45,7 +45,7 @@ export function buildApp(deps: AppDeps): express.Express {
   app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));
 
   // Production: serve the built web UI with an SPA fallback for non-API GETs.
-  const appDist = deps.appDistDir ?? path.resolve(import.meta.dirname, '../../app/dist');
+  const appDist = deps.appDistDir ?? path.resolve(import.meta.dirname, '../../../app/dist');
   if (existsSync(appDist)) {
     app.use(express.static(appDist));
     app.use((req, res, next) => {

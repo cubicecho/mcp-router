@@ -1,5 +1,4 @@
 import path from 'node:path';
-import { buildApp } from './app.ts';
 import {
   authDisabledByEnv,
   dataDir as envDataDir,
@@ -9,10 +8,11 @@ import {
   refusePlaceholderToken,
 } from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
-import { errorMessage } from './errors.ts';
+import { errorMessage } from './core/errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
-import { tuneInbound } from './http-tuning.ts';
-import { stopOnSignals } from './shutdown.ts';
+import { createApp } from './http/app.ts';
+import { stopOnSignals } from './http/shutdown.ts';
+import { tuneInbound } from './http/tuning.ts';
 
 async function main(): Promise<void> {
   refusePlaceholderToken();
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   });
   store.startWatching();
 
-  const app = buildApp({ store, manager });
+  const app = createApp({ store, manager });
   const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
   const host = listenHost(store.getSettings().host);

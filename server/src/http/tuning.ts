@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { keepAliveFetch } from '@cubicecho/agent-mcp-pool';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { keepAliveTimeoutMs, outboundKeepAliveTimeoutMs } from './config/env.ts';
+import { keepAliveTimeoutMs, outboundKeepAliveTimeoutMs } from '../config/env.ts';
 
 /**
  * Keeps idle client connections open longer than Node's 5 s, so a tool call after a pause reuses one.

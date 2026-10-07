@@ -17,7 +17,7 @@ import {
   SubscribeRequestSchema,
   UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
-import { SERVER_VERSION } from '../version.ts';
+import { SERVER_VERSION } from '../core/version.ts';
 import { emptyOnMissing, PROXY_CAPABILITIES } from './capability.ts';
 import { collectFrom } from './fan-out.ts';
 import { McpMethod } from './mcp-method.ts';

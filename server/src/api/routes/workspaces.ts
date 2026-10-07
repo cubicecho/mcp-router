@@ -11,7 +11,7 @@ import {
   workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
-import { badInput, conflict, notFound } from '../../errors.ts';
+import { badInput, conflict, notFound } from '../../core/errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import type { DownstreamClient } from '../../gateway/downstream.ts';
 import { type EndpointScope, scopedDeps, workspaceScope } from '../../gateway/endpoint-scope.ts';

@@ -2,8 +2,14 @@ import { ErrorCode } from '@mcp-router/shared';
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
-import { createAuthMiddleware, createOriginMiddleware, effectiveAuth, isLoopbackOrigin, tokensEqual } from '../auth.ts';
-import { authDisabledByEnv } from '../config/env.ts';
+import { authDisabledByEnv } from '../../config/env.ts';
+import {
+  createAuthMiddleware,
+  createOriginMiddleware,
+  effectiveAuth,
+  isLoopbackOrigin,
+  tokensEqual,
+} from '../middleware.ts';
 
 function appWith(auth: { enabled: boolean; token: string | null }) {
   const app = express();

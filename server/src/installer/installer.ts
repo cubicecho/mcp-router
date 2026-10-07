@@ -20,9 +20,9 @@ import {
   TRANSPORT_STDIO,
   TRANSPORT_STREAMABLE_HTTP,
 } from '@mcp-router/shared';
-import { INSTALL_DEFAULTS } from '../defaults.ts';
-import { badInput, errorMessage, internal, notFound, upstreamTimeout } from '../errors.ts';
-import { isRecord } from '../is-record.ts';
+import { INSTALL_DEFAULTS } from '../core/defaults.ts';
+import { badInput, errorMessage, internal, notFound, upstreamTimeout } from '../core/errors.ts';
+import { isRecord } from '../core/is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
 const execFileAsync = promisify(execFile);

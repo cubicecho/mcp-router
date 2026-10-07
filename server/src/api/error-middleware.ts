@@ -1,8 +1,8 @@
 import { type ApiError, ErrorCode } from '@mcp-router/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { badInput, HttpError, internal, sendError } from '../errors.ts';
-import { isRecord } from '../is-record.ts';
+import { badInput, HttpError, internal, sendError } from '../core/errors.ts';
+import { isRecord } from '../core/is-record.ts';
 
 /** What a 500 says. The cause goes to the log, never to the caller: it can name files on the host. */
 const INTERNAL_ERROR_MESSAGE = 'Internal server error';

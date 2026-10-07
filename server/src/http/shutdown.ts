@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { MS_PER_SECOND } from '@mcp-router/shared';
-import { HTTP_DEFAULTS, type HttpSettings } from './defaults.ts';
-import { errorMessage } from './errors.ts';
+import { HTTP_DEFAULTS, type HttpSettings } from '../core/defaults.ts';
+import { errorMessage } from '../core/errors.ts';
 
 /** What runs around the drain. */
 export interface ShutdownSteps {

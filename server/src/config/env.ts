@@ -1,7 +1,7 @@
 // The one module that reads `process.env`. Every getter reads at call time and takes the environment as an
 // argument, so a test passes its own.
 import path from 'node:path';
-import { HTTP_DEFAULTS } from '../defaults.ts';
+import { HTTP_DEFAULTS } from '../core/defaults.ts';
 
 /** The token `.env.example` ships with, which protects nothing once it is public. */
 const PLACEHOLDER_TOKEN = 'change-me';

@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
-import { upstreamFailed } from '../../errors.ts';
+import { upstreamFailed } from '../../core/errors.ts';
 import { type AggregateDeps, createAggregateServer } from '../aggregate-proxy.ts';
 import { proxyCapabilities } from '../capability.ts';
 import { createProxyServer } from '../direct-proxy.ts';

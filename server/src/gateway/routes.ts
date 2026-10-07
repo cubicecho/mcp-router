@@ -1,7 +1,7 @@
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
-import { notFound, sendError } from '../errors.ts';
+import { notFound, sendError } from '../core/errors.ts';
 import { createAggregateServer } from './aggregate-proxy.ts';
 import { createProxyServer } from './direct-proxy.ts';
 import {

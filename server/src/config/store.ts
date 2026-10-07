@@ -16,9 +16,9 @@ import {
   workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
-import { effectiveAuth } from '../auth.ts';
-import { CONFIG_DEFAULTS } from '../defaults.ts';
-import { conflict, errorMessage, notFound } from '../errors.ts';
+import { effectiveAuth } from '../auth/middleware.ts';
+import { CONFIG_DEFAULTS } from '../core/defaults.ts';
+import { conflict, errorMessage, notFound } from '../core/errors.ts';
 
 /** Owner read and write only: these files hold the auth token and API keys in plain text. */
 const CONFIG_FILE_MODE = 0o600;

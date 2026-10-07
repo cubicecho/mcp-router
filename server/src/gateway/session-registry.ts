@@ -4,8 +4,8 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
-import { GATEWAY_DEFAULTS } from '../defaults.ts';
-import { badInput, notFound, sendError } from '../errors.ts';
+import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
+import { badInput, notFound, sendError } from '../core/errors.ts';
 import { BoundedEventStore } from './event-store.ts';
 
 /** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
