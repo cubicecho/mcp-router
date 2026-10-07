@@ -23,6 +23,9 @@ jobs:
         run: npx biome ci .
       - name: Typecheck
         run: npm run check:types
+      # The stories run as tests in a real Chromium.
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
       - name: Test
         run: npm test
       - name: Build

@@ -1,5 +1,6 @@
 /** The HTTP statuses the router sends, and its UI and tests read. */
 export const HttpStatus = {
+  Ok: 200,
   Created: 201,
   NoContent: 204,
   BadRequest: 400,

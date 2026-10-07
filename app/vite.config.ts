@@ -7,7 +7,11 @@ import { defineConfig, type PluginOption } from 'vite';
 export default defineConfig({
   // The root workspace's vitest hoists vite 7, so the plugins' type declarations resolve against it
   // while the app itself runs vite 6. The hook shapes are runtime-compatible; only the types clash.
-  plugins: [tanstackRouter({ target: 'react', autoCodeSplitting: true }), react(), tailwindcss()] as PluginOption[],
+  plugins: [
+    tanstackRouter({ target: 'react', autoCodeSplitting: true, routeFileIgnorePattern: '\\.stories\\.|__tests__' }),
+    react(),
+    tailwindcss(),
+  ] as PluginOption[],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./src', import.meta.url)),

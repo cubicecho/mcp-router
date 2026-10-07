@@ -31,6 +31,8 @@
     "check:types": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p app/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "storybook": "npm run storybook -w app",
+    "build-storybook": "npm run build-storybook -w app",
     "clean": "rm -rf node_modules shared/dist server/dist app/dist"
   },
   "devDependencies": {
