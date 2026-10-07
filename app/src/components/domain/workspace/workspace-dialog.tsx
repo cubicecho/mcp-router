@@ -112,7 +112,10 @@ interface WorkspaceDialogProps {
 
 export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
   const isEdit = workspace !== undefined;
-  const { data: servers = [] } = useServers();
+  // Undefined until the installed servers are known. The member list is drawn from them and rebuilt from
+  // them on save, so until then there is nothing to choose from and nothing safe to send.
+  const { data: loadedServers } = useServers();
+  const servers = loadedServers ?? [];
   const create = useCreateWorkspace();
   const update = useUpdateWorkspace();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -130,7 +133,8 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
         name: value.name.trim(),
         enabled: value.enabled,
         description: value.description.trim() || undefined,
-        members: buildMembers(value.members, servers),
+        // Left out while the servers are unknown: the API then keeps the members the workspace already has.
+        ...(loadedServers ? { members: buildMembers(value.members, loadedServers) } : {}),
       };
       try {
         if (isEdit) {
@@ -252,7 +256,9 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
             description="Choose which servers this workspace exposes. Expand a server to override its parameters for this workspace only."
             controlSlot={
               <div className="divide-y rounded-md border">
-                {servers.length === 0 && <EmptyState compact title="No servers installed yet." className="p-3" />}
+                {loadedServers?.length === 0 && (
+                  <EmptyState compact title="No servers installed yet." className="p-3" />
+                )}
                 {servers.map((server) => {
                   const serverName = server.config.name;
                   const index = values.members.findIndex((member) => member.name === serverName);
