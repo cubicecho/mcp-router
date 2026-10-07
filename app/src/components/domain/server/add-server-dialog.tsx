@@ -157,6 +157,7 @@ export function AddServerDialog({
     <DialogLayout
       open={open}
       onOpenChange={onOpenChange}
+      hasUnsavedChanges={() => form.state.isDefaultValue === false}
       size="md"
       title={isEdit ? `Edit ${server.config.name}` : 'Add a server'}
       description={
