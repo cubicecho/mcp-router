@@ -1,26 +1,29 @@
 import type { ServerPrompt } from '@mcp-router/shared';
-import { useState } from 'react';
-import { FormField } from '@/components/form-field';
+import { InputField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/page';
-import { Input } from '@/components/ui/input';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './capability-list';
 
 function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
-  const [args, setArgs] = useState<Record<string, string>>({});
   const get = useGetPrompt(scope);
-  const { result, run, loading } = useCapabilityRun(get);
+  const { result, run } = useCapabilityRun(get);
   const declaredArgs = prompt.arguments ?? [];
-
-  const submit = () => {
-    // Only send filled-in values; the server defaults missing optional args. Trim
-    // to match the required-arg check, so a whitespace-only entry counts as unset.
-    const filled = Object.fromEntries(Object.entries(args).filter(([, value]) => value.trim().length > 0));
-    run({ name: prompt.name, arguments: filled });
-  };
-
-  const missingRequired = declaredArgs.some((arg) => arg.required && (args[arg.name] ?? '').trim().length === 0);
+  // One value per declared argument, by position: an argument's name may hold a dot or a
+  // bracket, which a field path would read as nesting.
+  const form = useAppForm({
+    defaultValues: { values: declaredArgs.map(() => '') },
+    onSubmit: ({ value }) => {
+      // Only send filled-in values; the server defaults missing optional args. Trim
+      // to match the required-arg check, so a whitespace-only entry counts as unset.
+      const filled = Object.fromEntries(
+        declaredArgs
+          .map((arg, index): [string, string] => [arg.name, value.values[index] ?? ''])
+          .filter(([, text]) => text.trim().length > 0),
+      );
+      return run({ name: prompt.name, arguments: filled });
+    },
+  });
 
   return (
     <CapabilityRow
@@ -28,22 +31,31 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
       description={prompt.description}
       contentSlot={
         <>
-          {declaredArgs.length === 0 && <EmptyState compact title="This prompt takes no arguments." />}
-          {declaredArgs.map((arg) => (
-            <FormField
-              key={arg.name}
-              label={<span className="font-mono">{arg.name}</span>}
-              description={arg.description}
-              required={arg.required}
-              controlSlot={
-                <Input
-                  value={args[arg.name] ?? ''}
-                  onChange={(event) => setArgs((prev) => ({ ...prev, [arg.name]: event.target.value }))}
-                />
-              }
-            />
-          ))}
-          <RunButton label="Get" loading={loading} disabled={missingRequired} onClick={submit} />
+          <RunForm
+            onSubmit={form.handleSubmit}
+            contentSlot={
+              <>
+                {declaredArgs.length === 0 && <EmptyState compact title="This prompt takes no arguments." />}
+                {declaredArgs.map((arg, index) => (
+                  <InputField
+                    key={arg.name}
+                    form={form}
+                    name={`values[${index}]`}
+                    label={<span className="font-mono">{arg.name}</span>}
+                    description={arg.description}
+                    required={arg.required}
+                    validators={{
+                      onChange: ({ value }) =>
+                        arg.required && value.trim().length === 0 ? `${arg.name} is required` : undefined,
+                    }}
+                  />
+                ))}
+                <form.AppForm>
+                  <form.SubmitButton {...RUN_SUBMIT} content="Get" pendingLabel="Getting…" />
+                </form.AppForm>
+              </>
+            }
+          />
           {result && <ResultBlock result={result} />}
         </>
       }
