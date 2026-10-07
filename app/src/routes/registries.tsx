@@ -39,6 +39,7 @@ function AddRegistryForm() {
 
   return (
     <CardLayout
+      level={2}
       title="Add registry"
       description="Any service implementing the MCP registry API (GET /v0/servers)."
       contentSlot={

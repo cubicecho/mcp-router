@@ -207,7 +207,9 @@ export function DataBlock({ value, label, isError }: { value: unknown; label: st
       ) : (
         <div
           className={cn(
-            'max-h-96 overflow-auto rounded-md border border-foreground/10 bg-foreground/10 p-3',
+            // On the page's own ground, not the grey of a code block: the tree's value colours
+            // (strings, numbers, booleans) are under 4.5:1 against a tinted panel.
+            'max-h-96 overflow-auto rounded-md border border-foreground/10 bg-background p-3',
             errorBorder,
           )}
         >

@@ -68,6 +68,7 @@ function WorkspaceDetailPage() {
           {workspace && (
             <>
               <CardLayout
+                level={2}
                 title="Overview"
                 actionSlot={
                   <span className="flex items-center gap-2">

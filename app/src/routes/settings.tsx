@@ -99,6 +99,7 @@ function SettingsPage() {
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
           <CardLayout
+            level={2}
             title="Router"
             loading={status.isPending}
             contentClassName="gap-4"
@@ -146,6 +147,7 @@ function SettingsPage() {
           />
 
           <CardLayout
+            level={2}
             title="Configuration files"
             description={
               <>

@@ -62,6 +62,7 @@ export function PackageInstallCard({
 
   return (
     <CardLayout
+      level={2}
       title={copy.title}
       description={copy.description}
       contentSlot={
