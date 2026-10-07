@@ -10,11 +10,8 @@ afterEach(() => {
 });
 
 describe('server mutations', () => {
-  // Known gap (B3), not fixed here: a server mutation refreshes the server list and the status but
-  // not the workspaces, so a workspace's cached tools, resources and prompts keep showing a deleted
-  // or changed server's entries until they go stale. `it.fails` keeps the suite green while the gap
-  // stands and goes red once it is closed.
-  it.fails('marks a workspace capability listing stale after a server is deleted', async () => {
+  // A workspace lists its members' tools, resources and prompts, so a server change makes them stale too.
+  it('marks a workspace capability listing stale after a server is deleted', async () => {
     vi.spyOn(api, 'deleteServer').mockResolvedValue(undefined);
     const queryClient = new QueryClient();
     const toolsKey = queryKeys.capabilityTools({ kind: 'workspace', slug: 'acme' });
