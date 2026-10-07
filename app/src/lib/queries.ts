@@ -135,11 +135,17 @@ function useInvalidate() {
   };
 }
 
+/**
+ * What a change to a server makes stale: the servers themselves, the router status, and the
+ * workspaces — a workspace lists its members' tools, resources and prompts under its own key.
+ */
+const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.workspaces] as const;
+
 export function useInstallServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: InstallRequest) => api.installServer(body),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
@@ -147,7 +153,7 @@ export function useUpdateServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ name, ...body }: UpdateServerRequest & { name: string }) => api.updateServer(name, body),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
@@ -155,7 +161,7 @@ export function useDeleteServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (name: string) => api.deleteServer(name),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
@@ -163,7 +169,7 @@ export function useRestartServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (name: string) => api.restartServer(name),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 

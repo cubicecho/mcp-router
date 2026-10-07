@@ -1,7 +1,6 @@
 import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
 import {
   CallToolRequestSchema,
   CompleteRequestSchema,
@@ -70,12 +69,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
     );
 
     server.setRequestHandler(CallToolRequestSchema, async (req) =>
-      targetedCall(
-        McpMethod.ToolsCall,
-        req.params.name,
-        req.params,
-        async (c) => (await c.callTool(req.params)) as CallToolResult,
-      ),
+      targetedCall(McpMethod.ToolsCall, req.params.name, req.params, (c) => c.callTool(req.params)),
     );
   }
 

@@ -17,6 +17,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
@@ -51,7 +52,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
     <TableRow className="cursor-pointer" onClick={handleRowClick}>
       <TableCell>
         <Link to="/servers/$name" params={{ name: config.name }} className="font-medium hover:underline">
-          {config.displayName ?? config.name}
+          {serverLabel(config.name, config.displayName)}
         </Link>
       </TableCell>
       <TableCell>
