@@ -2,6 +2,8 @@ import { TRANSPORT_STDIO, type WorkspaceMember, type WorkspaceStatus } from '@mc
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
+import { ListItem } from '@/components/list-item';
+import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useServers, useUpdateWorkspace } from '@/lib/queries';
@@ -52,49 +54,49 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
     <CardLayout
       title="Servers"
       description="The servers this workspace exposes. Disable one to drop it from the aggregate without removing its overrides. Edit the workspace to change membership or per-workspace parameters."
-      emptySlot={
-        <p className="text-sm text-muted-foreground">This workspace has no servers yet. Edit it to add some.</p>
-      }
-      contentSlot={
-        memberEntries.length > 0 ? (
-          <ul className="flex flex-col divide-y">
-            {memberEntries.map(([name, member]) => {
-              const server = servers?.find((s) => s.config.name === name);
-              const enabled = member.enabled ?? true;
-              const overrides = overrideLabels(member);
-              const isStdio = server?.config.transport.type === TRANSPORT_STDIO;
-              return (
-                <li key={name} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                  <Switch
-                    checked={enabled}
-                    disabled={update.isPending}
-                    aria-label={`Enable ${name} in workspace`}
-                    onCheckedChange={(on) => toggle(name, member, on)}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <span className="font-medium">{serverLabel(name, server?.config.displayName)}</span>
-                    {server?.config.displayName && (
-                      <span className="ml-2 font-mono text-xs text-muted-foreground">{name}</span>
-                    )}
-                    {!server && <span className="ml-2 text-xs text-destructive">not installed</span>}
-                    {overrides.length > 0 && (
-                      <span className="mt-1 flex flex-wrap gap-1">
-                        {overrides.map((label) => (
-                          <Badge key={label} variant="secondary" className="text-[10px]">
-                            {label}
-                          </Badge>
-                        ))}
-                      </span>
-                    )}
-                  </div>
-                  {server && <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>}
-                  {server && <ServerStateBadge state={server.state} lastError={server.lastError} />}
-                </li>
-              );
-            })}
-          </ul>
-        ) : null
-      }
+      emptySlot={<EmptyState compact title="This workspace has no servers yet. Edit it to add some." />}
+      contentSlot={memberEntries.map(([name, member]) => {
+        const server = servers?.find((s) => s.config.name === name);
+        const enabled = member.enabled ?? true;
+        const overrides = overrideLabels(member);
+        const isStdio = server?.config.transport.type === TRANSPORT_STDIO;
+        return (
+          <ListItem
+            key={name}
+            className="px-0"
+            leadingSlot={
+              <Switch
+                checked={enabled}
+                disabled={update.isPending}
+                aria-label={`Enable ${name} in workspace`}
+                onCheckedChange={(on) => toggle(name, member, on)}
+              />
+            }
+            title={serverLabel(name, server?.config.displayName)}
+            description={
+              (server?.config.displayName || !server || overrides.length > 0) && (
+                <span className="flex flex-wrap items-center gap-1">
+                  {server?.config.displayName && <span className="font-mono">{name}</span>}
+                  {!server && <span className="text-negative">not installed</span>}
+                  {overrides.map((label) => (
+                    <Badge key={label} variant="secondary" className="text-[10px]">
+                      {label}
+                    </Badge>
+                  ))}
+                </span>
+              )
+            }
+            meta={
+              server && (
+                <>
+                  <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>
+                  <ServerStateBadge state={server.state} lastError={server.lastError} />
+                </>
+              )
+            }
+          />
+        );
+      })}
     />
   );
 }

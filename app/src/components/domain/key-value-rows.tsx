@@ -7,8 +7,8 @@ import type { KeyValueRow } from '@/lib/key-value';
 
 interface KeyValueRowsProps {
   legend: string;
-  rows: KeyValueRow[];
-  onChange: (rows: KeyValueRow[]) => void;
+  value: KeyValueRow[];
+  onValueChange: (value: KeyValueRow[]) => void;
   keyPlaceholder?: string;
   /** Accessible name of each key input. */
   keyLabel: string;
@@ -22,8 +22,8 @@ interface KeyValueRowsProps {
 /** Editable list of key/value pairs (env vars, headers), held by the caller — typically one form field. */
 export function KeyValueRows({
   legend,
-  rows,
-  onChange,
+  value,
+  onValueChange,
   keyPlaceholder = 'KEY',
   keyLabel,
   unnamed,
@@ -31,12 +31,12 @@ export function KeyValueRows({
   hideLegendWhenEmpty = false,
 }: KeyValueRowsProps) {
   const patch = (index: number, next: Partial<KeyValueRow>) =>
-    onChange(rows.map((row, i) => (i === index ? { ...row, ...next } : row)));
+    onValueChange(value.map((row, i) => (i === index ? { ...row, ...next } : row)));
 
   return (
     <div className="flex flex-col gap-2">
-      {(rows.length > 0 || !hideLegendWhenEmpty) && <Label>{legend}</Label>}
-      {rows.map((row, index) => (
+      {(value.length > 0 || !hideLegendWhenEmpty) && <Label>{legend}</Label>}
+      {value.map((row, index) => (
         // biome-ignore lint/suspicious/noArrayIndexKey: rows have no identity beyond their position
         <div key={index} className="flex items-center gap-2">
           <Input
@@ -58,7 +58,7 @@ export function KeyValueRows({
             variant="ghost"
             size="icon-sm"
             label={`Remove ${row.key || unnamed}`}
-            onClick={() => onChange(rows.filter((_, i) => i !== index))}
+            onClick={() => onValueChange(value.filter((_, i) => i !== index))}
             iconSlot={<X />}
           />
         </div>
@@ -68,7 +68,7 @@ export function KeyValueRows({
           type="button"
           variant="outline"
           size="sm"
-          onClick={() => onChange([...rows, { key: '', value: '' }])}
+          onClick={() => onValueChange([...value, { key: '', value: '' }])}
           iconSlot={<Plus />}
           content={addLabel}
         />

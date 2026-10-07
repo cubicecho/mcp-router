@@ -89,7 +89,7 @@ export function ConnectCard({
             ))}
           </Tabs>
           {authEnabled && (
-            <p className="mt-2 text-xs text-muted-foreground">
+            <p className="mt-2 text-xs text-foreground/60">
               Copied snippets include your bearer token{token ? '' : ' placeholder'} — treat them as secrets.
             </p>
           )}

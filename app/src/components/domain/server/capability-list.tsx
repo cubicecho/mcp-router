@@ -2,7 +2,6 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
 import { DisclosureRow } from '@/components/disclosure-row';
-import { EmptyState } from '@/components/page';
 import { QueryError } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
 import { Play } from '@/components/ui/icons';
@@ -10,17 +9,24 @@ import { toastApiError } from '@/lib/toast';
 import type { SlotNode } from '@/lib/utils';
 import { DataBlock } from './json-view';
 
+/** The part of a query the card reads, taken structurally. */
+interface ListQuery {
+  isPending: boolean;
+  error: Error | null;
+  refetch: () => unknown;
+}
+
 interface CapabilityListProps {
   title: string;
   description: string;
-  isPending: boolean;
-  error: Error | null;
-  refetch: () => void;
+  /** The listing's query: its first load draws the skeleton, and its error the retry banner. */
+  query: ListQuery;
   /** What failed to load, for the error card, e.g. "resources". */
   what: string;
-  emptyText: string;
-  /** One {@link CapabilityRow} per capability; an empty list renders the empty state. */
-  rowsSlot: ReactElement[];
+  /** What the card says when the server reports none. */
+  emptySlot: SlotNode;
+  /** One {@link CapabilityRow} per capability; an empty list renders `emptySlot`. */
+  contentSlot: ReactElement[];
 }
 
 /**
@@ -29,25 +35,18 @@ interface CapabilityListProps {
  * rows. A failed background refetch shows the error banner above the last-loaded
  * list rather than blanking it.
  */
-export function CapabilityList({
-  title,
-  description,
-  isPending,
-  error,
-  refetch,
-  what,
-  emptyText,
-  rowsSlot,
-}: CapabilityListProps) {
+export function CapabilityList({ title, description, query, what, emptySlot, contentSlot }: CapabilityListProps) {
   return (
     <CardLayout
       title={title}
       description={description}
-      loading={isPending}
-      emptySlot={<EmptyState compact title={emptyText} />}
+      loading={query.isPending}
+      emptySlot={emptySlot}
       contentClassName="gap-2"
       contentSlot={
-        error ? [<QueryError key="error" error={error} onRetry={refetch} what={what} />, ...rowsSlot] : rowsSlot
+        query.error
+          ? [<QueryError key="error" error={query.error} onRetry={query.refetch} what={what} />, ...contentSlot]
+          : contentSlot
       }
     />
   );
@@ -79,15 +78,15 @@ export function CapabilityRow({ title, meta, description, contentSlot }: Capabil
   );
 }
 
-/** Shared run/read/get action button: shows a spinner while pending, a play icon otherwise. */
+/** Shared run/read/get action button: shows a spinner while loading, a play icon otherwise. */
 export function RunButton({
   label,
-  pending,
+  loading,
   disabled,
   onClick,
 }: {
   label: string;
-  pending: boolean;
+  loading: boolean;
   disabled?: boolean;
   onClick: () => void;
 }) {
@@ -96,7 +95,7 @@ export function RunButton({
       size="sm"
       variant="outline"
       className="self-start"
-      loading={pending}
+      loading={loading}
       disabled={disabled}
       onClick={onClick}
       iconSlot={<Play />}
@@ -116,7 +115,7 @@ export function useCapabilityRun<TData, TVariables>(mutation: UseMutationResult<
     setResult(null);
     mutation.mutate(variables, { onSuccess: setResult, onError: toastApiError });
   };
-  return { result, run, pending: mutation.isPending };
+  return { result, run, loading: mutation.isPending };
 }
 
 /** Shared JSON result panel for a run/read/get invocation, with a Text/JSON toggle. */

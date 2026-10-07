@@ -210,7 +210,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       hasUnsavedChanges={() => form.state.isDefaultValue === false}
       footerActionsSlot={(close) => (
         <>
-          <Button type="button" variant="ghost" onClick={close} content="Cancel" />
+          <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
             <form.SubmitButton form={FORM_ID} content={isEdit ? 'Save changes' : 'Create workspace'} />
           </form.AppForm>
@@ -276,9 +276,9 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                       key={serverName}
                       server={server}
                       included={values.members[index]?.included ?? false}
-                      expanded={expanded === serverName}
+                      open={expanded === serverName}
                       onToggle={(on) => toggleMember(server, on)}
-                      onExpandToggle={() => setExpanded((current) => (current === serverName ? null : serverName))}
+                      onOpenChange={(open) => setExpanded(open ? serverName : null)}
                       overridesSlot={
                         transport.type === TRANSPORT_STDIO ? (
                           <>
@@ -356,14 +356,15 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
 interface MemberRowProps {
   server: ServerStatus;
   included: boolean;
-  expanded: boolean;
+  /** Whether the override fields are showing. */
+  open: boolean;
   onToggle: (on: boolean) => void;
-  onExpandToggle: () => void;
-  /** The override fields for this server, drawn while it is included and expanded. */
+  onOpenChange: (open: boolean) => void;
+  /** The override fields for this server, drawn while it is included and open. */
   overridesSlot: ReactElement;
 }
 
-function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overridesSlot }: MemberRowProps) {
+function MemberRow({ server, included, open, onToggle, onOpenChange, overridesSlot }: MemberRowProps) {
   const isStdio = server.config.transport.type === TRANSPORT_STDIO;
   const name = server.config.name;
 
@@ -373,22 +374,22 @@ function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overr
         <Switch checked={included} onCheckedChange={onToggle} aria-label={`Include ${name}`} />
         <div className="min-w-0 flex-1">
           <span className="font-medium">{serverLabel(name, server.config.displayName)}</span>
-          {server.config.displayName && <span className="ml-2 text-xs text-muted-foreground">{name}</span>}
+          {server.config.displayName && <span className="ml-2 text-xs text-foreground/60">{name}</span>}
         </div>
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>
         {included && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
-            onClick={onExpandToggle}
-            iconSlot={expanded ? <ChevronDown /> : <ChevronRight />}
+            onClick={() => onOpenChange(open === false)}
+            iconSlot={open ? <ChevronDown /> : <ChevronRight />}
             content="Overrides"
           />
         )}
       </div>
 
-      {included && expanded && <div className="flex flex-col gap-3 pl-11">{overridesSlot}</div>}
+      {included && open && <div className="flex flex-col gap-3 pl-11">{overridesSlot}</div>}
     </div>
   );
 }

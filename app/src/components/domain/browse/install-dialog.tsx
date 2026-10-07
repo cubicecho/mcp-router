@@ -142,8 +142,8 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
             {(field) => (
               <KeyValueRows
                 legend="Additional environment variables"
-                rows={field.state.value}
-                onChange={field.handleChange}
+                value={field.state.value}
+                onValueChange={field.handleChange}
                 keyLabel="Variable name"
                 unnamed="new variable"
                 addLabel="Add env var"

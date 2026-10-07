@@ -1,12 +1,12 @@
 import { createRegistryRequestSchema } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
-import { PlusIcon, Trash2Icon } from 'lucide-react';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
+import { Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCreateRegistry, useDeleteRegistry, useRegistries } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
@@ -66,7 +66,7 @@ function AddRegistryForm() {
             validators={{ onSubmit: ({ value }) => registryFieldError('url', value) }}
           />
           <form.AppForm>
-            <form.SubmitButton className="mt-[1.375rem]" pendingLabel="Adding…" iconSlot={<PlusIcon />} content="Add" />
+            <form.SubmitButton className="mt-[1.375rem]" pendingLabel="Adding…" iconSlot={<Plus />} content="Add" />
           </form.AppForm>
         </form>
       }
@@ -99,7 +99,7 @@ function RegistriesPage() {
               <TableBody>
                 {data.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                    <TableCell colSpan={3} className="text-center text-foreground/60">
                       No registries configured.
                     </TableCell>
                   </TableRow>
@@ -107,7 +107,7 @@ function RegistriesPage() {
                 {data.map((registry) => (
                   <TableRow key={registry.name}>
                     <TableCell className="font-medium">{registry.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{registry.url}</TableCell>
+                    <TableCell className="text-foreground/60">{registry.url}</TableCell>
                     <TableCell className="text-right">
                       <ConfirmButton
                         variant="ghost"
@@ -127,7 +127,7 @@ function RegistriesPage() {
                             onError: toastApiError,
                           })
                         }
-                        iconSlot={<Trash2Icon className="text-destructive" />}
+                        iconSlot={<Trash2 className="text-negative" />}
                       />
                     </TableCell>
                   </TableRow>

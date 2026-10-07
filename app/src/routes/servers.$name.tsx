@@ -106,7 +106,7 @@ function ServerDetailPage() {
                     <Button
                       variant="outline"
                       size="sm"
-                      disabled={restart.isPending}
+                      loading={restart.isPending}
                       onClick={handleRestart}
                       iconSlot={<RotateCwIcon />}
                       content="Restart"
@@ -116,11 +116,11 @@ function ServerDetailPage() {
                       size="sm"
                       label={`Delete ${name}`}
                       tooltip={false}
-                      disabled={remove.isPending}
+                      loading={remove.isPending}
                       title={`Delete ${name}?`}
-                      description="This stops the server, deletes its config file, and removes its install directory. This cannot be undone."
+                      description="This stops the server, deletes its config file, and removes its install directory."
                       onConfirm={handleDelete}
-                      iconSlot={<Trash2 className="text-destructive" />}
+                      iconSlot={<Trash2 className="text-negative" />}
                       content="Delete"
                     />
                   </span>
@@ -213,7 +213,7 @@ function ServerDetailPage() {
                       env={server.config.env}
                       envMeta={server.config.envMeta}
                       onSave={handleSaveEnv}
-                      saving={update.isPending}
+                      loading={update.isPending}
                     />
                   }
                 />

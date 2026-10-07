@@ -1,6 +1,7 @@
 import type { ServerResource, ServerResourceTemplate } from '@mcp-router/shared';
 import { useState } from 'react';
 import { FormField } from '@/components/form-field';
+import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
@@ -21,7 +22,7 @@ interface ResourceRowData {
 function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRowData }) {
   const [uri, setUri] = useState(data.uri);
   const read = useReadResource(scope);
-  const { result, run, pending } = useCapabilityRun(read);
+  const { result, run, loading } = useCapabilityRun(read);
 
   return (
     <CapabilityRow
@@ -49,7 +50,7 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
           />
           <RunButton
             label="Read"
-            pending={pending}
+            loading={loading}
             disabled={uri.trim().length === 0}
             onClick={() => run({ uri: uri.trim() })}
           />
@@ -81,7 +82,8 @@ function templateToRow(template: ServerResourceTemplate): ResourceRowData {
 }
 
 export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
-  const { data, isPending, error, refetch } = useCapabilityResources(scope);
+  const query = useCapabilityResources(scope);
+  const { data } = query;
   const rows = [...(data?.resources ?? []).map(toRow), ...(data?.resourceTemplates ?? []).map(templateToRow)];
   const description =
     scope.kind === SCOPE_WORKSPACE
@@ -92,12 +94,10 @@ export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
     <CapabilityList
       title="Resources"
       description={description}
-      isPending={isPending}
-      error={error}
-      refetch={refetch}
+      query={query}
       what="resources"
-      emptyText="No resources reported."
-      rowsSlot={rows.map((row) => (
+      emptySlot={<EmptyState compact title="No resources reported." />}
+      contentSlot={rows.map((row) => (
         <ResourceRow key={`${row.isTemplate ? 'tpl' : 'res'}:${row.uri}`} scope={scope} data={row} />
       ))}
     />

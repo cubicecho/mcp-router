@@ -14,6 +14,7 @@ import { DialogLayout } from '@/components/dialog-layout';
 import { KeyValueRows } from '@/components/domain/key-value-rows';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
+import { Code } from '@/components/ui/code';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { argsFromLines } from '@/lib/arg-lines';
@@ -185,7 +186,7 @@ export function AddServerDialog({
         >
           {isEdit === false && (
             <FormField
-              className="rounded-lg border border-dashed bg-muted/40 p-3"
+              className="rounded-lg border border-dashed bg-foreground/10 p-3"
               label="Paste a config"
               actionSlot={
                 <Button
@@ -199,11 +200,10 @@ export function AddServerDialog({
               }
               description={
                 <>
-                  Paste a full <code className="font-mono">claude_desktop_config.json</code> block (
-                  <code className="font-mono">mcpServers</code> wrapper), a single named{' '}
-                  <code className="font-mono">{'{ "name": { command, args } }'}</code> entry, or a bare{' '}
-                  <code className="font-mono">{'{ command, args, env }'}</code> object. Fills in the fields below; the
-                  first server is used if several are present.
+                  Paste a full <Code>claude_desktop_config.json</Code> block (<Code>mcpServers</Code> wrapper), a single
+                  named <Code>{'{ "name": { command, args } }'}</Code> entry, or a bare{' '}
+                  <Code>{'{ command, args, env }'}</Code> object. Fills in the fields below; the first server is used if
+                  several are present.
                 </>
               }
               controlSlot={
@@ -258,8 +258,8 @@ export function AddServerDialog({
                     keyLabel="Environment variables name"
                     unnamed="new entry"
                     addLabel="Add variable"
-                    rows={field.state.value}
-                    onChange={field.handleChange}
+                    value={field.state.value}
+                    onValueChange={field.handleChange}
                   />
                 )}
               </form.Field>
@@ -285,8 +285,8 @@ export function AddServerDialog({
                     keyLabel="Headers name"
                     unnamed="new entry"
                     addLabel="Add header"
-                    rows={field.state.value}
-                    onChange={field.handleChange}
+                    value={field.state.value}
+                    onValueChange={field.handleChange}
                   />
                 )}
               </form.Field>

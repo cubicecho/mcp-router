@@ -75,13 +75,11 @@ function WorkspacesPage() {
                           {workspace.name}
                         </Link>
                         {workspace.description && (
-                          <span className="block text-xs font-normal text-muted-foreground">
-                            {workspace.description}
-                          </span>
+                          <span className="block text-xs font-normal text-foreground/60">{workspace.description}</span>
                         )}
                       </TableCell>
                       <TableCell>
-                        <span className="inline-flex items-center gap-1 font-mono text-xs text-muted-foreground">
+                        <span className="inline-flex items-center gap-1 font-mono text-xs text-foreground/60">
                           {workspace.path}
                           <CopyButton
                             variant="ghost"
@@ -91,7 +89,7 @@ function WorkspacesPage() {
                           />
                         </span>
                       </TableCell>
-                      <TableCell className="text-muted-foreground">
+                      <TableCell className="text-foreground/60">
                         {memberCount} {memberCount === 1 ? 'server' : 'servers'}
                       </TableCell>
                       <TableCell>
@@ -121,7 +119,7 @@ function WorkspacesPage() {
                               onError: toastApiError,
                             })
                           }
-                          iconSlot={<Trash2 className="text-destructive" />}
+                          iconSlot={<Trash2 className="text-negative" />}
                         />
                       </TableCell>
                     </TableRow>

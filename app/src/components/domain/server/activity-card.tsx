@@ -33,8 +33,8 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         <>
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
           {entry.via !== CallVia.Direct && <Badge variant="outline">{entry.via}</Badge>}
-          <span className="text-muted-foreground text-xs tabular-nums">{entry.durationMs}ms</span>
-          <span className="text-muted-foreground text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
+          <span className="text-foreground/60 text-xs tabular-nums">{entry.durationMs}ms</span>
+          <span className="text-foreground/60 text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
           </span>
         </>
@@ -88,7 +88,8 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
           <ConfirmButton
             variant="outline"
             size="sm"
-            disabled={clear.isPending || entries.length === 0}
+            loading={clear.isPending}
+            disabled={entries.length === 0}
             label="Clear activity"
             title="Clear the activity log?"
             description={

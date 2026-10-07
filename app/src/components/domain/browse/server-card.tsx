@@ -1,11 +1,12 @@
 import { type RegistryServer, SourceType } from '@mcp-router/shared';
 import { Link } from '@tanstack/react-router';
-import { DownloadIcon, ExternalLinkIcon } from 'lucide-react';
+import { ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
 import { InstallDialog } from '@/components/domain/browse/install-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Download } from '@/components/ui/icons';
 import { useServers } from '@/lib/queries';
 
 function summarizeDistribution(server: RegistryServer): string[] {
@@ -48,9 +49,9 @@ export function RegistryServerCard({
       }
       contentSlot={
         <>
-          {server.description && <p className="line-clamp-3 text-sm text-muted-foreground">{server.description}</p>}
+          {server.description && <p className="line-clamp-3 text-sm text-foreground/60">{server.description}</p>}
           {distribution.length > 0 && (
-            <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{distribution.join(' · ')}</p>
+            <p className="mt-2 break-all font-mono text-xs text-foreground/60">{distribution.join(' · ')}</p>
           )}
           {installOpen && (
             <InstallDialog
@@ -74,12 +75,12 @@ export function RegistryServerCard({
               content={`View ${installed.config.name}`}
             />
           ) : (
-            <Button size="sm" onClick={() => setInstallOpen(true)} iconSlot={<DownloadIcon />} content="Install" />
+            <Button size="sm" onClick={() => setInstallOpen(true)} iconSlot={<Download />} content="Install" />
           )}
           {linkUrl && (
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               // biome-ignore lint/a11y/useAnchorContent: Button draws its content inside the link it is handed
               linkSlot={<a href={linkUrl} target="_blank" rel="noreferrer" />}
               iconSlot={<ExternalLinkIcon />}
