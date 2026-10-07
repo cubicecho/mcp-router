@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS } from '../defaults.ts';
+import { HTTP_DEFAULTS } from '../defaults.ts';
 import { outboundFetch, tuneInbound } from '../http-tuning.ts';
 
 const servers: Server[] = [];
@@ -32,8 +32,8 @@ const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 describe('tuneInbound', () => {
   it('raises keepAliveTimeout above the Node default', () => {
     const server = createServer();
-    expect(tuneInbound(server, {})).toBe(DEFAULT_KEEP_ALIVE_TIMEOUT_MS);
-    expect(server.keepAliveTimeout).toBe(DEFAULT_KEEP_ALIVE_TIMEOUT_MS);
+    expect(tuneInbound(server, {})).toBe(HTTP_DEFAULTS.keepAliveTimeoutMs);
+    expect(server.keepAliveTimeout).toBe(HTTP_DEFAULTS.keepAliveTimeoutMs);
   });
 
   it('takes HTTP_KEEP_ALIVE_TIMEOUT_MS, including 0 for no timeout', () => {
@@ -44,7 +44,7 @@ describe('tuneInbound', () => {
   });
 
   it.each(['', 'soon', '-1', '1.5'])('falls back to the default for %j', (value) => {
-    expect(tuneInbound(createServer(), { HTTP_KEEP_ALIVE_TIMEOUT_MS: value })).toBe(DEFAULT_KEEP_ALIVE_TIMEOUT_MS);
+    expect(tuneInbound(createServer(), { HTTP_KEEP_ALIVE_TIMEOUT_MS: value })).toBe(HTTP_DEFAULTS.keepAliveTimeoutMs);
   });
 });
 

@@ -1,6 +1,6 @@
 import type { EventId, EventStore, StreamId } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_EVENTS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 
 /**
  * Bounded in-memory {@link EventStore} that gives MCP sessions SSE resumability:
@@ -16,7 +16,7 @@ export class BoundedEventStore implements EventStore {
   private readonly maxEvents: number;
   private sequence = 0;
 
-  constructor(maxEvents: number = DEFAULT_MAX_EVENTS) {
+  constructor(maxEvents: number = GATEWAY_DEFAULTS.maxBufferedEvents) {
     this.maxEvents = maxEvents;
   }
 

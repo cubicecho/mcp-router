@@ -1,5 +1,5 @@
 import type { ActivityEntry } from '@mcp-router/shared';
-import { ACTIVITY_MAX_ENTRIES, ACTIVITY_VALUE_MAX_CHARS } from '../defaults.ts';
+import { ACTIVITY_DEFAULTS } from '../defaults.ts';
 import type { InstanceKey } from './instance-key.ts';
 
 /** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
@@ -36,8 +36,8 @@ function snapshotValue(value: unknown): unknown {
   if (serialized === undefined) {
     return undefined; // functions / symbols serialize to nothing
   }
-  if (serialized.length > ACTIVITY_VALUE_MAX_CHARS) {
-    return truncateString(serialized, ACTIVITY_VALUE_MAX_CHARS);
+  if (serialized.length > ACTIVITY_DEFAULTS.valueMaxChars) {
+    return truncateString(serialized, ACTIVITY_DEFAULTS.valueMaxChars);
   }
   return JSON.parse(serialized);
 }
@@ -50,7 +50,7 @@ export class ActivityLog {
   private readonly entries = new Map<InstanceKey, ActivityEntry[]>();
   private sequence = 0;
 
-  /** Append a call to an instance's log, dropping the oldest past {@link ACTIVITY_MAX_ENTRIES}. */
+  /** Append a call to an instance's log, dropping the oldest past `ACTIVITY_DEFAULTS.maxEntries`. */
   record(key: InstanceKey, record: ActivityRecord): void {
     const log = this.entries.get(key) ?? [];
     log.push({
@@ -58,18 +58,18 @@ export class ActivityLog {
       id: ++this.sequence,
       // Bound every payload-bearing field, not just params/result: error messages
       // and targets (e.g. data: URIs) can embed arbitrarily large payloads too.
-      target: record.target === undefined ? undefined : truncateString(record.target, ACTIVITY_VALUE_MAX_CHARS),
-      error: record.error === undefined ? undefined : truncateString(record.error, ACTIVITY_VALUE_MAX_CHARS),
+      target: record.target === undefined ? undefined : truncateString(record.target, ACTIVITY_DEFAULTS.valueMaxChars),
+      error: record.error === undefined ? undefined : truncateString(record.error, ACTIVITY_DEFAULTS.valueMaxChars),
       params: snapshotValue(record.params),
       result: snapshotValue(record.result),
     });
-    if (log.length > ACTIVITY_MAX_ENTRIES) {
-      log.splice(0, log.length - ACTIVITY_MAX_ENTRIES);
+    if (log.length > ACTIVITY_DEFAULTS.maxEntries) {
+      log.splice(0, log.length - ACTIVITY_DEFAULTS.maxEntries);
     }
     this.entries.set(key, log);
   }
 
-  /** An instance's recorded calls, newest first (at most {@link ACTIVITY_MAX_ENTRIES}). */
+  /** An instance's recorded calls, newest first (at most `ACTIVITY_DEFAULTS.maxEntries`). */
   newestFirst(key: InstanceKey): ActivityEntry[] {
     return [...(this.entries.get(key) ?? [])].reverse();
   }

@@ -13,7 +13,7 @@ import {
 } from '@mcp-router/shared';
 import { type FSWatcher, watch } from 'chokidar';
 import { effectiveAuth } from '../auth.ts';
-import { WATCH_DEBOUNCE_MS } from '../defaults.ts';
+import { CONFIG_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 
 export interface ConfigState {
@@ -80,7 +80,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
           .catch((err: unknown) => {
             console.error(`Config reload after file change failed: ${errorMessage(err)}`);
           });
-      }, WATCH_DEBOUNCE_MS);
+      }, CONFIG_DEFAULTS.watchDebounceMs);
     });
   }
 
@@ -211,7 +211,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       dirty = true;
     }
     if (effectiveAuth(settings).enabled && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
-      settings.authToken = randomBytes(32).toString('hex');
+      settings.authToken = randomBytes(CONFIG_DEFAULTS.authTokenBytes).toString('hex');
       dirty = true;
       console.log(`Generated auth token (persisted to ${file}):\n  ${settings.authToken}`);
     }

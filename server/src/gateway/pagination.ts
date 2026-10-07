@@ -1,5 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { MAX_LIST_PAGES } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 
 /**
  * Drain a paginated downstream list. A caller can't forward a single client
@@ -13,7 +13,7 @@ async function allPages<T>(
 ): Promise<T[]> {
   const items: T[] = [];
   let cursor: string | undefined;
-  for (let page = 0; page < MAX_LIST_PAGES; page += 1) {
+  for (let page = 0; page < GATEWAY_DEFAULTS.maxListPages; page += 1) {
     const result = await fetchPage(cursor);
     items.push(...result.items);
     cursor = result.nextCursor;

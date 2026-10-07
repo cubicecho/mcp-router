@@ -14,8 +14,8 @@ import type {
   ServerConfig,
   ServerTransport,
 } from '@mcp-router/shared';
-import { serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
-import { NPM_INSTALL_TIMEOUT_MS } from '../defaults.ts';
+import { NAME_DEFAULTS, serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
+import { INSTALL_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
@@ -52,7 +52,7 @@ export function deriveServerName(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 64);
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
   const result = serverNameSchema.safeParse(sanitized);
   if (result.success === false) {
     throw new HttpError(400, `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`);
@@ -196,7 +196,7 @@ async function installNpmPackage(
   const spec = `${packageName}@${version ?? 'latest'}`;
   try {
     await exec('npm', ['install', '--prefix', dir, spec, '--no-audit', '--no-fund'], {
-      timeout: NPM_INSTALL_TIMEOUT_MS,
+      timeout: INSTALL_DEFAULTS.npmTimeoutMs,
     });
   } catch (cause) {
     // execFile kills the child when its timeout passes, and says so with `killed`.
@@ -204,7 +204,7 @@ async function installNpmPackage(
     if (timedOut) {
       throw new HttpError(
         504,
-        `npm install of "${spec}" did not finish within ${NPM_INSTALL_TIMEOUT_MS} ms`,
+        `npm install of "${spec}" did not finish within ${INSTALL_DEFAULTS.npmTimeoutMs} ms`,
         undefined,
         {
           cause,
@@ -212,7 +212,12 @@ async function installNpmPackage(
       );
     }
     const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
-    throw new HttpError(500, `npm install of "${spec}" failed`, stderr?.slice(-1000) ?? errorMessage(cause), { cause });
+    throw new HttpError(
+      500,
+      `npm install of "${spec}" failed`,
+      stderr?.slice(-INSTALL_DEFAULTS.stderrTailChars) ?? errorMessage(cause),
+      { cause },
+    );
   }
   const packageDir = path.join(dir, 'node_modules', ...packageName.split('/'));
   let packageJson: unknown;

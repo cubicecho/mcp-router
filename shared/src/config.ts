@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { NAME_DEFAULTS, SETTINGS_DEFAULTS } from './defaults.ts';
 
 /**
  * Schemas for the flat config files stored under DATA_DIR/config.
@@ -10,7 +11,7 @@ import { z } from 'zod';
 export const serverNameSchema = z
   .string()
   .min(1)
-  .max(64)
+  .max(NAME_DEFAULTS.serverNameMaxLength)
   .regex(/^[a-z0-9][a-z0-9._-]*$/, 'lowercase alphanumerics, dots, dashes, underscores; must start alphanumeric');
 
 // --- registries.json ---
@@ -43,7 +44,7 @@ export const DEFAULT_REGISTRY: Registry = {
 export const settingsFileSchema = z
   .object({
     /** HTTP port. Env PORT wins over this. */
-    port: z.number().int().positive().default(3000),
+    port: z.number().int().positive().default(SETTINGS_DEFAULTS.port),
     /** Bearer token for the management API and MCP endpoints. Env MCP_ROUTER_TOKEN wins.
      *  Generated on first run when auth is enabled and no token exists. */
     authToken: z.string().nullable().default(null),
@@ -56,24 +57,16 @@ export const settingsFileSchema = z
      *  are always allowed and native MCP clients send no Origin; add browser-based clients here. */
     allowedOrigins: z.array(z.string()).default([]),
     /** Default idle shutdown for stdio child processes (per-server override wins). */
-    idleTimeoutMs: z
-      .number()
-      .int()
-      .positive()
-      .default(5 * 60 * 1000),
+    idleTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.idleTimeoutMs),
     /** Idle lifetime of an MCP streamable-HTTP session before the router reclaims it.
      *  Sessions normally end on a client DELETE; this bounds ones abandoned without one
      *  (a client that drops its stream and never returns), counted from its last request or
      *  from when its GET SSE stream closed; a session holding that stream open is never
      *  reclaimed. Reclaimed sessions 404 on the next request — which the MCP SDK's client does
      *  not recover from on its own, hence the exemption. */
-    sessionIdleTimeoutMs: z
-      .number()
-      .int()
-      .positive()
-      .default(30 * 60 * 1000),
+    sessionIdleTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.sessionIdleTimeoutMs),
     /** Hard cap on concurrent live MCP sessions; the least-recently-active are evicted past it. */
-    maxSessions: z.number().int().positive().default(1000),
+    maxSessions: z.number().int().positive().default(SETTINGS_DEFAULTS.maxSessions),
     /** How long a downstream connect — spawn plus the MCP initialize handshake — may take before
      *  the router gives up and reports the server as failed. Bounds a child that starts and then
      *  never speaks; the MCP SDK's own 60s applies to the initialize *request*, which such a child
@@ -81,11 +74,7 @@ export const settingsFileSchema = z
      *  resolve and download the package before it says anything. Like `idleTimeoutMs` it is
      *  re-read on every reconcile, and applies at the next connect — an edited timeout is no
      *  reason to bounce a running child. */
-    connectTimeoutMs: z
-      .number()
-      .int()
-      .positive()
-      .default(60 * 1000),
+    connectTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.connectTimeoutMs),
   })
   .passthrough();
 
@@ -201,7 +190,7 @@ export const workspaceMemberSchema = z
 export const workspaceConfigSchema = z
   .object({
     /** Human-facing display name. */
-    name: z.string().min(1).max(100),
+    name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength),
     /** URL slug — the route segment at /mcp/w/<slug>, also the config filename. */
     slug: serverNameSchema,
     /** Disable to 404 the workspace's endpoint without deleting it. */
@@ -222,5 +211,5 @@ export function slugify(name: string): string {
     .replace(/[^a-z0-9._-]+/g, '-') // non-slug chars → single dash
     .replace(/^[^a-z0-9]+/, '') // must start alphanumeric
     .replace(/[-.]+$/, '') // no trailing dash/dot
-    .slice(0, 64);
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
 }

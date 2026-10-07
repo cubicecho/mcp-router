@@ -4,7 +4,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
-import { STREAM_KEEPALIVE_MS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 import { BoundedEventStore } from './event-store.ts';
 
 /** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
@@ -106,7 +106,7 @@ export class SessionRegistry {
       session.openStreams += 1;
       // A client whose machine slept or dropped off the network never sends a FIN, and a quiet
       // stream never writes to find out — keepalive is what eventually closes it.
-      req.socket.setKeepAlive(true, STREAM_KEEPALIVE_MS);
+      req.socket.setKeepAlive(true, GATEWAY_DEFAULTS.streamKeepAliveMs);
       res.on('close', () => {
         session.openStreams -= 1;
         // Idleness starts when the client stopped listening, not when it last spoke.

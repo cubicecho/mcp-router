@@ -19,7 +19,7 @@ import type {
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
-import { CRASH_BACKOFF_MS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
@@ -193,7 +193,7 @@ export class GatewayManager {
       // A stdio child gets this allowlist plus the server's own env, never the
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
-      crashBackoffMs: CRASH_BACKOFF_MS,
+      crashBackoffMs: GATEWAY_DEFAULTS.crashBackoffMs,
       // The pool's own keep-alive, at the idle time HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS names.
       fetch: outboundFetch(),
     });

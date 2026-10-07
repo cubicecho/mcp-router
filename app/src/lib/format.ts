@@ -1,4 +1,5 @@
-import type { ServerSource } from '@mcp-router/shared';
+import { NAME_DEFAULTS, type ServerSource } from '@mcp-router/shared';
+import { DISPLAY_DEFAULTS } from './defaults';
 
 /** Human-readable one-liner for a server's install source. */
 export function formatSource(source: ServerSource): string {
@@ -21,7 +22,7 @@ export function formatRelativeTime(iso: string, now = Date.now()): string {
     return iso;
   }
   const seconds = Math.max(0, Math.floor((now - then) / 1000));
-  if (seconds < 45) {
+  if (seconds < DISPLAY_DEFAULTS.justNowSeconds) {
     return 'just now';
   }
   const minutes = Math.floor(seconds / 60);
@@ -42,7 +43,7 @@ export function suggestLocalName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 64);
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
 }
 
 /** A timestamp in the viewer's locale, or the raw text when it does not parse. */

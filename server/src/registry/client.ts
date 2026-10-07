@@ -1,6 +1,6 @@
 import type { Registry, RegistryListResponse, RegistryServerEntry } from '@mcp-router/shared';
 import { registryListResponseSchema, registryServerEntrySchema } from '@mcp-router/shared';
-import { REGISTRY_FETCH_TIMEOUT_MS } from '../defaults.ts';
+import { REGISTRY_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 
@@ -22,7 +22,7 @@ export class RegistryClient {
    * @param fetchImpl - The fetch to use; tests pass a fake.
    * @param timeoutMs - How long a registry may take to answer, in ms.
    */
-  constructor(fetchImpl: typeof fetch = fetch, timeoutMs: number = REGISTRY_FETCH_TIMEOUT_MS) {
+  constructor(fetchImpl: typeof fetch = fetch, timeoutMs: number = REGISTRY_DEFAULTS.fetchTimeoutMs) {
     this.fetchImpl = fetchImpl;
     this.timeoutMs = timeoutMs;
   }
@@ -78,7 +78,7 @@ export class RegistryClient {
       throw new HttpError(
         502,
         `Registry "${registry.name}" responded with HTTP ${response.status}`,
-        (await response.text().catch(() => '')).slice(0, 500),
+        (await response.text().catch(() => '')).slice(0, REGISTRY_DEFAULTS.errorBodyMaxChars),
       );
     }
     try {

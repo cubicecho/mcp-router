@@ -7,6 +7,7 @@ import {
   workspaceConfigSchema,
   workspaceMemberSchema,
 } from './config.ts';
+import { NAME_DEFAULTS } from './defaults.ts';
 
 /**
  * DTOs for the management REST API (/api/*).
@@ -224,7 +225,7 @@ export const workspaceStatusSchema = workspaceConfigSchema.extend({
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
 export const createWorkspaceRequestSchema = z.object({
-  name: z.string().min(1).max(100),
+  name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength),
   /** Slug for the URL; derived from `name` when omitted. */
   slug: serverNameSchema.optional(),
   enabled: z.boolean().optional(),
@@ -235,7 +236,7 @@ export const createWorkspaceRequestSchema = z.object({
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 
 export const updateWorkspaceRequestSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
+  name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength).optional(),
   enabled: z.boolean().optional(),
   description: z.string().optional(),
   /** Full replacement of the members map when provided. */
