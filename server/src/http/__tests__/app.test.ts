@@ -8,13 +8,13 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../config/store.ts';
-import { upstreamFailed } from '../core/errors.ts';
-import { SERVER_VERSION } from '../core/version.ts';
-import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
-import { workspaceInstanceKey } from '../gateway/instance-key.ts';
-import { GatewayManager } from '../gateway/manager.ts';
-import { buildApp } from '../http/app.ts';
+import { ConfigStore } from '../../config/store.ts';
+import { upstreamFailed } from '../../core/errors.ts';
+import { SERVER_VERSION } from '../../core/version.ts';
+import { ECHO_INSTRUCTIONS } from '../../gateway/__tests__/fixtures/echo-instructions.ts';
+import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
+import { GatewayManager } from '../../gateway/manager.ts';
+import { buildApp } from '../app.ts';
 
 /** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */
 function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Client, unknown>>) {
@@ -540,7 +540,7 @@ describe('MCP session lifecycle', () => {
         transport: {
           type: 'stdio',
           command: process.execPath,
-          args: [path.join(import.meta.dirname, '../gateway/__tests__/fixtures/echo-server.ts')],
+          args: [path.join(import.meta.dirname, '../../gateway/__tests__/fixtures/echo-server.ts')],
         },
       }),
     );

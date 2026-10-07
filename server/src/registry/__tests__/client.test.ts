@@ -2,8 +2,8 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Registry } from '@mcp-router/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { HttpError } from '../core/errors.ts';
-import { RegistryClient } from '../registry/client.ts';
+import { HttpError } from '../../core/errors.ts';
+import { RegistryClient } from '../client.ts';
 
 const FIXTURES = path.join(import.meta.dirname, 'fixtures');
 const listFixture = JSON.parse(readFileSync(path.join(FIXTURES, 'registry-list.json'), 'utf8'));
