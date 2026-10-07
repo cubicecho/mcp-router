@@ -8,14 +8,16 @@ import {
   MINIMAL_CHILD_ENV,
   sameConnection,
 } from '@cubicecho/agent-mcp-pool';
-import type {
-  ActivityEntry,
-  ServerConfig,
+import {
+  type ActivityEntry,
+  type ServerConfig,
   ServerRuntimeState,
-  ServerStatus,
-  SettingsFile,
-  WorkspaceConfig,
-  WorkspaceMember,
+  type ServerStatus,
+  type SettingsFile,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
+  type WorkspaceConfig,
+  type WorkspaceMember,
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
@@ -64,9 +66,9 @@ interface ServerMeta {
  */
 function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, workspace: WorkspaceConfig): ServerConfig {
   let transport = base.transport;
-  if (transport.type === 'stdio' && member.args) {
+  if (transport.type === TRANSPORT_STDIO && member.args) {
     transport = { ...transport, args: member.args };
-  } else if (transport.type === 'streamable-http' && (member.headers || member.url)) {
+  } else if (transport.type === TRANSPORT_STREAMABLE_HTTP && (member.headers || member.url)) {
     transport = {
       ...transport,
       url: member.url ?? transport.url,
@@ -90,7 +92,7 @@ function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, worksp
  */
 function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
-  if (transport.type === 'stdio') {
+  if (transport.type === TRANSPORT_STDIO) {
     return {
       transport: 'stdio',
       command: transport.command,
@@ -111,7 +113,7 @@ function toConnection(config: ServerConfig): McpConnection {
  * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
  */
 function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
-  const stdio = config.transport.type === 'stdio';
+  const stdio = config.transport.type === TRANSPORT_STDIO;
   return {
     id: key,
     label: config.displayName ?? config.name,
@@ -152,11 +154,11 @@ function connectionRow(config: ServerConfig): McpServerConfig {
 
 /** How the pool's connection status reads on this API. `disabled` and `idle` are both "no child, nothing wrong". */
 const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
-  disabled: 'stopped',
-  idle: 'stopped',
-  connecting: 'starting',
-  ready: 'running',
-  error: 'error',
+  disabled: ServerRuntimeState.Stopped,
+  idle: ServerRuntimeState.Stopped,
+  connecting: ServerRuntimeState.Starting,
+  ready: ServerRuntimeState.Running,
+  error: ServerRuntimeState.Error,
 };
 
 /**
@@ -441,7 +443,7 @@ export class GatewayManager {
 function toStatus(meta: ServerMeta, state: McpServerState | undefined): ServerStatus {
   return {
     config: meta.config,
-    state: state ? RUNTIME_STATE[state.status] : 'stopped',
+    state: state ? RUNTIME_STATE[state.status] : ServerRuntimeState.Stopped,
     pid: state?.pid,
     startedAt: state?.startedAt,
     // The pool reports "no error" as an empty string; this API reports it as absent.

@@ -1,6 +1,7 @@
 import type { ActivityEntry } from '@mcp-router/shared';
 import { errorDetailMessage } from '../errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
+import { McpMethod } from './mcp-method.ts';
 import { toolCallFailed, toolErrorText } from './tool-result.ts';
 
 export interface RecordedCallContext {
@@ -50,7 +51,7 @@ export async function recordedCall<T>(
   // tools/call resolves (does not throw) for tool-level errors, flagging them
   // via `isError` on the result — so success/failure can't be inferred from
   // throw-vs-return alone. Derived here, once, so no call site can forget it.
-  const failed = ctx.method === 'tools/call' && toolCallFailed(result);
+  const failed = ctx.method === McpMethod.ToolsCall && toolCallFailed(result);
   const isRecorded = ctx.failuresOnly !== true || failed;
   if (isRecorded) {
     write({ ok: failed === false, result, error: failed ? toolErrorText(result) : undefined });

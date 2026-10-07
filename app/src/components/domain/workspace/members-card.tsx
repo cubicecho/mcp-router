@@ -1,4 +1,4 @@
-import type { WorkspaceMember, WorkspaceStatus } from '@mcp-router/shared';
+import { TRANSPORT_STDIO, type WorkspaceMember, type WorkspaceStatus } from '@mcp-router/shared';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
@@ -61,7 +61,7 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
               const server = servers?.find((s) => s.config.name === name);
               const enabled = member.enabled ?? true;
               const overrides = overrideLabels(member);
-              const isStdio = server?.config.transport.type === 'stdio';
+              const isStdio = server?.config.transport.type === TRANSPORT_STDIO;
               return (
                 <li key={name} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
                   <Switch

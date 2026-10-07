@@ -1,9 +1,10 @@
-import { promptGetRequestSchema, resourceReadRequestSchema, toolCallRequestSchema } from '@mcp-router/shared';
+import { CallVia, promptGetRequestSchema, resourceReadRequestSchema, toolCallRequestSchema } from '@mcp-router/shared';
 import type { Router } from 'express';
 import { errorMessage, HttpError } from '../errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
+import { McpMethod } from '../gateway/mcp-method.ts';
 import { recordedCall } from '../gateway/recorded-call.ts';
 
 export interface UiCallContext {
@@ -29,7 +30,7 @@ async function runUiCall(
   try {
     return await recordedCall(
       (entry) => manager.recordActivity(key, entry),
-      { via: 'ui', method: ctx.method, target: ctx.target, params: ctx.params },
+      { via: CallVia.Ui, method: ctx.method, target: ctx.target, params: ctx.params },
       () => manager.withClient(key, run),
     );
   } catch (cause) {
@@ -90,7 +91,7 @@ export function registerUiCallRoutes(router: Router, manager: GatewayManager, sc
   };
 
   register(
-    'tools/call',
+    McpMethod.ToolsCall,
     'tool',
     (body) => toolCallRequestSchema.parse(body),
     (body) => body.name,
@@ -98,7 +99,7 @@ export function registerUiCallRoutes(router: Router, manager: GatewayManager, sc
     (client, name, body) => client.callTool({ name, arguments: body.arguments }),
   );
   register(
-    'resources/read',
+    McpMethod.ResourcesRead,
     'resource',
     (body) => resourceReadRequestSchema.parse(body),
     (body) => body.uri,
@@ -106,7 +107,7 @@ export function registerUiCallRoutes(router: Router, manager: GatewayManager, sc
     (client, uri) => client.readResource({ uri }),
   );
   register(
-    'prompts/get',
+    McpMethod.PromptsGet,
     'prompt',
     (body) => promptGetRequestSchema.parse(body),
     (body) => body.name,

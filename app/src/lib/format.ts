@@ -1,16 +1,16 @@
-import { NAME_DEFAULTS, type ServerSource } from '@mcp-router/shared';
+import { NAME_DEFAULTS, type ServerSource, SourceType } from '@mcp-router/shared';
 import { DISPLAY_DEFAULTS } from './defaults';
 
 /** Human-readable one-liner for a server's install source. */
 export function formatSource(source: ServerSource): string {
   switch (source.type) {
-    case 'registry':
+    case SourceType.Registry:
       return `${source.registry}: ${source.serverName}${source.version ? `@${source.version}` : ''}`;
-    case 'npm':
+    case SourceType.Npm:
       return `npm: ${source.package}@${source.version ?? 'latest'}`;
-    case 'pypi':
+    case SourceType.Pypi:
       return `pypi: ${source.package}@${source.version ?? 'latest'}`;
-    case 'remote':
+    case SourceType.Remote:
       return 'manual';
   }
 }

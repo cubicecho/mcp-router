@@ -14,6 +14,7 @@ import { emptyOnMissing } from '../../gateway/capability.ts';
 import type { DownstreamClient } from '../../gateway/downstream.ts';
 import { type EndpointScope, scopedDeps, workspaceScope } from '../../gateway/endpoint-scope.ts';
 import { collectFrom } from '../../gateway/fan-out.ts';
+import { McpMethod } from '../../gateway/mcp-method.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
@@ -148,7 +149,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
 
   router.get('/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
+    const tools = await workspaceCollect(workspace, McpMethod.ToolsList, async (client, name) => {
       const all = await listAllTools(client);
       manager.recordToolCount(scopeOf(workspace).keyFor(name), all.length);
       return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
@@ -159,7 +160,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   router.get('/:slug/resources', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const [resources, resourceTemplates] = await Promise.all([
-      workspaceCollect(workspace, 'resources/list', async (client, name) => {
+      workspaceCollect(workspace, McpMethod.ResourcesList, async (client, name) => {
         const all = await emptyOnMissing(() => listAllResources(client));
         return (all ?? []).map((resource) => ({
           ...resource,
@@ -167,7 +168,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
           name: resource.name === undefined ? undefined : namespaceName(name, resource.name),
         }));
       }),
-      workspaceCollect(workspace, 'resources/templates/list', async (client, name) => {
+      workspaceCollect(workspace, McpMethod.ResourceTemplatesList, async (client, name) => {
         const all = await emptyOnMissing(() => listAllResourceTemplates(client));
         return (all ?? []).map((template) => ({
           ...template,
@@ -181,7 +182,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
 
   router.get('/:slug/prompts', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const prompts = await workspaceCollect(workspace, 'prompts/list', async (client, name) => {
+    const prompts = await workspaceCollect(workspace, McpMethod.PromptsList, async (client, name) => {
       const all = await emptyOnMissing(() => listAllPrompts(client));
       return (all ?? []).map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });

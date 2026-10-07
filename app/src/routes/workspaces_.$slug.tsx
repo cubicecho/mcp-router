@@ -16,6 +16,7 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
+import { SCOPE_WORKSPACE } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
@@ -33,7 +34,7 @@ function WorkspaceDetailPage() {
   const remove = useDeleteWorkspace();
   const [editOpen, setEditOpen] = useState(false);
 
-  const scope = { kind: 'workspace', slug } as const;
+  const scope = { kind: SCOPE_WORKSPACE, slug } as const;
   const endpoint = endpointUrl(endpointPath(scope));
 
   const handleDelete = () => {

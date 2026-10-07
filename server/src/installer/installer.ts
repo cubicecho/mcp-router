@@ -2,19 +2,24 @@ import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type {
-  EnvVarMeta,
-  InstallRequest,
-  Registry,
-  RegistryArgument,
-  RegistryKeyValueInput,
-  RegistryPackage,
-  RegistryRemote,
-  RegistryServerEntry,
-  ServerConfig,
-  ServerTransport,
+import {
+  type EnvVarMeta,
+  type InstallRequest,
+  NAME_DEFAULTS,
+  type Registry,
+  type RegistryArgument,
+  type RegistryKeyValueInput,
+  type RegistryPackage,
+  type RegistryRemote,
+  type RegistryServerEntry,
+  type ServerConfig,
+  type ServerTransport,
+  SourceType,
+  serverConfigSchema,
+  serverNameSchema,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
 } from '@mcp-router/shared';
-import { NAME_DEFAULTS, serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
 import { INSTALL_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
@@ -68,10 +73,10 @@ export function resolveServerName({ name, source }: Pick<InstallRequest, 'name' 
   if (name !== undefined) {
     return name;
   }
-  if (source.type === 'registry') {
+  if (source.type === SourceType.Registry) {
     return deriveServerName(source.serverName);
   }
-  if (source.type === 'npm' || source.type === 'pypi') {
+  if (source.type === SourceType.Npm || source.type === SourceType.Pypi) {
     return deriveServerName(source.package);
   }
   throw new HttpError(400, 'A "name" is required when installing a remote server');
@@ -232,7 +237,7 @@ async function installNpmPackage(
     packageDir,
     resolveBinEntry(packageName, isRecord(packageJson) ? packageJson.bin : undefined),
   );
-  return { type: 'stdio', command: 'node', args: [binPath, ...extraArgs] };
+  return { type: TRANSPORT_STDIO, command: 'node', args: [binPath, ...extraArgs] };
 }
 
 /**
@@ -248,7 +253,7 @@ export function buildPypiTransport(
   extraArgs: string[] = [],
 ): ServerTransport {
   const spec = version ? `${packageName}@${version}` : packageName;
-  return { type: 'stdio', command: 'uvx', args: [spec, ...extraArgs] };
+  return { type: TRANSPORT_STDIO, command: 'uvx', args: [spec, ...extraArgs] };
 }
 
 /** Fixed headers from a registry remote's header inputs (only value-carrying entries). */
@@ -267,7 +272,7 @@ function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined): Reco
 type SourceParts = Pick<ServerConfig, 'transport'> &
   Partial<Pick<ServerConfig, 'displayName' | 'description' | 'env' | 'envMeta'>>;
 
-type RegistrySource = Extract<InstallRequest['source'], { type: 'registry' }>;
+type RegistrySource = Extract<InstallRequest['source'], { type: typeof SourceType.Registry }>;
 
 /** A registry entry's chosen package or remote, with the env prefills and hints the entry declares. */
 async function registryParts(
@@ -285,12 +290,12 @@ async function registryParts(
   const described = { displayName: entry.server.title, description: entry.server.description };
   if ('remote' in selection) {
     const remote = selection.remote;
-    if (remote.type !== 'streamable-http') {
+    if (remote.type !== TRANSPORT_STREAMABLE_HTTP) {
       throw new HttpError(400, `Remote transport "${remote.type}" is not supported (only streamable-http)`);
     }
     return {
       ...described,
-      transport: { type: 'streamable-http', url: remote.url, headers: headersFromRegistry(remote.headers) },
+      transport: { type: TRANSPORT_STREAMABLE_HTTP, url: remote.url, headers: headersFromRegistry(remote.headers) },
     };
   }
   const pkg = selection.package;
@@ -315,11 +320,11 @@ async function registryParts(
 async function sourceParts(request: InstallRequest, name: string, deps: InstallerDeps): Promise<SourceParts> {
   const { source } = request;
   switch (source.type) {
-    case 'registry':
+    case SourceType.Registry:
       return registryParts(request, source, name, deps);
-    case 'npm':
+    case SourceType.Npm:
       return { transport: await installNpmPackage(deps, name, source.package, source.version) };
-    case 'pypi':
+    case SourceType.Pypi:
       return { transport: buildPypiTransport(source.package, source.version) };
     default:
       if (!request.transport) {

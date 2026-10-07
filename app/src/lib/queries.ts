@@ -7,13 +7,13 @@ import type {
   UpdateWorkspaceRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CapabilityScope } from './api';
 import * as api from './api';
+import { type CapabilityScope, SCOPE_SERVER } from './api';
 import { POLLING_DEFAULTS } from './defaults';
 
 /** Root query key for a capability scope; capability keys hang off it. */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {
-  return scope.kind === 'server' ? ['servers', scope.name] : ['workspaces', scope.slug];
+  return scope.kind === SCOPE_SERVER ? ['servers', scope.name] : ['workspaces', scope.slug];
 }
 
 export const queryKeys = {
@@ -175,7 +175,7 @@ export function useRestartServer() {
 export function useTestServerConnection() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (name: string) => api.getTools({ kind: 'server', name }),
+    mutationFn: (name: string) => api.getTools({ kind: SCOPE_SERVER, name }),
     onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
   });
 }

@@ -1,5 +1,12 @@
-import type { CreateWorkspaceRequest, ServerStatus, WorkspaceMember, WorkspaceStatus } from '@mcp-router/shared';
-import { slugify } from '@mcp-router/shared';
+import {
+  type CreateWorkspaceRequest,
+  type ServerStatus,
+  slugify,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
+  type WorkspaceMember,
+  type WorkspaceStatus,
+} from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { type ReactElement, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +19,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
+import { SCOPE_WORKSPACE } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
@@ -78,7 +86,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
       continue;
     }
     const member: WorkspaceMember = { enabled: true };
-    if (server.config.transport.type === 'stdio') {
+    if (server.config.transport.type === TRANSPORT_STDIO) {
       const env = linesToRecord(draft.env);
       if (Object.keys(env).length > 0) {
         member.env = env;
@@ -94,7 +102,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
       }
       // Only persist a URL override when it actually differs from the base URL.
       const url = draft.url.trim();
-      if (server.config.transport.type === 'streamable-http' && url && url !== server.config.transport.url) {
+      if (server.config.transport.type === TRANSPORT_STREAMABLE_HTTP && url && url !== server.config.transport.url) {
         member.url = url;
       }
     }
@@ -158,7 +166,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
     // Seed the URL override for remote members with the base URL so "extending"
     // it (e.g. appending a workspace path) is just editing the tail. Unchanged
     // values are dropped on submit, so this never persists a redundant override.
-    const baseUrl = server.config.transport.type === 'streamable-http' ? server.config.transport.url : '';
+    const baseUrl = server.config.transport.type === TRANSPORT_STREAMABLE_HTTP ? server.config.transport.url : '';
     const members = form.getFieldValue('members');
     const index = members.findIndex((member) => member.name === serverName);
     if (index === -1) {
@@ -184,7 +192,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
   };
 
   const endpoint = useMemo(
-    () => endpointUrl(endpointPath({ kind: 'workspace', slug: workspace?.slug ?? '' })),
+    () => endpointUrl(endpointPath({ kind: SCOPE_WORKSPACE, slug: workspace?.slug ?? '' })),
     [workspace?.slug],
   );
 
@@ -266,7 +274,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                       onToggle={(on) => toggleMember(server, on)}
                       onExpandToggle={() => setExpanded((current) => (current === serverName ? null : serverName))}
                       overridesSlot={
-                        transport.type === 'stdio' ? (
+                        transport.type === TRANSPORT_STDIO ? (
                           <>
                             <TextareaField
                               form={form}
@@ -300,7 +308,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                               labelClassName="font-sans text-xs"
                               description="Replaces the server's URL for this workspace — e.g. append a path to scope a shared upstream. Leave as the base URL to inherit it."
                               placeholder={
-                                transport.type === 'streamable-http' ? transport.url : 'https://example.com/mcp'
+                                transport.type === TRANSPORT_STREAMABLE_HTTP ? transport.url : 'https://example.com/mcp'
                               }
                               className="font-mono"
                               descriptionClassName="font-sans"
@@ -350,7 +358,7 @@ interface MemberRowProps {
 }
 
 function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overridesSlot }: MemberRowProps) {
-  const isStdio = server.config.transport.type === 'stdio';
+  const isStdio = server.config.transport.type === TRANSPORT_STDIO;
   const name = server.config.name;
 
   return (

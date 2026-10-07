@@ -1,4 +1,4 @@
-import type { ActivityEntry } from '@mcp-router/shared';
+import { type ActivityEntry, CallVia } from '@mcp-router/shared';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -12,7 +12,7 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from '@/components/ui/icons';
-import type { CapabilityScope } from '@/lib/api';
+import { type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
 import { endpointPath } from '@/lib/endpoint';
 import { formatAbsoluteTime, formatRelativeTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
@@ -32,7 +32,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
       actionSlot={
         <>
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
-          {entry.via !== 'direct' && <Badge variant="outline">{entry.via}</Badge>}
+          {entry.via !== CallVia.Direct && <Badge variant="outline">{entry.via}</Badge>}
           <span className="text-muted-foreground text-xs tabular-nums">{entry.durationMs}ms</span>
           <span className="text-muted-foreground text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
@@ -92,7 +92,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             label="Clear activity"
             title="Clear the activity log?"
             description={
-              scope.kind === 'server'
+              scope.kind === SCOPE_SERVER
                 ? 'Every recorded call to this server is removed, including the failed ones you have not looked at.'
                 : "Every recorded call through this workspace's members is removed, including the failed ones you have not looked at."
             }
@@ -104,7 +104,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
         </span>
       }
       description={
-        scope.kind === 'server'
+        scope.kind === SCOPE_SERVER
           ? 'Recent MCP calls proxied to this server (kept in memory; the newest 200 are retained).'
           : "Recent MCP calls proxied through this workspace's members (kept in memory; the newest 200 per member are retained)."
       }
@@ -116,7 +116,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             <EmptyState
               compact
               title={`No activity yet. Calls made through ${endpoint}${
-                scope.kind === 'server' ? ' or the aggregate /mcp endpoint' : ''
+                scope.kind === SCOPE_SERVER ? ' or the aggregate /mcp endpoint' : ''
               } will appear here.`}
             />
           )}

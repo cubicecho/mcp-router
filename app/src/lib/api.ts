@@ -122,10 +122,15 @@ export function restartServer(name: string): Promise<ServerStatus> {
  * (`/api/workspaces/:slug/…`). The two share request/response shapes, so one set of
  * functions/hooks/components serves both — pick the base path from the scope.
  */
-export type CapabilityScope = { kind: 'server'; name: string } | { kind: 'workspace'; slug: string };
+export const SCOPE_SERVER = 'server' as const;
+export const SCOPE_WORKSPACE = 'workspace' as const;
+
+export type CapabilityScope =
+  | { kind: typeof SCOPE_SERVER; name: string }
+  | { kind: typeof SCOPE_WORKSPACE; slug: string };
 
 function scopeBase(scope: CapabilityScope): string {
-  return scope.kind === 'server'
+  return scope.kind === SCOPE_SERVER
     ? `/api/servers/${encodeURIComponent(scope.name)}`
     : `/api/workspaces/${encodeURIComponent(scope.slug)}`;
 }

@@ -1,3 +1,4 @@
+import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js';
@@ -17,6 +18,7 @@ import {
 import { SERVER_VERSION } from '../version.ts';
 import { emptyOnMissing, proxyCapabilities } from './capability.ts';
 import type { Handshake } from './handshake.ts';
+import { McpMethod } from './mcp-method.ts';
 import { EMPTY_COMPLETION, type ProxyDeps, track } from './track.ts';
 
 /**
@@ -35,7 +37,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
 
   /** A call that names what it acts on: always recorded, under that target. */
   const targetedCall = <R>(method: string, target: string, params: unknown, run: (client: Client) => Promise<R>) =>
-    track(deps, name, { via: 'direct', method, target, params }, () => withClient(run));
+    track(deps, name, { via: CallVia.Direct, method, target, params }, () => withClient(run));
 
   /**
    * A routine read: only its failures are recorded, and a downstream that lacks the capability
@@ -45,7 +47,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
     track(
       deps,
       name,
-      { via: 'direct', method, params, failuresOnly: true },
+      { via: CallVia.Direct, method, params, failuresOnly: true },
       async () => (await emptyOnMissing(() => withClient(run))) ?? empty,
     );
 
@@ -57,19 +59,24 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
   // server that has resources and happens to have none right now.
   if (advertised.tools) {
     server.setRequestHandler(ListToolsRequestSchema, async (req) =>
-      track(deps, name, { via: 'direct', method: 'tools/list', params: req.params, failuresOnly: true }, async () => {
-        // A missing capability is a definitive "has no tools" — clear any count
-        // from a previous incarnation; any other failure propagates, and track()
-        // converts it to an MCP error.
-        const result = await emptyOnMissing(() => withClient((c) => c.listTools(req.params)));
-        deps.recordToolCount(name, result?.tools.length ?? 0);
-        return result ?? { tools: [] };
-      }),
+      track(
+        deps,
+        name,
+        { via: CallVia.Direct, method: McpMethod.ToolsList, params: req.params, failuresOnly: true },
+        async () => {
+          // A missing capability is a definitive "has no tools" — clear any count
+          // from a previous incarnation; any other failure propagates, and track()
+          // converts it to an MCP error.
+          const result = await emptyOnMissing(() => withClient((c) => c.listTools(req.params)));
+          deps.recordToolCount(name, result?.tools.length ?? 0);
+          return result ?? { tools: [] };
+        },
+      ),
     );
 
     server.setRequestHandler(CallToolRequestSchema, async (req) =>
       targetedCall(
-        'tools/call',
+        McpMethod.ToolsCall,
         req.params.name,
         req.params,
         async (c) => (await c.callTool(req.params)) as CallToolResult,
@@ -79,17 +86,17 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
 
   if (advertised.resources) {
     server.setRequestHandler(ListResourcesRequestSchema, async (req) =>
-      quietRead('resources/list', req.params, { resources: [] }, (c) => c.listResources(req.params)),
+      quietRead(McpMethod.ResourcesList, req.params, { resources: [] }, (c) => c.listResources(req.params)),
     );
 
     server.setRequestHandler(ListResourceTemplatesRequestSchema, async (req) =>
-      quietRead('resources/templates/list', req.params, { resourceTemplates: [] }, (c) =>
+      quietRead(McpMethod.ResourceTemplatesList, req.params, { resourceTemplates: [] }, (c) =>
         c.listResourceTemplates(req.params),
       ),
     );
 
     server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
-      targetedCall('resources/read', req.params.uri, req.params, (c) => c.readResource(req.params)),
+      targetedCall(McpMethod.ResourcesRead, req.params.uri, req.params, (c) => c.readResource(req.params)),
     );
   }
 
@@ -97,28 +104,30 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
   // is a request that exists to fail.
   if (advertised.resources?.subscribe) {
     server.setRequestHandler(SubscribeRequestSchema, async (req) =>
-      targetedCall('resources/subscribe', req.params.uri, req.params, (c) => c.subscribeResource(req.params)),
+      targetedCall(McpMethod.ResourcesSubscribe, req.params.uri, req.params, (c) => c.subscribeResource(req.params)),
     );
 
     server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
-      targetedCall('resources/unsubscribe', req.params.uri, req.params, (c) => c.unsubscribeResource(req.params)),
+      targetedCall(McpMethod.ResourcesUnsubscribe, req.params.uri, req.params, (c) =>
+        c.unsubscribeResource(req.params),
+      ),
     );
   }
 
   if (advertised.prompts) {
     server.setRequestHandler(ListPromptsRequestSchema, async (req) =>
-      quietRead('prompts/list', req.params, { prompts: [] }, (c) => c.listPrompts(req.params)),
+      quietRead(McpMethod.PromptsList, req.params, { prompts: [] }, (c) => c.listPrompts(req.params)),
     );
 
     server.setRequestHandler(GetPromptRequestSchema, async (req) =>
-      targetedCall('prompts/get', req.params.name, req.params, (c) => c.getPrompt(req.params)),
+      targetedCall(McpMethod.PromptsGet, req.params.name, req.params, (c) => c.getPrompt(req.params)),
     );
   }
 
   if (advertised.completions) {
     // Completions fire per keystroke; like list ops, only their failures are recorded.
     server.setRequestHandler(CompleteRequestSchema, async (req) =>
-      quietRead('completion/complete', req.params, EMPTY_COMPLETION, (c) => c.complete(req.params)),
+      quietRead(McpMethod.CompletionComplete, req.params, EMPTY_COMPLETION, (c) => c.complete(req.params)),
     );
   }
 
@@ -127,7 +136,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
       track(
         deps,
         name,
-        { via: 'direct', method: 'logging/setLevel', target: req.params.level, params: req.params },
+        { via: CallVia.Direct, method: McpMethod.LoggingSetLevel, target: req.params.level, params: req.params },
         async () => {
           await emptyOnMissing(() => withClient((c) => c.setLoggingLevel(req.params.level)));
           return {};

@@ -1,3 +1,4 @@
+import { ServerRuntimeState, TRANSPORT_STDIO } from '@mcp-router/shared';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -18,6 +19,7 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
+import { SCOPE_SERVER } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
@@ -37,7 +39,7 @@ function ServerDetailPage() {
   const remove = useDeleteServer();
   const [editOpen, setEditOpen] = useState(false);
 
-  const scope = { kind: 'server', name } as const;
+  const scope = { kind: SCOPE_SERVER, name } as const;
   const endpoint = endpointUrl(endpointPath(scope));
 
   const handleDelete = () => {
@@ -153,7 +155,7 @@ function ServerDetailPage() {
                           <PropertyRow
                             label="Transport"
                             value={
-                              server.config.transport.type === 'stdio'
+                              server.config.transport.type === TRANSPORT_STDIO
                                 ? `stdio — ${server.config.transport.command} ${server.config.transport.args.join(' ')}`.trim()
                                 : `streamable-http — ${server.config.transport.url}`
                             }
@@ -193,14 +195,14 @@ function ServerDetailPage() {
                         />
                       )}
                     />
-                    {server.state === 'error' && server.lastError && (
+                    {server.state === ServerRuntimeState.Error && server.lastError && (
                       <Alert variant="destructive" title="Last error" description={server.lastError} />
                     )}
                   </>
                 }
               />
 
-              {server.config.transport.type === 'stdio' && (
+              {server.config.transport.type === TRANSPORT_STDIO && (
                 <CardLayout
                   title="Environment variables"
                   description="Passed to the server process. Secret values are masked; changes take effect after a restart."

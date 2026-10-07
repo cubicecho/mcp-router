@@ -16,8 +16,16 @@ import { NAME_DEFAULTS } from './defaults.ts';
 
 // --- runtime status ---
 
-export const serverRuntimeStateSchema = z.enum(['stopped', 'starting', 'running', 'error']);
-export type ServerRuntimeState = z.infer<typeof serverRuntimeStateSchema>;
+/** What a server's downstream connection is doing. */
+export const ServerRuntimeState = {
+  Stopped: 'stopped',
+  Starting: 'starting',
+  Running: 'running',
+  Error: 'error',
+} as const;
+export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof ServerRuntimeState];
+
+export const serverRuntimeStateSchema = z.nativeEnum(ServerRuntimeState);
 
 export const serverStatusSchema = z.object({
   config: serverConfigSchema,
@@ -64,6 +72,17 @@ export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
 
 // --- GET /api/servers/:name/activity ---
 
+/** Which door a recorded call came in by. */
+export const CallVia = {
+  /** A server's own endpoint, /mcp/<name>. */
+  Direct: 'direct',
+  /** A merged endpoint: /mcp or a workspace's. */
+  Aggregate: 'aggregate',
+  /** The web UI's tool runner. */
+  Ui: 'ui',
+} as const;
+export type CallVia = (typeof CallVia)[keyof typeof CallVia];
+
 /** A single proxied MCP call (request + response/error) recorded in memory for debugging. */
 export const activityEntrySchema = z.object({
   /** Monotonic per-process id; newest entries have the largest id. */
@@ -71,7 +90,7 @@ export const activityEntrySchema = z.object({
   /** ISO timestamp of when the call completed. */
   at: z.string(),
   /** Which endpoint the call arrived on ('ui' = run from the web UI's tool runner). */
-  via: z.enum(['direct', 'aggregate', 'ui']),
+  via: z.nativeEnum(CallVia),
   /** JSON-RPC method, e.g. 'tools/call', 'tools/list', 'resources/read'. */
   method: z.string(),
   /** Human-friendly target of the call (tool name, resource uri, prompt name) when applicable. */

@@ -82,10 +82,28 @@ export type SettingsFile = z.infer<typeof settingsFileSchema>;
 
 // --- servers/<name>.json ---
 
+/** Where a server came from. */
+export const SourceType = {
+  /** Installed from a configured registry. */
+  Registry: 'registry',
+  /** Installed directly from npm. */
+  Npm: 'npm',
+  /** A PyPI package run with `uvx`. */
+  Pypi: 'pypi',
+  /** A server added by hand: nothing was installed. */
+  Remote: 'remote',
+} as const;
+export type SourceType = (typeof SourceType)[keyof typeof SourceType];
+
+/** A child process the router spawns and talks to over stdin and stdout. */
+export const TRANSPORT_STDIO = 'stdio' as const;
+/** A server reached over streamable HTTP. */
+export const TRANSPORT_STREAMABLE_HTTP = 'streamable-http' as const;
+
 export const serverSourceSchema = z.discriminatedUnion('type', [
   /** Installed from a configured registry. */
   z.object({
-    type: z.literal('registry'),
+    type: z.literal(SourceType.Registry),
     /** Name of the registry in registries.json */
     registry: z.string(),
     /** Registry server name, e.g. "io.github.owner/repo" */
@@ -94,32 +112,32 @@ export const serverSourceSchema = z.discriminatedUnion('type', [
   }),
   /** Installed directly from npm, no registry involved. */
   z.object({
-    type: z.literal('npm'),
+    type: z.literal(SourceType.Npm),
     package: z.string(),
     version: z.string().optional(),
   }),
   /** A PyPI package run via `uvx`, no registry involved. */
   z.object({
-    type: z.literal('pypi'),
+    type: z.literal(SourceType.Pypi),
     package: z.string(),
     version: z.string().optional(),
   }),
   /** A remote streamable-http/sse server we merely proxy to. Nothing installed. */
   z.object({
-    type: z.literal('remote'),
+    type: z.literal(SourceType.Remote),
   }),
 ]);
 
 export const serverTransportSchema = z.discriminatedUnion('type', [
   z.object({
-    type: z.literal('stdio'),
+    type: z.literal(TRANSPORT_STDIO),
     /** Executable, e.g. "node" or an absolute bin path. */
     command: z.string(),
     args: z.array(z.string()).default([]),
     cwd: z.string().optional(),
   }),
   z.object({
-    type: z.literal('streamable-http'),
+    type: z.literal(TRANSPORT_STREAMABLE_HTTP),
     url: z.string().url(),
     headers: z.record(z.string()).default({}),
   }),
