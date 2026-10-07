@@ -8,6 +8,7 @@ import {
   workspaceMemberSchema,
 } from './config.ts';
 import { NAME_DEFAULTS } from './defaults.ts';
+import { ErrorCode } from './wire.ts';
 
 /**
  * DTOs for the management REST API (/api/*).
@@ -290,6 +291,7 @@ export interface RegistrySearchParams {
 /** Standard error envelope for non-2xx responses. */
 export const apiErrorSchema = z.object({
   error: z.string(),
+  code: z.nativeEnum(ErrorCode),
   detail: z.string().optional(),
 });
 export type ApiError = z.infer<typeof apiErrorSchema>;

@@ -4,7 +4,6 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import {
   type EnvVarMeta,
-  HttpStatus,
   type InstallRequest,
   type Registry,
   type RegistryArgument,
@@ -22,7 +21,7 @@ import {
   TRANSPORT_STREAMABLE_HTTP,
 } from '@mcp-router/shared';
 import { INSTALL_DEFAULTS } from '../defaults.ts';
-import { errorMessage, HttpError } from '../errors.ts';
+import { badInput, errorMessage, internal, notFound, upstreamTimeout } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
@@ -55,10 +54,7 @@ export async function uninstall(dataDir: string, name: string): Promise<void> {
 export function deriveServerName(raw: string): string {
   const result = serverNameSchema.safeParse(suggestServerName(raw));
   if (result.success === false) {
-    throw new HttpError(
-      HttpStatus.BadRequest,
-      `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`,
-    );
+    throw badInput(`Cannot derive a valid server name from "${raw}"; provide "name" explicitly`);
   }
   return result.data;
 }
@@ -77,7 +73,7 @@ export function resolveServerName({ name, source }: Pick<InstallRequest, 'name' 
   if (source.type === SourceType.Npm || source.type === SourceType.Pypi) {
     return deriveServerName(source.package);
   }
-  throw new HttpError(HttpStatus.BadRequest, 'A "name" is required when installing a remote server');
+  throw badInput('A "name" is required when installing a remote server');
 }
 
 /**
@@ -97,10 +93,7 @@ export function resolveBinEntry(packageName: string, bin: unknown): string {
       return match[1];
     }
   }
-  throw new HttpError(
-    HttpStatus.InternalServerError,
-    `Package "${packageName}" has no "bin" entry; cannot derive a stdio command`,
-  );
+  throw internal(`Package "${packageName}" has no "bin" entry; cannot derive a stdio command`);
 }
 
 /** Collect the fixed (value-carrying) registry packageArguments as CLI args. */
@@ -162,20 +155,17 @@ export function selectFromEntry(
     if (remoteMatch) {
       const remote = remotes[Number(remoteMatch[1])];
       if (!remote) {
-        throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any remote`);
+        throw badInput(`packageSelector "${selector}" does not match any remote`);
       }
       return { remote };
     }
     const isIndex = /^\d+$/.test(selector);
     if (isIndex === false) {
-      throw new HttpError(
-        HttpStatus.BadRequest,
-        `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`,
-      );
+      throw badInput(`Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`);
     }
     const pkg = packages[Number(selector)];
     if (!pkg) {
-      throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any package`);
+      throw badInput(`packageSelector "${selector}" does not match any package`);
     }
     return { package: pkg };
   }
@@ -188,7 +178,7 @@ export function selectFromEntry(
   if (remote) {
     return { remote };
   }
-  throw new HttpError(HttpStatus.BadRequest, 'Registry entry has no npm package and no remote to install');
+  throw badInput('Registry entry has no npm package and no remote to install');
 }
 
 /** npm-install a package into the server's install dir and derive its stdio transport from the bin field. */
@@ -211,8 +201,7 @@ async function installNpmPackage(
     // execFile kills the child when its timeout passes, and says so with `killed`.
     const timedOut = isRecord(cause) && cause.killed === true;
     if (timedOut) {
-      throw new HttpError(
-        HttpStatus.GatewayTimeout,
+      throw upstreamTimeout(
         `npm install of "${spec}" did not finish within ${INSTALL_DEFAULTS.npmTimeoutMs} ms`,
         undefined,
         {
@@ -221,8 +210,7 @@ async function installNpmPackage(
       );
     }
     const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
-    throw new HttpError(
-      HttpStatus.InternalServerError,
+    throw internal(
       `npm install of "${spec}" failed`,
       stderr?.slice(-INSTALL_DEFAULTS.stderrTailChars) ?? errorMessage(cause),
       { cause },
@@ -233,14 +221,9 @@ async function installNpmPackage(
   try {
     packageJson = JSON.parse(await readFile(path.join(packageDir, 'package.json'), 'utf8'));
   } catch (cause) {
-    throw new HttpError(
-      HttpStatus.InternalServerError,
-      `Installed package "${packageName}" has no readable package.json`,
-      errorMessage(cause),
-      {
-        cause,
-      },
-    );
+    throw internal(`Installed package "${packageName}" has no readable package.json`, errorMessage(cause), {
+      cause,
+    });
   }
   const binPath = path.resolve(
     packageDir,
@@ -292,7 +275,7 @@ async function registryParts(
 ): Promise<SourceParts> {
   const registry = deps.getRegistry(source.registry);
   if (!registry) {
-    throw new HttpError(HttpStatus.NotFound, `Unknown registry "${source.registry}"`);
+    throw notFound(`Unknown registry "${source.registry}"`);
   }
   const entry = await deps.registryClient.getServer(registry, source.serverName);
   const selection = selectFromEntry(entry, request.packageSelector);
@@ -300,10 +283,7 @@ async function registryParts(
   if ('remote' in selection) {
     const remote = selection.remote;
     if (remote.type !== TRANSPORT_STREAMABLE_HTTP) {
-      throw new HttpError(
-        HttpStatus.BadRequest,
-        `Remote transport "${remote.type}" is not supported (only streamable-http)`,
-      );
+      throw badInput(`Remote transport "${remote.type}" is not supported (only streamable-http)`);
     }
     return {
       ...described,
@@ -319,10 +299,7 @@ async function registryParts(
   } else if (pkg.registryType === 'pypi') {
     transport = buildPypiTransport(pkg.identifier, version, args);
   } else {
-    throw new HttpError(
-      HttpStatus.BadRequest,
-      `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
-    );
+    throw badInput(`Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`);
   }
   const { env, envMeta } = envFromRegistry(pkg.environmentVariables);
   return { ...described, transport, env: { ...env, ...request.env }, envMeta };
@@ -340,7 +317,7 @@ async function sourceParts(request: InstallRequest, name: string, deps: Installe
       return { transport: buildPypiTransport(source.package, source.version) };
     default:
       if (!request.transport) {
-        throw new HttpError(HttpStatus.BadRequest, 'A "transport" is required when installing a remote server');
+        throw badInput('A "transport" is required when installing a remote server');
       }
       return { transport: request.transport };
   }

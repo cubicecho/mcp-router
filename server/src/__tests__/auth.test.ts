@@ -1,3 +1,4 @@
+import { ErrorCode } from '@mcp-router/shared';
 import express from 'express';
 import request from 'supertest';
 import { describe, expect, it } from 'vitest';
@@ -19,7 +20,7 @@ describe('auth middleware', () => {
   it('rejects requests without a token', async () => {
     const res = await request(appWith({ enabled: true, token })).get('/api/status');
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: 'Unauthorized' });
+    expect(res.body).toEqual({ error: 'Unauthorized', code: ErrorCode.Unauthenticated });
   });
 
   it('rejects requests with a wrong token', async () => {

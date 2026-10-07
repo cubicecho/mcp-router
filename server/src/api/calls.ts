@@ -1,12 +1,6 @@
-import {
-  CallVia,
-  HttpStatus,
-  promptGetRequestSchema,
-  resourceReadRequestSchema,
-  toolCallRequestSchema,
-} from '@mcp-router/shared';
+import { CallVia, promptGetRequestSchema, resourceReadRequestSchema, toolCallRequestSchema } from '@mcp-router/shared';
 import type { Router } from 'express';
-import { errorMessage, HttpError } from '../errors.ts';
+import { errorMessage, HttpError, upstreamFailed } from '../errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
@@ -46,7 +40,7 @@ async function runUiCall(
     if (cause instanceof HttpError) {
       throw cause;
     }
-    throw new HttpError(HttpStatus.BadGateway, ctx.failLabel, errorMessage(cause), { cause });
+    throw upstreamFailed(ctx.failLabel, errorMessage(cause), { cause });
   }
 }
 

@@ -5,7 +5,6 @@ import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/
 import path from 'node:path';
 import {
   DEFAULT_REGISTRY,
-  HttpStatus,
   type RegistriesFile,
   type Registry,
   registriesFileSchema,
@@ -19,7 +18,7 @@ import {
 import { type FSWatcher, watch } from 'chokidar';
 import { effectiveAuth } from '../auth.ts';
 import { CONFIG_DEFAULTS } from '../defaults.ts';
-import { errorMessage, HttpError } from '../errors.ts';
+import { conflict, errorMessage, notFound } from '../errors.ts';
 
 /** Owner read and write only: these files hold the auth token and API keys in plain text. */
 const CONFIG_FILE_MODE = 0o600;
@@ -142,7 +141,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
 
   async addRegistry(registry: Registry): Promise<void> {
     if (this.getRegistry(registry.name)) {
-      throw new HttpError(HttpStatus.Conflict, `Registry "${registry.name}" already exists`);
+      throw conflict(`Registry "${registry.name}" already exists`);
     }
     this.registries = [...this.registries, registry];
     await this.writeRegistries();
@@ -150,7 +149,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
 
   async removeRegistry(name: string): Promise<void> {
     if (!this.getRegistry(name)) {
-      throw new HttpError(HttpStatus.NotFound, `Unknown registry "${name}"`);
+      throw notFound(`Unknown registry "${name}"`);
     }
     this.registries = this.registries.filter((r) => r.name !== name);
     await this.writeRegistries();

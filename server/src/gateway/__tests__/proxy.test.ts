@@ -4,7 +4,7 @@ import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it } from 'vitest';
-import { HttpError } from '../../errors.ts';
+import { upstreamFailed } from '../../errors.ts';
 import { type AggregateDeps, createAggregateServer } from '../aggregate-proxy.ts';
 import { proxyCapabilities } from '../capability.ts';
 import { createProxyServer } from '../direct-proxy.ts';
@@ -75,7 +75,7 @@ describe('proxy activity recording', () => {
     const deps = stubDeps(null, {
       recordActivity: record,
       withClient: async () => {
-        throw new HttpError(502, 'Failed to connect to server "demo"', 'Traceback: ModuleNotFoundError: mcp');
+        throw upstreamFailed('Failed to connect to server "demo"', 'Traceback: ModuleNotFoundError: mcp');
       },
     });
     const { client, close } = await connectProxy(deps);

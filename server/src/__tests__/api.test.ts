@@ -3,14 +3,14 @@ import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { serverConfigSchema } from '@mcp-router/shared';
+import { ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { buildApp } from '../app.ts';
 import { ConfigStore } from '../config/store.ts';
-import { HttpError } from '../errors.ts';
+import { upstreamFailed } from '../errors.ts';
 import { ECHO_INSTRUCTIONS } from '../gateway/__tests__/fixtures/echo-instructions.ts';
 import { workspaceInstanceKey } from '../gateway/instance-key.ts';
 import { GatewayManager } from '../gateway/manager.ts';
@@ -79,6 +79,7 @@ describe('REST API', () => {
 
     const dup = await authed(request(app).post('/api/registries')).send({ name: 'mine', url: 'https://r.example' });
     expect(dup.status).toBe(409);
+    expect(dup.body.code).toBe(ErrorCode.Conflict);
 
     const removed = await authed(request(app).delete('/api/registries/mine'));
     expect(removed.status).toBe(204);
@@ -396,10 +397,11 @@ describe('REST API', () => {
 
     // A server that would not connect answers with the manager's own status.
     vi.spyOn(manager, 'withClient').mockRejectedValueOnce(
-      new HttpError(502, 'Failed to connect to server "hosted"', 'stderr tail'),
+      upstreamFailed('Failed to connect to server "hosted"', 'stderr tail'),
     );
     const refused = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
     expect(refused.status).toBe(502);
+    expect(refused.body.code).toBe(ErrorCode.UpstreamFailed);
     expect(manager.getActivity('hosted')).toMatchObject([
       {
         via: 'ui',

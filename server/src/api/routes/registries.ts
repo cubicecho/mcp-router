@@ -1,6 +1,6 @@
 import { createRegistryRequestSchema, HttpStatus } from '@mcp-router/shared';
 import { Router } from 'express';
-import { HttpError } from '../../errors.ts';
+import { notFound } from '../../errors.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /** Registry management and browsing, mounted at /api/registries. */
@@ -10,7 +10,7 @@ export function createRegistryRoutes({ store, registryClient }: ApiDeps): Router
   const requireRegistry = (name: string) => {
     const registry = store.getRegistry(name);
     if (!registry) {
-      throw new HttpError(HttpStatus.NotFound, `Unknown registry "${name}"`);
+      throw notFound(`Unknown registry "${name}"`);
     }
     return registry;
   };

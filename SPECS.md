@@ -88,7 +88,10 @@ and it reports nothing else.
 | `DELETE /api/workspaces/:slug` | delete the workspace file (underlying servers untouched) |
 | `POST /api/reload` | re-read all config from disk, reconcile running processes |
 
-Errors: non-2xx with `{ error, detail? }`. Validation via the shared zod schemas.
+Errors: non-2xx with `{ error, code, detail? }`. `code` is one of the shared `ErrorCode` values
+(`BAD_USER_INPUT` 400, `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409,
+`INTERNAL` 500, `UPSTREAM_FAILED` 502, `UNAVAILABLE` 503, `UPSTREAM_TIMEOUT` 504); callers branch
+on it, never on the `error` text. Validation via the shared zod schemas.
 
 ### MCP endpoints (streamable HTTP, bearer auth)
 

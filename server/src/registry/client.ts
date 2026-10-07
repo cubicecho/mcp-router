@@ -8,7 +8,7 @@ import {
   registryServerEntrySchema,
 } from '@mcp-router/shared';
 import { REGISTRY_DEFAULTS } from '../defaults.ts';
-import { errorMessage, HttpError } from '../errors.ts';
+import { errorMessage, notFound, upstreamFailed, upstreamTimeout } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 
 /**
@@ -65,26 +65,20 @@ export class RegistryClient {
     } catch (cause) {
       const timedOut = cause instanceof Error && cause.name === 'TimeoutError';
       if (timedOut) {
-        throw new HttpError(
-          HttpStatus.GatewayTimeout,
-          `Registry "${registry.name}" did not answer within ${this.timeoutMs} ms`,
-          undefined,
-          {
-            cause,
-          },
-        );
+        throw upstreamTimeout(`Registry "${registry.name}" did not answer within ${this.timeoutMs} ms`, undefined, {
+          cause,
+        });
       }
-      throw new HttpError(HttpStatus.BadGateway, `Registry "${registry.name}" is unreachable`, errorMessage(cause), {
+      throw upstreamFailed(`Registry "${registry.name}" is unreachable`, errorMessage(cause), {
         cause,
       });
     }
     if (response.status === HttpStatus.NotFound && notFoundMessage) {
-      throw new HttpError(HttpStatus.NotFound, notFoundMessage);
+      throw notFound(notFoundMessage);
     }
     const requestFailed = response.ok === false;
     if (requestFailed) {
-      throw new HttpError(
-        HttpStatus.BadGateway,
+      throw upstreamFailed(
         `Registry "${registry.name}" responded with HTTP ${response.status}`,
         (await response.text().catch(() => '')).slice(0, REGISTRY_DEFAULTS.errorBodyMaxChars),
       );
@@ -92,12 +86,7 @@ export class RegistryClient {
     try {
       return await response.json();
     } catch (cause) {
-      throw new HttpError(
-        HttpStatus.BadGateway,
-        `Registry "${registry.name}" returned invalid JSON`,
-        errorMessage(cause),
-        { cause },
-      );
+      throw upstreamFailed(`Registry "${registry.name}" returned invalid JSON`, errorMessage(cause), { cause });
     }
   }
 
@@ -105,14 +94,9 @@ export class RegistryClient {
     try {
       return parse(body);
     } catch (cause) {
-      throw new HttpError(
-        HttpStatus.BadGateway,
-        `Registry "${registry.name}" returned an unexpected response shape`,
-        errorMessage(cause),
-        {
-          cause,
-        },
-      );
+      throw upstreamFailed(`Registry "${registry.name}" returned an unexpected response shape`, errorMessage(cause), {
+        cause,
+      });
     }
   }
 }
