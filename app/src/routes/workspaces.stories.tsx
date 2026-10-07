@@ -124,8 +124,8 @@ export const EditsAWorkspaceFromItsRow: Story = {
         name: 'Research',
         enabled: true,
         description: 'Read-only research.',
-        // The member that is switched off is left out; the other keeps its override.
-        members: { filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } } },
+        // The member that is switched off stays a member, still off; the other keeps its override.
+        members: { filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } }, docs: { enabled: false } },
       }),
     );
     await waitFor(() => expect(body.getByText('Saved workspace Research')).toBeVisible());

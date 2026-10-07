@@ -35,6 +35,8 @@ import { toastApiError } from '@/lib/toast';
 interface MemberDraft {
   name: string;
   included: boolean;
+  /** The member's own on/off switch, carried through the edit untouched; the dialog only decides membership. */
+  enabled: boolean;
   env: string;
   args: string;
   headers: string;
@@ -83,12 +85,13 @@ const FORM_ID = 'workspace-form';
  * Turns a workspace's stored members into the drafts the form edits.
  *
  * @param members - The stored members, by server name.
- * @returns One draft per member, included only when the member is enabled.
+ * @returns One included draft per member, each keeping the member's own enabled state.
  */
 const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
   Object.entries(members).map(([name, member]) => ({
     name,
-    included: member.enabled ?? true,
+    included: true,
+    enabled: member.enabled ?? true,
     env: recordToLines(member.env),
     args: (member.args ?? []).join('\n'),
     headers: recordToLines(member.headers),
@@ -100,10 +103,11 @@ const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
  *
  * @param drafts - The edited drafts.
  * @param servers - The installed servers; a draft for any other server is dropped.
- * @returns One enabled member per included draft, by server name, with only the overrides its transport takes.
+ * @returns One member per included draft, by server name, with only the overrides its transport takes.
  *
  * @remarks
- * Empty overrides and a URL equal to the server's own are left out.
+ * Empty overrides and a URL equal to the server's own are left out. A member switched off on the workspace page
+ * stays a member, and stays off.
  */
 function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<string, WorkspaceMember> {
   const result: Record<string, WorkspaceMember> = {};
@@ -112,7 +116,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
     if (draft?.included !== true) {
       continue;
     }
-    const member: WorkspaceMember = { enabled: true };
+    const member: WorkspaceMember = { enabled: draft.enabled };
     if (server.config.transport.type === TRANSPORT_STDIO) {
       const env = linesToRecord(draft.env);
       if (Object.keys(env).length > 0) {
@@ -143,6 +147,8 @@ interface WorkspaceDialogProps {
   onOpenChange: (open: boolean) => void;
   /** Present when editing an existing workspace; omitted when creating. */
   workspace?: WorkspaceStatus;
+  /** Called with the saved workspace before the dialog closes. */
+  onSaved?: (workspace: WorkspaceStatus) => void;
 }
 
 /**
@@ -151,12 +157,13 @@ interface WorkspaceDialogProps {
  * @param props.open - Whether the dialog is shown.
  * @param props.onOpenChange - Called with false on cancel and after a successful save.
  * @param [props.workspace] - Present when editing an existing workspace; omitted when creating.
+ * @param [props.onSaved] - Called with the saved workspace before the dialog closes, so a page can follow a rename.
  * @returns The dialog.
  *
  * @remarks
  * The URL slug follows the name, so renaming a workspace moves its endpoint.
  */
-export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
+export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: WorkspaceDialogProps) {
   const isEdit = workspace !== undefined;
   // Undefined until the installed servers are known. The member list is drawn from them and rebuilt from
   // them on save, so until then there is nothing to choose from and nothing safe to send.
@@ -175,20 +182,24 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       members: toDrafts(workspace?.members ?? {}),
     },
     onSubmit: async ({ value }) => {
+      const description = value.description.trim();
       const body: CreateWorkspaceRequest = {
         name: value.name.trim(),
         enabled: value.enabled,
-        description: value.description.trim() || undefined,
+        description: description || undefined,
         // Left out while the servers are unknown: the API then keeps the members the workspace already has.
         ...(loadedServers ? { members: buildMembers(value.members, loadedServers) } : {}),
       };
       try {
         if (isEdit) {
-          const updated = await update.mutateAsync({ slug: workspace.slug, ...body });
+          // An edit sends the description even when empty: left out, the server would keep the old one.
+          const updated = await update.mutateAsync({ slug: workspace.slug, ...body, description });
           toast.success(`Saved workspace ${updated.name}`);
+          onSaved?.(updated);
         } else {
           const created = await create.mutateAsync(body);
           toast.success(`Created workspace ${created.name}`);
+          onSaved?.(created);
         }
         onOpenChange(false);
       } catch (error) {
@@ -216,6 +227,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
         form.pushFieldValue('members', {
           name: serverName,
           included: true,
+          enabled: true,
           env: '',
           args: '',
           headers: '',
@@ -314,6 +326,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
                       key={serverName}
                       server={server}
                       included={values.members[index]?.included ?? false}
+                      enabled={values.members[index]?.enabled ?? true}
                       open={expanded === serverName}
                       onToggle={(on) => toggleMember(server, on)}
                       onOpenChange={(open) => setExpanded(open ? serverName : null)}
@@ -395,6 +408,8 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
 interface MemberRowProps {
   server: ServerStatus;
   included: boolean;
+  /** The member's own on/off switch, set on the workspace page. */
+  enabled: boolean;
   /** Whether the override fields are showing. */
   open: boolean;
   onToggle: (on: boolean) => void;
@@ -408,13 +423,14 @@ interface MemberRowProps {
  *
  * @param props.server - The installed server the row is for.
  * @param props.included - Whether the server is in the workspace.
+ * @param props.enabled - Whether the member is switched on; an included member that is off is marked so.
  * @param props.open - Whether the override fields are showing.
  * @param props.onToggle - Called with the new included state.
  * @param props.onOpenChange - Called with the new open state when Overrides is pressed.
  * @param props.overridesSlot - The override fields for this server, drawn while it is included and open.
  * @returns The row.
  */
-function MemberRow({ server, included, open, onToggle, onOpenChange, overridesSlot }: MemberRowProps) {
+function MemberRow({ server, included, enabled, open, onToggle, onOpenChange, overridesSlot }: MemberRowProps) {
   const isStdio = server.config.transport.type === TRANSPORT_STDIO;
   const name = server.config.name;
 
@@ -426,6 +442,7 @@ function MemberRow({ server, included, open, onToggle, onOpenChange, overridesSl
           <span className="font-medium">{serverLabel(name, server.config.displayName)}</span>
           {server.config.displayName && <span className="ml-2 text-xs text-foreground/60">{name}</span>}
         </div>
+        {included && enabled === false && <Badge variant="secondary">disabled</Badge>}
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>
         {included && (
           <Button

@@ -145,6 +145,37 @@ export const OpensTheEditDialog: Story = {
   },
 };
 
+export const FollowsARenameToTheNewUrl: Story = {
+  parameters: {
+    api: {
+      ...appRoutes(),
+      [`PATCH ${WORKSPACE_ROUTE}`]: workspace({ name: 'Lab', slug: 'lab', path: '/mcp/w/lab' }),
+      'GET /api/workspaces/lab': workspace({ name: 'Lab', slug: 'lab', path: '/mcp/w/lab' }),
+      'GET /api/workspaces/lab/tools': { tools: [] },
+      'GET /api/workspaces/lab/resources': { resources: [], resourceTemplates: [] },
+      'GET /api/workspaces/lab/prompts': { prompts: [] },
+      'GET /api/workspaces/lab/activity': { entries: [] },
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Edit' }));
+
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Edit Research' }));
+    await dialog.findByRole('switch', { name: 'Include filesystem' });
+    const name = dialog.getByRole('textbox', { name: /Workspace name/ });
+    await userEvent.clear(name);
+    await userEvent.type(name, 'Lab');
+    await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+
+    // The old slug no longer exists, so the page moves to the new one instead of staying behind.
+    await waitFor(() => expect(canvas.getByRole('heading', { name: 'Lab' })).toBeVisible());
+    await expect(canvas.getByText(/\/mcp\/w\/lab/)).toBeVisible();
+    await waitFor(() => expect(body.queryByRole('dialog')).not.toBeInTheDocument());
+  },
+};
+
 export const DeletesOnlyAfterConfirming: Story = {
   parameters: { api: { ...appRoutes(), [`DELETE ${WORKSPACE_ROUTE}`]: null } },
   play: async ({ canvasElement }) => {

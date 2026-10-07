@@ -160,7 +160,20 @@ function WorkspaceDetailPage() {
 
               <CapabilityTabs scope={scope} />
 
-              {editOpen && <WorkspaceDialog key={slug} open workspace={workspace} onOpenChange={setEditOpen} />}
+              {editOpen && (
+                <WorkspaceDialog
+                  key={slug}
+                  open
+                  workspace={workspace}
+                  onOpenChange={setEditOpen}
+                  // A rename moves the workspace to a new slug, so follow it rather than stay on a page that is gone.
+                  onSaved={(saved) => {
+                    if (saved.slug !== slug) {
+                      navigate({ to: '/workspaces/$slug', params: { slug: saved.slug }, replace: true });
+                    }
+                  }}
+                />
+              )}
             </>
           )}
         </div>

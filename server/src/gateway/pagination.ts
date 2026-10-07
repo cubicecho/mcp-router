@@ -6,7 +6,8 @@ import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
  *
  * @typeParam T - The listed item.
  * @param fetchPage - Fetches the page at a cursor; undefined asks for the first.
- * @returns Every item, in page order. Stops without error after `GATEWAY_DEFAULTS.maxListPages` pages.
+ * @returns Every item, in page order. Stops after `GATEWAY_DEFAULTS.maxListPages` pages, with a warning rather than
+ *   an error.
  *
  * @remarks
  * A caller can't forward a single client cursor to N servers (the aggregate) or replay it across pages (the
@@ -22,9 +23,11 @@ async function allPages<T>(
     items.push(...result.items);
     cursor = result.nextCursor;
     if (!cursor) {
-      break;
+      return items;
     }
   }
+  // Still a cursor after the last allowed page: say so, since the caller gets a short list and no error.
+  console.warn(`[gateway] a list stopped at the ${GATEWAY_DEFAULTS.maxListPages}-page cap with more pages left`);
   return items;
 }
 

@@ -90,9 +90,49 @@ describe('WorkspaceDialog', () => {
     expect(updateSpy).toHaveBeenCalledWith('acme', {
       name: 'Acme',
       enabled: true,
-      description: undefined,
+      description: '',
       members: {},
     });
+  });
+
+  it('keeps a member that is switched off on the workspace page, with its overrides', async () => {
+    const user = userEvent.setup();
+    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({ name: 'Acme' } as never);
+    const members = { 'io.github.echo': { enabled: false, env: { API_KEY: 'one' } } };
+    renderDialog({ ...WORKSPACE, members } as unknown as WorkspaceStatus);
+
+    expect(await screen.findByRole('switch', { name: 'Include io.github.echo' })).toBeChecked();
+    expect(screen.getByText('disabled')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(updateSpy).toHaveBeenCalledWith('acme', expect.objectContaining({ members }));
+  });
+
+  it('sends an emptied description so the server clears it, and reports the saved workspace', async () => {
+    const user = userEvent.setup();
+    const saved = { name: 'Acme', slug: 'acme' };
+    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue(saved as never);
+    const onSaved = vi.fn();
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={client}>
+        <WorkspaceDialog
+          open
+          onOpenChange={vi.fn()}
+          onSaved={onSaved}
+          workspace={{ ...WORKSPACE, description: 'Team servers' } as WorkspaceStatus}
+        />
+      </QueryClientProvider>,
+    );
+
+    await screen.findByRole('switch', { name: 'Include io.github.echo' });
+    await user.clear(screen.getByLabelText('Description (optional)'));
+    await user.click(screen.getByRole('button', { name: 'Save changes' }));
+
+    await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
+    expect(updateSpy).toHaveBeenCalledWith('acme', expect.objectContaining({ description: '' }));
+    await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
   });
 
   // The members to save are rebuilt from the installed-server list, so a save made before that list has
