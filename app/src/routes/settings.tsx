@@ -1,5 +1,4 @@
 import { MS_PER_MINUTE } from '@mcp-router/shared';
-import { useStore } from '@tanstack/react-form';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -41,9 +40,10 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
       }
     },
   });
-  const minutes = Number(useStore(form.store, (state) => state.values.minutes));
-  const valid = Number.isFinite(minutes) && minutes > 0;
-  const changed = valid && Math.round(minutes * MS_PER_MINUTE) !== currentMs;
+  /** The typed minutes are a positive number. */
+  const isValid = (text: string) => Number.isFinite(Number(text)) && Number(text) > 0;
+  /** The typed minutes are valid and differ from the stored timeout. */
+  const isChanged = (text: string) => isValid(text) && Math.round(Number(text) * MS_PER_MINUTE) !== currentMs;
 
   return (
     <form
@@ -59,7 +59,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
             value={field.state.value}
             inputMode="decimal"
             aria-label="Idle timeout in minutes"
-            aria-invalid={valid === false}
+            aria-invalid={isValid(field.state.value) === false}
             className="h-8 w-20 tabular-nums"
             onBlur={field.handleBlur}
             onChange={(event) => field.handleChange(event.target.value)}
@@ -67,9 +67,13 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
         )}
       </form.Field>
       <span className="text-foreground/60">minutes</span>
-      <form.AppForm>
-        <form.SubmitButton size="sm" variant="outline" disabled={changed === false} content="Save" />
-      </form.AppForm>
+      <form.Subscribe selector={(state) => isChanged(state.values.minutes)}>
+        {(changed) => (
+          <form.AppForm>
+            <form.SubmitButton size="sm" variant="outline" disabled={changed === false} content="Save" />
+          </form.AppForm>
+        )}
+      </form.Subscribe>
     </form>
   );
 }
