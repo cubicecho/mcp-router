@@ -17,6 +17,7 @@ import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { argsFromLines } from '@/lib/arg-lines';
 import { parseJsonConfig } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer, useUpdateServer } from '@/lib/queries';
@@ -92,10 +93,7 @@ export function AddServerDialog({
           ? {
               type: TRANSPORT_STDIO,
               command: value.command.trim(),
-              args: value.argsText
-                .split('\n')
-                .map((line) => line.trim())
-                .filter((line) => line.length > 0),
+              args: argsFromLines(value.argsText),
               cwd: value.cwd.trim() || undefined,
             }
           : { type: TRANSPORT_STREAMABLE_HTTP, url: value.url.trim(), headers: rowsToRecord(value.headerRows) };
