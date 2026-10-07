@@ -12,7 +12,7 @@ import { type ReactElement, useMemo, useState } from 'react';
 import { toast } from 'sonner';
 import { InputField, SwitchField, TextareaField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
-import { ConnectCard } from '@/components/domain/connect-card';
+import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { FormField } from '@/components/form-field';
 import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';

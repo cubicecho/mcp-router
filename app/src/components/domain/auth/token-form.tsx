@@ -1,28 +1,15 @@
-import { useQueryClient } from '@tanstack/react-query';
 import { useAppForm } from '@/components/app-form';
 import { CenteredLayout } from '@/components/centered-layout';
 import { PasswordField } from '@/components/password-field';
 import { Code } from '@/components/ui/code';
 import { KeyRound } from '@/components/ui/icons';
-import { setToken, useNeedsAuth } from '@/lib/auth';
-import type { SlotNode } from '@/lib/utils';
 
 /**
- * Renders `contentSlot` normally; when any API call has come back 401 it swaps
- * in a token-entry screen. Submitting stores the token in localStorage and
- * refetches everything.
+ * The token-entry screen shown when the router asks for its bearer token.
+ *
+ * @param onUnlock - Called with the trimmed token when the form is submitted with one.
  */
-export function TokenGate({ contentSlot }: { contentSlot: SlotNode }) {
-  const needsAuth = useNeedsAuth();
-
-  if (!needsAuth) {
-    return contentSlot;
-  }
-  return <TokenForm />;
-}
-
-function TokenForm() {
-  const queryClient = useQueryClient();
+export function TokenForm({ onUnlock }: { onUnlock: (token: string) => void }) {
   const form = useAppForm({
     defaultValues: { token: '' },
     onSubmit: ({ value, formApi }) => {
@@ -30,9 +17,8 @@ function TokenForm() {
       if (!token) {
         return;
       }
-      setToken(token);
       formApi.reset();
-      queryClient.invalidateQueries();
+      onUnlock(token);
     },
   });
 

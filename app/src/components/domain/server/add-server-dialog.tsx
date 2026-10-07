@@ -11,7 +11,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { InputField, TextareaField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
-import { KeyValueRows } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';

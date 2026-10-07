@@ -4,14 +4,7 @@ import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
-import {
-  CapabilityList,
-  CapabilityRow,
-  ResultBlock,
-  RUN_SUBMIT,
-  RunForm,
-  useCapabilityRun,
-} from './capability-list.tsx';
+import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './list.tsx';
 
 /** A resource (concrete URI) or a template (an RFC 6570 URI to fill in). */
 interface ResourceRowData {

@@ -10,7 +10,7 @@ import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
-import { KeyValueRows } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { FormField } from '@/components/form-field';
 import { OptionSelect } from '@/components/option-select';
 import { Button } from '@/components/ui/button';

@@ -1,6 +1,6 @@
 import type { EnvVarMeta } from '@mcp-router/shared';
 import { InputField, useAppForm } from '@/components/app-form';
-import { KeyValueRows } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { EmptyState } from '@/components/page';
 import { PasswordField } from '@/components/password-field';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
