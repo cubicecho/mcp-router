@@ -12,6 +12,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
+import { argsFromLines } from '@/lib/arg-lines';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
@@ -58,8 +59,6 @@ const linesToRecord = (text: string): Record<string, string> => {
 
 const FORM_ID = 'workspace-form';
 
-const textToArgs = (text: string): string[] => text.split('\n').filter((line) => line.trim().length > 0);
-
 const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
   Object.entries(members).map(([name, member]) => ({
     name,
@@ -84,7 +83,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
       if (Object.keys(env).length > 0) {
         member.env = env;
       }
-      const args = textToArgs(draft.args);
+      const args = argsFromLines(draft.args);
       if (args.length > 0) {
         member.args = args;
       }

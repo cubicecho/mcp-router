@@ -9,6 +9,7 @@ import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import { argsFromLines } from '@/lib/arg-lines';
 import { parseJsonConfig } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer, useUpdateServer } from '@/lib/queries';
@@ -66,10 +67,7 @@ export function AddServerDialog({
           ? {
               type: 'stdio' as const,
               command: value.command.trim(),
-              args: value.argsText
-                .split('\n')
-                .map((line) => line.trim())
-                .filter((line) => line.length > 0),
+              args: argsFromLines(value.argsText),
               cwd: value.cwd.trim() || undefined,
             }
           : { type: 'streamable-http' as const, url: value.url.trim(), headers: rowsToRecord(value.headerRows) };
