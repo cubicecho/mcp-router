@@ -135,10 +135,9 @@ describe('WorkspaceDialog', () => {
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
   });
 
-  // Known bug (B2), not fixed here: the members to save are rebuilt from the installed-server list, so a
-  // save made before that list has loaded (or while it is failing) sends no members at all and empties
-  // the workspace. `it.fails` keeps the suite green while the bug stands and goes red once it is fixed.
-  it.fails('keeps the existing members when saved before the server list has loaded', async () => {
+  // The members to save are rebuilt from the installed-server list, so a save made before that list has
+  // loaded (or while it is failing) must not send one: an empty list would empty the workspace.
+  it('leaves the members alone when saved before the server list has loaded', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'listServers').mockReturnValue(new Promise(() => {}));
     const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({ name: 'Acme' } as never);
@@ -148,10 +147,14 @@ describe('WorkspaceDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith(
-      'acme',
-      expect.objectContaining({ members: { 'io.github.echo': { enabled: true, env: { API_KEY: 'one' } } } }),
-    );
+    expect(updateSpy).toHaveBeenCalledWith('acme', { name: 'Acme', enabled: true, description: 'Team servers' });
+  });
+
+  it('does not report an empty server list while it is still loading', () => {
+    vi.spyOn(api, 'listServers').mockReturnValue(new Promise(() => {}));
+    renderDialog(WORKSPACE);
+
+    expect(screen.queryByText('No servers installed yet.')).not.toBeInTheDocument();
   });
 
   it('does not submit a name that produces no slug', async () => {

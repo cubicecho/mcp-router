@@ -208,65 +208,71 @@ function useInvalidate() {
 }
 
 /**
+ * What a change to a server makes stale: the servers themselves, the router status, and the
+ * workspaces — a workspace lists its members' tools, resources and prompts under its own key.
+ */
+const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.workspaces] as const;
+
+/**
  * Installs a server.
  *
- * @returns The mutation; takes the install request, yields the new server's status, and invalidates every server query
- * and the router status.
+ * @returns The mutation; takes the install request, yields the new server's status, and invalidates everything a server
+ * change makes stale.
  */
 export function useInstallServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: InstallRequest) => api.installServer(body),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
 /**
  * Changes a server's config.
  *
- * @returns The mutation; takes the server's `name` plus the fields to change, yields its status, and invalidates every
- * server query and the router status.
+ * @returns The mutation; takes the server's `name` plus the fields to change, yields its status, and invalidates
+ * everything a server change makes stale.
  */
 export function useUpdateServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: ({ name, ...body }: UpdateServerRequest & { name: string }) => api.updateServer(name, body),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
 /**
  * Uninstalls a server.
  *
- * @returns The mutation; takes the server's name and invalidates every server query and the router status.
+ * @returns The mutation; takes the server's name and invalidates everything a server change makes stale.
  */
 export function useDeleteServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (name: string) => api.deleteServer(name),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
 /**
  * Restarts a server.
  *
- * @returns The mutation; takes the server's name, yields its status, and invalidates every server query and the
- * router status.
+ * @returns The mutation; takes the server's name, yields its status, and invalidates everything a server change makes
+ * stale.
  */
 export function useRestartServer() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (name: string) => api.restartServer(name),
-    onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
 
 /**
  * Health-checks a server by connecting (spawning it if needed) and listing its tools.
  *
- * @returns The mutation; takes the server's name, yields the tools listing, and invalidates every server query and the
- * router status so state and tool count refresh.
+ * @returns The mutation; takes the server's name, yields the tools listing, and invalidates everything a server change
+ * makes stale, so state and tool count refresh.
  */
 export function useTestServerConnection() {
   const invalidate = useInvalidate();
