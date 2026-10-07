@@ -4,11 +4,12 @@ import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
-import { ConfirmButton } from '@/components/confirm-button';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { EmptyState } from '@/components/page';
-import { Pencil, Trash2 } from '@/components/ui/icons';
+import { ConfirmDialog } from '@/components/ui/confirm-dialog';
+import { Ellipsis, Pencil, Trash2 } from '@/components/ui/icons';
+import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { SearchInput } from '@/components/ui/search-input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
@@ -24,6 +25,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
   const restart = useRestartServer();
   const remove = useDeleteServer();
   const test = useTestServerConnection();
+  const [confirmingDelete, setConfirmingDelete] = useState(false);
   const { config } = server;
 
   const handleTest = () =>
@@ -35,9 +37,11 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       onError: toastApiError,
     });
 
-  // The whole row navigates, except clicks on the row's own controls.
+  // The whole row navigates, except clicks on the row's own controls. The menu and the
+  // delete prompt render in a portal, so their clicks bubble here from outside the row.
   const handleRowClick = (event: React.MouseEvent<HTMLTableRowElement>) => {
-    if ((event.target as HTMLElement).closest('button, a, [role="switch"]')) {
+    const target = event.target as HTMLElement;
+    if (!event.currentTarget.contains(target) || target.closest('button, a, [role="switch"]')) {
       return;
     }
     navigate({ to: '/servers/$name', params: { name: config.name } });
@@ -104,54 +108,46 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
         />
       </TableCell>
       <TableCell className="text-right">
-        <div className="flex justify-end gap-1">
-          <ActionButton
-            variant="ghost"
-            size="icon-sm"
-            label={`Test connection to ${config.name}`}
-            hint="Test connection"
-            loading={test.isPending}
-            onClick={handleTest}
-            iconSlot={<PlugZapIcon />}
-          />
-          <ActionButton
-            variant="ghost"
-            size="icon-sm"
-            label={`Edit ${config.name}`}
-            hint="Edit"
-            onClick={() => onEdit(server)}
-            iconSlot={<Pencil />}
-          />
-          <ActionButton
-            variant="ghost"
-            size="icon-sm"
-            label={`Restart ${config.name}`}
-            hint="Restart"
-            loading={restart.isPending}
-            onClick={() =>
-              restart.mutate(config.name, {
-                onSuccess: () => toast.success(`Restarted ${config.name}`),
-                onError: toastApiError,
-              })
-            }
-            iconSlot={<RotateCwIcon />}
-          />
-          <ConfirmButton
-            variant="ghost"
-            size="icon-sm"
-            label={`Delete ${config.name}`}
-            hint="Delete"
-            title={`Delete ${config.name}?`}
-            description="This stops the server, deletes its config file, and removes its install directory."
-            onConfirm={() =>
-              remove.mutate(config.name, {
-                onSuccess: () => toast.success(`Deleted ${config.name}`),
-                onError: toastApiError,
-              })
-            }
-            iconSlot={<Trash2 className="text-negative" />}
-          />
-        </div>
+        <Menu>
+          <MenuTrigger asChild>
+            <ActionButton
+              variant="ghost"
+              size="icon-sm"
+              label={`Actions for ${config.name}`}
+              loading={test.isPending || restart.isPending || remove.isPending}
+              iconSlot={<Ellipsis />}
+            />
+          </MenuTrigger>
+          <MenuContent align="end">
+            <MenuItem iconSlot={<PlugZapIcon />} label="Test connection" onSelect={handleTest} />
+            <MenuItem iconSlot={<Pencil />} label="Edit" onSelect={() => onEdit(server)} />
+            <MenuItem
+              iconSlot={<RotateCwIcon />}
+              label="Restart"
+              onSelect={() =>
+                restart.mutate(config.name, {
+                  onSuccess: () => toast.success(`Restarted ${config.name}`),
+                  onError: toastApiError,
+                })
+              }
+            />
+            <MenuSeparator />
+            <MenuItem iconSlot={<Trash2 />} label="Delete" destructive onSelect={() => setConfirmingDelete(true)} />
+          </MenuContent>
+        </Menu>
+        <ConfirmDialog
+          open={confirmingDelete}
+          onOpenChange={setConfirmingDelete}
+          title={`Delete ${config.name}?`}
+          description="This stops the server, deletes its config file, and removes its install directory."
+          confirmLabel="Delete"
+          onConfirm={() =>
+            remove.mutate(config.name, {
+              onSuccess: () => toast.success(`Deleted ${config.name}`),
+              onError: toastApiError,
+            })
+          }
+        />
       </TableCell>
     </TableRow>
   );
