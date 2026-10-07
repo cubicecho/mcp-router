@@ -378,6 +378,14 @@ describe('REST API', () => {
     expect(store.getWorkspace('acme-backend')).toBeUndefined();
     expect(store.getWorkspace('renamed')).toBeDefined();
 
+    // A description is kept by an edit that leaves it out, and cleared by an empty one.
+    await authed(request(app).patch('/api/workspaces/renamed')).send({ description: 'Team servers' });
+    await authed(request(app).patch('/api/workspaces/renamed')).send({ members: {} });
+    expect(store.getWorkspace('renamed')?.description).toBe('Team servers');
+    const cleared = await authed(request(app).patch('/api/workspaces/renamed')).send({ description: '' });
+    expect(cleared.body.description).toBeUndefined();
+    expect(store.getWorkspace('renamed')?.description).toBeUndefined();
+
     // Disabling 404s the endpoint without deleting the workspace.
     await authed(request(app).patch('/api/workspaces/renamed')).send({ enabled: false });
     expect((await authed(request(app).post('/mcp/w/renamed')).send({})).status).toBe(404);

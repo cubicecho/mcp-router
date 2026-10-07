@@ -107,7 +107,8 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
       name,
       slug,
       enabled: update.enabled ?? existing.enabled,
-      description: update.description !== undefined ? update.description : existing.description,
+      // An empty description clears it; one left out keeps the stored one.
+      description: update.description === undefined ? existing.description : update.description || undefined,
       members: update.members ?? existing.members,
     });
     await store.saveWorkspace(next);

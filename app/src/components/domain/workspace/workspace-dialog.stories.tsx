@@ -120,12 +120,14 @@ export const EditsAnExistingWorkspace: Story = {
     await expect(dialog.getByRole('textbox', { name: /^Workspace name/ })).toHaveValue('Research');
     await expect(dialog.getByText('/mcp/w/research')).toBeVisible();
     await expect(await dialog.findByRole('switch', { name: 'Include filesystem' })).toBeChecked();
-    // A member the workspace has switched off is shown as out of it.
-    await expect(dialog.getByRole('switch', { name: 'Include docs' })).not.toBeChecked();
-    await userEvent.click(dialog.getByRole('button', { name: 'Overrides' }));
+    // A member switched off on the workspace page is still a member, and is marked as off.
+    await expect(dialog.getByRole('switch', { name: 'Include docs' })).toBeChecked();
+    await expect(dialog.getByText('disabled')).toBeVisible();
+    // Both members have overrides to open; filesystem is listed first.
+    const [filesystemOverrides] = dialog.getAllByRole('button', { name: 'Overrides' });
+    await userEvent.click(filesystemOverrides as HTMLElement);
     await expect(dialog.getByRole('textbox', { name: ENV_OVERRIDES })).toHaveValue('ROOT_DIR=/srv/research');
 
-    await userEvent.click(dialog.getByRole('switch', { name: 'Include docs' }));
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
@@ -134,12 +136,27 @@ export const EditsAnExistingWorkspace: Story = {
         description: 'Files and docs for the research agent.',
         members: {
           filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } },
-          docs: { enabled: true },
+          docs: { enabled: false },
         },
       }),
     );
     await waitFor(() => expect(body.getByText('Saved workspace Research')).toBeVisible());
     await expect(args.onOpenChange).toHaveBeenCalledWith(false);
+  },
+};
+
+export const ClearsTheDescription: Story = {
+  args: { workspace: workspace() },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Edit Research' }));
+    await dialog.findByRole('switch', { name: 'Include filesystem' });
+    await userEvent.clear(dialog.getByRole('textbox', { name: /^Description/ }));
+    await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
+    // Sent empty rather than left out, which the server would read as "keep the old one".
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, expect.objectContaining({ description: '' })),
+    );
   },
 };
 

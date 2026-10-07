@@ -220,7 +220,7 @@ export function selectFromEntry(
   if (remote) {
     return { remote };
   }
-  throw badInput('Registry entry has no npm package and no remote to install');
+  throw badInput('Registry entry has no npm or PyPI package and no remote to install');
 }
 
 /**

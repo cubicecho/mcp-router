@@ -1,4 +1,4 @@
-import { mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { ServerConfig } from '@mcp-router/shared';
@@ -96,6 +96,75 @@ describe('ConfigStore', () => {
     await store.reload();
     expect(store.getServers().map((s) => s.name)).toEqual(['echo']);
     expect(error).toHaveBeenCalledTimes(2);
+  });
+
+  it('does not keep a server or workspace whose file could not be written', async () => {
+    await store.init();
+    // A directory where the file belongs makes the final rename fail.
+    await mkdir(path.join(dataDir, 'config', 'servers', 'echo.json'));
+    await mkdir(path.join(dataDir, 'config', 'workspaces', 'team.json'), { recursive: true });
+
+    await expect(store.saveServer(TEST_SERVER)).rejects.toThrow();
+    expect(store.getServer('echo')).toBeUndefined();
+
+    await expect(store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: {} })).rejects.toThrow();
+    expect(store.getWorkspace('team')).toBeUndefined();
+  });
+
+  it('does not keep a registry change that could not be written', async () => {
+    await store.init();
+    const registriesFile = path.join(dataDir, 'config', 'registries.json');
+    await rm(registriesFile);
+    await mkdir(registriesFile);
+
+    await expect(store.addRegistry({ name: 'mine', url: 'https://registry.example.test' })).rejects.toThrow();
+    expect(store.getRegistries().map((r) => r.name)).toEqual(['official']);
+
+    await expect(store.removeRegistry('official')).rejects.toThrow();
+    expect(store.getRegistries().map((r) => r.name)).toEqual(['official']);
+  });
+
+  it('deletes a server whose file is not named after it, so a reload does not bring it back', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.init();
+    await writeFile(path.join(dataDir, 'config', 'servers', 'hand-named.json'), JSON.stringify(TEST_SERVER));
+    await store.reload();
+    expect(store.getServer('echo')).toBeDefined();
+
+    await store.deleteServer('echo');
+    await store.reload();
+    expect(store.getServers()).toEqual([]);
+    expect(await readdir(path.join(dataDir, 'config', 'servers'))).toEqual([]);
+  });
+
+  it('saves a server whose file is not named after it into its own file, leaving no second copy', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.init();
+    await writeFile(path.join(dataDir, 'config', 'servers', 'hand-named.json'), JSON.stringify(TEST_SERVER));
+    await store.reload();
+
+    await store.saveServer({ ...TEST_SERVER, enabled: false });
+    expect(await readdir(path.join(dataDir, 'config', 'servers'))).toEqual(['echo.json']);
+    await store.reload();
+    expect(store.getServer('echo')?.enabled).toBe(false);
+  });
+
+  it('deletes a workspace whose file is not named after it', async () => {
+    vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.init();
+    const dir = path.join(dataDir, 'config', 'workspaces');
+    await mkdir(dir, { recursive: true });
+    await writeFile(
+      path.join(dir, 'hand-named.json'),
+      JSON.stringify({ name: 'Team', slug: 'team', enabled: true, members: {} }),
+    );
+    await store.reload();
+    expect(store.getWorkspace('team')).toBeDefined();
+
+    await store.deleteWorkspace('team');
+    await store.reload();
+    expect(store.getWorkspaces()).toEqual([]);
+    expect(await readdir(dir)).toEqual([]);
   });
 
   it('throws a friendly error when settings.json is invalid', async () => {

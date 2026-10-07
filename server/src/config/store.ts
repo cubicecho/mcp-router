@@ -52,6 +52,10 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   private registries: Registry[] = [];
   private servers = new Map<string, ServerConfig>();
   private workspaces = new Map<string, WorkspaceConfig>();
+  /** The file each server was read from, by name, when that is not `servers/<name>.json`. */
+  private strayServerFiles = new Map<string, string>();
+  /** The file each workspace was read from, by slug, when that is not `workspaces/<slug>.json`. */
+  private strayWorkspaceFiles = new Map<string, string>();
   private watcher: FSWatcher | null = null;
   private watchDebounce: NodeJS.Timeout | null = null;
 
@@ -202,8 +206,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     if (this.getRegistry(registry.name)) {
       throw conflict(`Registry "${registry.name}" already exists`);
     }
-    this.registries = [...this.registries, registry];
-    await this.writeRegistries();
+    const next = [...this.registries, registry];
+    await this.writeRegistries(next);
+    this.registries = next;
   }
 
   /**
@@ -215,8 +220,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     if (!this.getRegistry(name)) {
       throw notFound(`Unknown registry "${name}"`);
     }
-    this.registries = this.registries.filter((r) => r.name !== name);
-    await this.writeRegistries();
+    const next = this.registries.filter((r) => r.name !== name);
+    await this.writeRegistries(next);
+    this.registries = next;
   }
 
   /**
@@ -227,8 +233,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    */
   async saveServer(config: ServerConfig): Promise<ServerConfig> {
     const parsed = serverConfigSchema.parse(config);
-    this.servers.set(parsed.name, parsed);
     await this.writeJsonAtomic(this.serverFile(parsed.name), parsed);
+    await this.removeStrayFile(this.strayServerFiles, parsed.name);
+    this.servers.set(parsed.name, parsed);
     return parsed;
   }
 
@@ -238,8 +245,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    * @param name - The server's name; an unknown one is not an error.
    */
   async deleteServer(name: string): Promise<void> {
-    this.servers.delete(name);
     await rm(this.serverFile(name), { force: true });
+    await this.removeStrayFile(this.strayServerFiles, name);
+    this.servers.delete(name);
   }
 
   /**
@@ -269,8 +277,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    */
   async saveWorkspace(config: WorkspaceConfig): Promise<WorkspaceConfig> {
     const parsed = workspaceConfigSchema.parse(config);
-    this.workspaces.set(parsed.slug, parsed);
     await this.writeJsonAtomic(this.workspaceFile(parsed.slug), parsed);
+    await this.removeStrayFile(this.strayWorkspaceFiles, parsed.slug);
+    this.workspaces.set(parsed.slug, parsed);
     return parsed;
   }
 
@@ -280,14 +289,37 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    * @param slug - The workspace's slug; an unknown one is not an error.
    */
   async deleteWorkspace(slug: string): Promise<void> {
-    this.workspaces.delete(slug);
     await rm(this.workspaceFile(slug), { force: true });
+    await this.removeStrayFile(this.strayWorkspaceFiles, slug);
+    this.workspaces.delete(slug);
   }
 
-  /** Persists the in-memory registries to registries.json. */
-  private async writeRegistries(): Promise<void> {
-    const file: RegistriesFile = { registries: this.registries };
+  /**
+   * Persists a registry list to registries.json.
+   *
+   * @param registries - The whole list to write.
+   */
+  private async writeRegistries(registries: Registry[]): Promise<void> {
+    const file: RegistriesFile = { registries };
     await this.writeJsonAtomic(path.join(this.configDir, 'registries.json'), file);
+  }
+
+  /**
+   * Removes the misnamed file an entry was read from, once its own file has been written or removed.
+   *
+   * @param strayFiles - The misnamed files by key; the key's entry is dropped.
+   * @param key - The server name or workspace slug.
+   *
+   * @remarks
+   * Without this a hand-named file would come back on the next reload, undoing a delete or shadowing a save.
+   */
+  private async removeStrayFile(strayFiles: Map<string, string>, key: string): Promise<void> {
+    const stray = strayFiles.get(key);
+    if (stray === undefined) {
+      return;
+    }
+    await rm(stray, { force: true });
+    strayFiles.delete(key);
   }
 
   /**
@@ -378,6 +410,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    */
   private async loadServers(): Promise<Map<string, ServerConfig>> {
     const servers = new Map<string, ServerConfig>();
+    this.strayServerFiles = new Map();
     const files = (await readdir(this.serversDir)).filter((f) => f.endsWith('.json'));
     for (const file of files.sort()) {
       const fullPath = path.join(this.serversDir, file);
@@ -389,6 +422,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
         );
         if (`${config.name}.json` !== file) {
           console.warn(`[config] server config ${fullPath} has name "${config.name}" that does not match its filename`);
+          this.strayServerFiles.set(config.name, fullPath);
         }
         servers.set(config.name, config);
       } catch (err) {
@@ -406,6 +440,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
    */
   private async loadWorkspaces(): Promise<Map<string, WorkspaceConfig>> {
     const workspaces = new Map<string, WorkspaceConfig>();
+    this.strayWorkspaceFiles = new Map();
     const files = (await readdir(this.workspacesDir)).filter((f) => f.endsWith('.json'));
     for (const file of files.sort()) {
       const fullPath = path.join(this.workspacesDir, file);
@@ -419,6 +454,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
           console.warn(
             `[config] workspace config ${fullPath} has slug "${config.slug}" that does not match its filename`,
           );
+          this.strayWorkspaceFiles.set(config.slug, fullPath);
         }
         workspaces.set(config.slug, config);
       } catch (err) {
