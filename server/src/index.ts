@@ -1,12 +1,14 @@
 import path from 'node:path';
 import { buildApp } from './app.ts';
 import { authDisabledByEnv } from './auth.ts';
+import { listenPort, refusePlaceholderToken } from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
 import { tuneInbound } from './http-tuning.ts';
 
 async function main(): Promise<void> {
+  refusePlaceholderToken(process.env);
   const dataDir = path.resolve(process.env.DATA_DIR ?? './data');
   const store = new ConfigStore(dataDir);
   await store.init();
@@ -22,7 +24,7 @@ async function main(): Promise<void> {
   store.startWatching();
 
   const app = buildApp({ store, manager });
-  const port = Number(process.env.PORT ?? store.getSettings().port);
+  const port = listenPort(process.env, store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
   const host = process.env.HOST ?? store.getSettings().host;
   const onListen = () => {
