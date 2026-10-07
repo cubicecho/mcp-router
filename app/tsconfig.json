@@ -10,7 +10,6 @@
     "rewriteRelativeImportExtensions": false,
     "useDefineForClassFields": true,
     "types": ["vite/client"],
-    "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
     }
