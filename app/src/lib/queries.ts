@@ -30,8 +30,6 @@ export const queryKeys = {
   workspace: (slug: string) => ['workspaces', slug] as const,
 };
 
-// --- queries ---
-
 export function useRouterStatus() {
   return useQuery({
     queryKey: queryKeys.status,
@@ -127,8 +125,6 @@ export function useWorkspaces() {
     queryFn: api.listWorkspaces,
   });
 }
-
-// --- mutations ---
 
 function useInvalidate() {
   const queryClient = useQueryClient();

@@ -14,8 +14,6 @@ export const serverNameSchema = z
   .max(NAME_DEFAULTS.serverNameMaxLength)
   .regex(/^[a-z0-9][a-z0-9._-]*$/, 'lowercase alphanumerics, dots, dashes, underscores; must start alphanumeric');
 
-// --- registries.json ---
-
 export const registrySchema = z
   .object({
     /** Unique short name, e.g. "official" */
@@ -38,8 +36,6 @@ export const DEFAULT_REGISTRY: Registry = {
   name: 'official',
   url: 'https://registry.modelcontextprotocol.io',
 };
-
-// --- settings.json ---
 
 export const settingsFileSchema = z
   .object({
@@ -79,8 +75,6 @@ export const settingsFileSchema = z
   .passthrough();
 
 export type SettingsFile = z.infer<typeof settingsFileSchema>;
-
-// --- servers/<name>.json ---
 
 /** Where a server came from. */
 export const SourceType = {
@@ -177,8 +171,6 @@ export type ServerSource = z.infer<typeof serverSourceSchema>;
 export type ServerTransport = z.infer<typeof serverTransportSchema>;
 export type EnvVarMeta = z.infer<typeof envVarMetaSchema>;
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
-
-// --- workspaces/<slug>.json ---
 
 /**
  * A server's participation in a workspace, with optional per-workspace parameter

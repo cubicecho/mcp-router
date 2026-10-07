@@ -85,13 +85,9 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
   return (text.length > 0 ? JSON.parse(text) : undefined) as T;
 }
 
-// --- status ---
-
 export function getStatus(): Promise<RouterStatus> {
   return request('/api/status');
 }
-
-// --- servers ---
 
 export function listServers(): Promise<ServerStatus[]> {
   return request('/api/servers');
@@ -168,8 +164,6 @@ export function clearActivity(scope: CapabilityScope): Promise<void> {
   return request(`${scopeBase(scope)}/activity`, { method: 'DELETE' });
 }
 
-// --- registries ---
-
 export async function listRegistries(): Promise<Registry[]> {
   // Tolerate both a bare array and the registries.json file shape.
   const data = await request<Registry[] | { registries: Registry[] }>('/api/registries');
@@ -208,8 +202,6 @@ export function searchRegistryServers(
   return request(`/api/registries/${encodeURIComponent(registry)}/servers${suffix}`);
 }
 
-// --- workspaces ---
-
 export function listWorkspaces(): Promise<WorkspaceStatus[]> {
   return request('/api/workspaces');
 }
@@ -229,8 +221,6 @@ export function updateWorkspace(slug: string, body: UpdateWorkspaceRequest): Pro
 export function deleteWorkspace(slug: string): Promise<void> {
   return request(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'DELETE' });
 }
-
-// --- config ---
 
 export function updateSettings(body: UpdateSettingsRequest): Promise<{ idleTimeoutMs: number }> {
   return request('/api/settings', { method: 'PATCH', body });

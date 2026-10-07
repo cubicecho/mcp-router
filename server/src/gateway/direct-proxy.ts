@@ -51,12 +51,8 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
       async () => (await emptyOnMissing(() => withClient(run))) ?? empty,
     );
 
-  // A handler per surface this endpoint declares, and none for a surface it does
-  // not. The SDK enforces the pairing — `setRequestHandler` refuses a method the
-  // server's own capabilities do not cover — and it is the honest answer either
-  // way: a client that asks a tools-only server for resources should hear "no
-  // such method", which is true, rather than an empty list, which reads as a
-  // server that has resources and happens to have none right now.
+  // A handler only per declared surface: the SDK refuses any other, and "no such
+  // method" is truer for a tools-only server than an empty resource list.
   if (advertised.tools) {
     server.setRequestHandler(ListToolsRequestSchema, async (req) =>
       track(
@@ -64,9 +60,8 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
         name,
         { via: CallVia.Direct, method: McpMethod.ToolsList, params: req.params, failuresOnly: true },
         async () => {
-          // A missing capability is a definitive "has no tools" — clear any count
-          // from a previous incarnation; any other failure propagates, and track()
-          // converts it to an MCP error.
+          // A missing capability means "no tools", so the old count is cleared;
+          // any other failure propagates to track().
           const result = await emptyOnMissing(() => withClient((c) => c.listTools(req.params)));
           deps.recordToolCount(name, result?.tools.length ?? 0);
           return result ?? { tools: [] };
