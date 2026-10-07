@@ -101,7 +101,7 @@ components. Invalidate the relevant query keys after every mutation.
   `camelCase`; types/interfaces `PascalCase`; true constants
   `SCREAMING_SNAKE_CASE`
 - Prefix unused params with `_`
-- `unknown` over `any` (`noExplicitAny` warns)
+- `unknown` over `any` (`noExplicitAny` is an error)
 - Tests in `__tests__/` next to source or `*.test.ts(x)`; Vitest
   `describe`/`it`/`expect`
 
