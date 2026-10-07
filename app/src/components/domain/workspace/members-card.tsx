@@ -7,6 +7,7 @@ import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useServers, useUpdateWorkspace } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 /** Which overrides a member carries, for the "overrides" hint badges. */
@@ -71,7 +72,7 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
                 onCheckedChange={(on) => toggle(name, member, on)}
               />
             }
-            title={server?.config.displayName || name}
+            title={serverLabel(name, server?.config.displayName)}
             description={
               (server?.config.displayName || !server || overrides.length > 0) && (
                 <span className="flex flex-wrap items-center gap-1">
