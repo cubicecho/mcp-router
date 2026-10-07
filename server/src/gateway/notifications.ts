@@ -26,6 +26,6 @@ export function namespaceNotification(notification: Notification, prefix?: strin
  */
 export function pushNotification(server: Server, notification: Notification): void {
   server.notification(notification).catch((err: unknown) => {
-    console.warn(`Failed to relay notification "${notification.method}": ${errorMessage(err)}`);
+    console.warn(`[gateway] failed to relay notification "${notification.method}": ${errorMessage(err)}`);
   });
 }

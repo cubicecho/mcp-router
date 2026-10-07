@@ -76,9 +76,8 @@ VOLUME /data
 
 EXPOSE 3000
 
-# /api/status answers 200 when auth is off and 401 when auth is on — both mean
-# the server is up, so treat anything below 500 as healthy.
+# /healthz needs no token and answers 200 once the server is listening.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e 'fetch("http://localhost:" + (process.env.PORT || 3000) + "/api/status").then((r) => process.exit(r.status < 500 ? 0 : 1)).catch(() => process.exit(1))'
+  CMD node -e 'fetch("http://localhost:" + (process.env.PORT || 3000) + "/healthz").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
 
 CMD ["node", "server/dist/index.js"]

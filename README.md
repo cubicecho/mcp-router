@@ -328,6 +328,7 @@ with `{ "error": "...", "detail": "..." }`.
 
 | Method & path | Purpose |
 | --- | --- |
+| `GET /healthz` | Liveness, **no auth** (not under `/api`): `{ "ok": true, "version": "…" }`. What the container healthcheck calls |
 | `GET /api/status` | Router status (version, auth mode, running/total servers) |
 | `GET /api/registries` | List configured registries |
 | `POST /api/registries` | Add a registry `{ name, url }` |

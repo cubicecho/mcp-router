@@ -9,12 +9,18 @@ export interface HttpSettings {
   outboundKeepAliveTimeoutMs: number;
   /** Largest JSON body /api and /mcp accept, as `express.json` reads it. */
   bodyLimit: string;
+  /** How long in-flight requests get to finish after a stop signal, in seconds. Open streams are cut after it. */
+  drainSeconds: number;
+  /** How long the whole shutdown may take before the process exits anyway, in seconds. Under the 10 s Docker waits before SIGKILL. */
+  shutdownDeadlineSeconds: number;
 }
 
 export const HTTP_DEFAULTS: Readonly<HttpSettings> = Object.freeze({
   keepAliveTimeoutMs: 75_000,
   outboundKeepAliveTimeoutMs: 30_000,
   bodyLimit: '4mb',
+  drainSeconds: 5,
+  shutdownDeadlineSeconds: 8,
 });
 
 /** Settings for the config files under DATA_DIR/config. */

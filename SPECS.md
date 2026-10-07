@@ -55,6 +55,12 @@ mcp-router/
   streamable-http endpoint (e.g. to scope a shared upstream to a workspace path);
   members whose server no longer exists are skipped
 
+### Health (`/healthz`, no auth)
+
+`GET /healthz` answers `200 { ok: true, version }` (`Health`) once the server is listening. It sits in front of
+the auth middleware so Docker's healthcheck, the CI boot job and a load balancer can call it without a token,
+and it reports nothing else.
+
 ### Management REST API (`/api`, bearer auth)
 
 | Method & path | Purpose |
@@ -346,7 +352,7 @@ pool leaves `naming.ts` untouched, as predicted.
 ### Track C — Deploy & docs
 
 - [x] C1 `Dockerfile`: multi-stage — `npm ci` + build shared/server/app → slim `node:22` runtime with `server/dist`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `VOLUME /data`, `EXPOSE 3000`; needs npm available at runtime (installer shells out to it)
-- [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/api/status`
+- [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/healthz`
 - [x] C3 `README.md`: what it is, quickstart (docker compose + bare node), config file reference with examples, API + MCP endpoint reference, how to point Claude/other clients at `/mcp` and `/mcp/<name>`, security notes (plaintext secrets, bearer token)
 
 ### Phase 3 — Workspaces (custom aggregates)

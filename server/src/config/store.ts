@@ -86,7 +86,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
         this.reload()
           .then((state) => this.emit('change', state))
           .catch((err: unknown) => {
-            console.error(`Config reload after file change failed: ${errorMessage(err)}`);
+            console.error(`[config] reload after a file change failed: ${errorMessage(err)}`);
           });
       }, CONFIG_DEFAULTS.watchDebounceMs);
     });
@@ -218,10 +218,13 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       settings = settingsFileSchema.parse({});
       dirty = true;
     }
-    if (effectiveAuth(settings).enabled && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
+    const auth = effectiveAuth(settings);
+    // Auth is on and neither settings.json nor MCP_ROUTER_TOKEN holds a token.
+    if (auth.enabled && !auth.token) {
       settings.authToken = randomBytes(CONFIG_DEFAULTS.authTokenBytes).toString('hex');
       dirty = true;
-      console.log(`Generated auth token (persisted to ${file}):\n  ${settings.authToken}`);
+      // The one time the token is printed: first run, when nobody has seen it yet.
+      console.log(`[auth] generated a bearer token and saved it to ${file}:\n  ${settings.authToken}`);
     }
     if (dirty) {
       await this.writeJsonAtomic(file, settings);
@@ -256,12 +259,12 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
           serverConfigSchema.parse.bind(serverConfigSchema),
         );
         if (`${config.name}.json` !== file) {
-          console.warn(`Server config ${fullPath} has name "${config.name}" that does not match its filename`);
+          console.warn(`[config] server config ${fullPath} has name "${config.name}" that does not match its filename`);
         }
         servers.set(config.name, config);
       } catch (err) {
         // A single broken (hand-edited) server file must not take the router down; report and skip it.
-        console.error(`Ignoring invalid server config ${fullPath}: ${errorMessage(err)}`);
+        console.error(`[config] ignoring invalid server config ${fullPath}: ${errorMessage(err)}`);
       }
     }
     return servers;
@@ -279,12 +282,14 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
           workspaceConfigSchema.parse.bind(workspaceConfigSchema),
         );
         if (`${config.slug}.json` !== file) {
-          console.warn(`Workspace config ${fullPath} has slug "${config.slug}" that does not match its filename`);
+          console.warn(
+            `[config] workspace config ${fullPath} has slug "${config.slug}" that does not match its filename`,
+          );
         }
         workspaces.set(config.slug, config);
       } catch (err) {
         // A single broken (hand-edited) workspace file must not take the router down; report and skip it.
-        console.error(`Ignoring invalid workspace config ${fullPath}: ${errorMessage(err)}`);
+        console.error(`[config] ignoring invalid workspace config ${fullPath}: ${errorMessage(err)}`);
       }
     }
     return workspaces;

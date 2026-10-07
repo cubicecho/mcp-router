@@ -54,6 +54,12 @@ describe('REST API', () => {
     expect((await request(app).post('/mcp').send({})).status).toBe(401);
   });
 
+  it('answers /healthz without a token', async () => {
+    const res = await request(app).get('/healthz');
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ ok: true, version: SERVER_VERSION });
+  });
+
   it('reports router status', async () => {
     const res = await authed(request(app).get('/api/status'));
     expect(res.status).toBe(200);
