@@ -103,7 +103,8 @@ interpolation into a shell. Downstream env = explicit allowlist (`PATH`,
 `HOME`, …) + the server's configured `env`, not full `process.env`.
 
 **Frontend:** shadcn/ui primitives in `app/src/components/ui/` (no app logic
-there); feature components in `app/src/components/domain/`; file-based routes
+there); feature components in `app/src/components/domain/<concept>/` (`server`, `workspace`,
+`capability`, `endpoint`, `key-value`, `browse`, `auth`), never loose in `domain/`; file-based routes
 in `app/src/routes/`; `@/` maps to `app/src/`. Data fetching via TanStack
 Query hooks wrapping the typed client in `src/lib/api.ts` — no raw `fetch` in
 components. Invalidate the relevant query keys after every mutation.

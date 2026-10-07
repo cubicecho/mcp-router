@@ -3,7 +3,7 @@ import { useStore } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
-import { KeyValueRows } from '@/components/domain/key-value-rows';
+import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';

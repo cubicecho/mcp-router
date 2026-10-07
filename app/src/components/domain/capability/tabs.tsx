@@ -1,8 +1,8 @@
-import { ConnectCard } from '@/components/domain/connect-card';
-import { ActivityCard } from '@/components/domain/server/activity-card';
-import { PromptsCard } from '@/components/domain/server/prompts-card';
-import { ResourcesCard } from '@/components/domain/server/resources-card';
-import { ToolsCard } from '@/components/domain/server/tools-card';
+import { ActivityCard } from '@/components/domain/capability/activity-card';
+import { PromptsCard } from '@/components/domain/capability/prompts-card';
+import { ResourcesCard } from '@/components/domain/capability/resources-card';
+import { ToolsCard } from '@/components/domain/capability/tools-card';
+import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';

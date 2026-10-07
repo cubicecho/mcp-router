@@ -5,7 +5,7 @@ import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DescriptionList, PropertyRow } from '@/components/description-list';
-import { CapabilityTabs } from '@/components/domain/capability-tabs';
+import { CapabilityTabs } from '@/components/domain/capability/tabs';
 import { MembersCard } from '@/components/domain/workspace/members-card';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { PageLayout } from '@/components/page-layout';

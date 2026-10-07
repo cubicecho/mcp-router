@@ -7,7 +7,7 @@ import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DescriptionList, PropertyRow } from '@/components/description-list';
-import { CapabilityTabs } from '@/components/domain/capability-tabs';
+import { CapabilityTabs } from '@/components/domain/capability/tabs';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';

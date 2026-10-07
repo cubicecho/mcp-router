@@ -1,7 +1,7 @@
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { CompassIcon, ServerIcon } from 'lucide-react';
 import { useState } from 'react';
-import { ConnectCard } from '@/components/domain/connect-card';
+import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
 import { EmptyState } from '@/components/page';

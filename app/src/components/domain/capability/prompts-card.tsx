@@ -3,14 +3,7 @@ import { InputField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/page';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
-import {
-  CapabilityList,
-  CapabilityRow,
-  ResultBlock,
-  RUN_SUBMIT,
-  RunForm,
-  useCapabilityRun,
-} from './capability-list.tsx';
+import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './list.tsx';
 
 function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
   const get = useGetPrompt(scope);
