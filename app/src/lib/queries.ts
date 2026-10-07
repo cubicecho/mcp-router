@@ -7,9 +7,9 @@ import type {
   UpdateWorkspaceRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import * as api from './api';
-import { type CapabilityScope, SCOPE_SERVER } from './api';
-import { POLLING_DEFAULTS } from './defaults';
+import * as api from './api.ts';
+import { type CapabilityScope, SCOPE_SERVER } from './api.ts';
+import { POLLING_DEFAULTS } from './defaults.ts';
 
 /** Root query key for a capability scope; capability keys hang off it. */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {

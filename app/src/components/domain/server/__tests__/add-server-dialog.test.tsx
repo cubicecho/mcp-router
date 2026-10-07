@@ -4,7 +4,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '@/lib/api';
-import { AddServerDialog } from '../add-server-dialog';
+import { AddServerDialog } from '../add-server-dialog.tsx';
 
 function renderDialog(server?: ServerStatus) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

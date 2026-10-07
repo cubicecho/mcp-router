@@ -1,4 +1,4 @@
-import { type CapabilityScope, SCOPE_SERVER } from './api';
+import { type CapabilityScope, SCOPE_SERVER } from './api.ts';
 
 /** Path of the aggregate endpoint that merges every enabled server. */
 export const AGGREGATE_ENDPOINT_PATH = '/mcp';

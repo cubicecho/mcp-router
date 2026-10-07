@@ -23,7 +23,7 @@ import {
   type UpdateWorkspaceRequest,
   type WorkspaceStatus,
 } from '@mcp-router/shared';
-import { getToken, requireAuth } from './auth';
+import { getToken, requireAuth } from './auth.ts';
 
 /** Non-2xx responses throw this; carries the HTTP status and the server's { error, detail? } envelope. */
 export class ApiRequestError extends Error {

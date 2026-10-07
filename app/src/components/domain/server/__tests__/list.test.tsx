@@ -14,7 +14,7 @@ import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as api from '@/lib/api';
-import { ServerList } from '../list';
+import { ServerList } from '../list.tsx';
 
 const server: ServerStatus = {
   config: {

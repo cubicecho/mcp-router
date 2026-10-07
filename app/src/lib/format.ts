@@ -6,7 +6,7 @@ import {
   type ServerSource,
   SourceType,
 } from '@mcp-router/shared';
-import { DISPLAY_DEFAULTS } from './defaults';
+import { DISPLAY_DEFAULTS } from './defaults.ts';
 
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;

@@ -5,7 +5,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as api from '@/lib/api';
-import { ActivityCard } from '../activity-card';
+import { ActivityCard } from '../activity-card.tsx';
 
 const entry: ActivityEntry = {
   id: 1,

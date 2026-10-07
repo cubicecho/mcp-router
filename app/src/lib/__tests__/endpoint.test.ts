@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { AGGREGATE_ENDPOINT_PATH, endpointPath, endpointUrl } from '../endpoint';
+import { AGGREGATE_ENDPOINT_PATH, endpointPath, endpointUrl } from '../endpoint.ts';
 
 describe('endpointPath', () => {
   it('serves a server at /mcp/<name>', () => {

@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as api from '@/lib/api';
-import { ToolsCard } from '../tools-card';
+import { ToolsCard } from '../tools-card.tsx';
 
 const SCOPE = { kind: 'server', name: 'echo-server' } as const;
 
