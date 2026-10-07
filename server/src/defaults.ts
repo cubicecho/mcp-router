@@ -29,3 +29,9 @@ export const STREAM_KEEPALIVE_MS = 60_000;
 
 /** Defensive cap for draining paginated lists, against a downstream that never stops returning cursors. */
 export const MAX_LIST_PAGES = 100;
+
+/** How long a registry may take to answer before the request is abandoned, in ms. */
+export const REGISTRY_FETCH_TIMEOUT_MS = 30_000;
+
+/** How long one `npm install` may run before it is killed, in ms. */
+export const NPM_INSTALL_TIMEOUT_MS = 300_000;

@@ -1,5 +1,6 @@
 import type { Registry, RegistryListResponse, RegistryServerEntry } from '@mcp-router/shared';
 import { registryListResponseSchema, registryServerEntrySchema } from '@mcp-router/shared';
+import { REGISTRY_FETCH_TIMEOUT_MS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 
@@ -15,9 +16,15 @@ export interface RegistrySearchParams {
  */
 export class RegistryClient {
   private readonly fetchImpl: typeof fetch;
+  private readonly timeoutMs: number;
 
-  constructor(fetchImpl: typeof fetch = fetch) {
+  /**
+   * @param fetchImpl - The fetch to use; tests pass a fake.
+   * @param timeoutMs - How long a registry may take to answer, in ms.
+   */
+  constructor(fetchImpl: typeof fetch = fetch, timeoutMs: number = REGISTRY_FETCH_TIMEOUT_MS) {
     this.fetchImpl = fetchImpl;
+    this.timeoutMs = timeoutMs;
   }
 
   async listServers(registry: Registry, params: RegistrySearchParams = {}): Promise<RegistryListResponse> {
@@ -50,8 +57,17 @@ export class RegistryClient {
   private async fetchJson(url: URL, registry: Registry, notFoundMessage?: string): Promise<unknown> {
     let response: Response;
     try {
-      response = await this.fetchImpl(url, { headers: { accept: 'application/json' } });
+      response = await this.fetchImpl(url, {
+        headers: { accept: 'application/json' },
+        signal: AbortSignal.timeout(this.timeoutMs),
+      });
     } catch (cause) {
+      const timedOut = cause instanceof Error && cause.name === 'TimeoutError';
+      if (timedOut) {
+        throw new HttpError(504, `Registry "${registry.name}" did not answer within ${this.timeoutMs} ms`, undefined, {
+          cause,
+        });
+      }
       throw new HttpError(502, `Registry "${registry.name}" is unreachable`, errorMessage(cause), { cause });
     }
     if (response.status === 404 && notFoundMessage) {

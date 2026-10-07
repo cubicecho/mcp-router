@@ -15,13 +15,18 @@ import type {
   ServerTransport,
 } from '@mcp-router/shared';
 import { serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
+import { NPM_INSTALL_TIMEOUT_MS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
 const execFileAsync = promisify(execFile);
 
-export type ExecFileFn = (command: string, args: string[]) => Promise<{ stdout: string; stderr: string }>;
+export type ExecFileFn = (
+  command: string,
+  args: string[],
+  options: { timeout: number },
+) => Promise<{ stdout: string; stderr: string }>;
 
 export interface InstallerDeps {
   dataDir: string;
@@ -189,8 +194,22 @@ async function installNpmPackage(
   const exec = deps.execFileImpl ?? execFileAsync;
   const spec = `${packageName}@${version ?? 'latest'}`;
   try {
-    await exec('npm', ['install', '--prefix', dir, spec, '--no-audit', '--no-fund']);
+    await exec('npm', ['install', '--prefix', dir, spec, '--no-audit', '--no-fund'], {
+      timeout: NPM_INSTALL_TIMEOUT_MS,
+    });
   } catch (cause) {
+    // execFile kills the child when its timeout passes, and says so with `killed`.
+    const timedOut = isRecord(cause) && cause.killed === true;
+    if (timedOut) {
+      throw new HttpError(
+        504,
+        `npm install of "${spec}" did not finish within ${NPM_INSTALL_TIMEOUT_MS} ms`,
+        undefined,
+        {
+          cause,
+        },
+      );
+    }
     const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
     throw new HttpError(500, `npm install of "${spec}" failed`, stderr?.slice(-1000) ?? errorMessage(cause), { cause });
   }
