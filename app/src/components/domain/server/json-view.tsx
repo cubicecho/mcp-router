@@ -134,7 +134,7 @@ function Node({
             <span className="mr-1 rounded bg-muted-foreground/15 px-1 text-[0.65rem] text-muted-foreground">json</span>
           )}
           <span className="text-muted-foreground">{openBracket}</span>
-          {!open && (
+          {open === false && (
             <span className="text-muted-foreground">
               … {closeBracket}
               <span className="ml-1 text-[0.7rem]">

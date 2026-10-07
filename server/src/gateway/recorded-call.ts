@@ -51,8 +51,9 @@ export async function recordedCall<T>(
   // via `isError` on the result — so success/failure can't be inferred from
   // throw-vs-return alone. Derived here, once, so no call site can forget it.
   const failed = ctx.method === 'tools/call' && toolCallFailed(result);
-  if (!ctx.failuresOnly || failed) {
-    write({ ok: !failed, result, error: failed ? toolErrorText(result) : undefined });
+  const isRecorded = ctx.failuresOnly !== true || failed;
+  if (isRecorded) {
+    write({ ok: failed === false, result, error: failed ? toolErrorText(result) : undefined });
   }
   return result;
 }

@@ -135,7 +135,7 @@ function WorkspacesPage() {
             <WorkspaceDialog
               key={dialog.mode === 'edit' ? dialog.workspace.slug : 'new'}
               open
-              onOpenChange={(open) => !open && setDialog(null)}
+              onOpenChange={(open) => open === false && setDialog(null)}
               workspace={dialog.mode === 'edit' ? dialog.workspace : undefined}
             />
           )}

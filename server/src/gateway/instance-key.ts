@@ -10,6 +10,11 @@ export function workspaceInstanceKey(slug: string, serverName: string): Instance
 }
 
 /** True for a workspace member's key (a global key is a plain server name, which cannot contain ':'). */
-export function isWorkspaceKey(key: InstanceKey): boolean {
+function isWorkspaceKey(key: InstanceKey): boolean {
   return key.includes(':');
+}
+
+/** True for a server's own key, the one its global instance runs under. */
+export function isBaseServerKey(key: InstanceKey): boolean {
+  return isWorkspaceKey(key) === false;
 }

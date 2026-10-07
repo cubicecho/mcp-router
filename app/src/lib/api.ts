@@ -62,7 +62,8 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     requireAuth();
   }
 
-  if (!response.ok) {
+  const requestFailed = response.ok === false;
+  if (requestFailed) {
     let message = response.statusText || `Request failed (${response.status})`;
     let detail: string | undefined;
     try {

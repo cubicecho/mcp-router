@@ -29,7 +29,8 @@ export function effectiveAuth(
 ): AuthConfig {
   return {
     enabled: settings.authEnabled && !authDisabledByEnv(env),
-    token: env.MCP_ROUTER_TOKEN ?? settings.authToken,
+    // `||`, not `??`: compose passes an unset variable through as an empty string.
+    token: env.MCP_ROUTER_TOKEN || settings.authToken,
   };
 }
 
@@ -75,7 +76,7 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
 export function createAuthMiddleware(getAuth: () => AuthConfig): RequestHandler {
   return (req, res, next) => {
     const { enabled, token } = getAuth();
-    if (!enabled) {
+    if (enabled === false) {
       next();
       return;
     }

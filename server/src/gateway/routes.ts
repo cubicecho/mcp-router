@@ -77,7 +77,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     }
     const slug = req.params.slug;
     const workspace = store.getWorkspace(slug);
-    if (!workspace || !workspace.enabled) {
+    if (!workspace || workspace.enabled === false) {
       res.status(404).json({ error: `Unknown workspace "${slug}"` });
       return;
     }
@@ -98,7 +98,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     }
     const name = req.params.name;
     const config = store.getServer(name);
-    if (!config || !config.enabled) {
+    if (!config || config.enabled === false) {
       res.status(404).json({ error: `Unknown server "${name}"` });
       return;
     }

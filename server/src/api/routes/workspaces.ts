@@ -49,7 +49,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
 
   const requireValidSlug = (slug: string): string => {
     const parsed = serverNameSchema.safeParse(slug);
-    if (!parsed.success) {
+    if (parsed.success === false) {
       throw new HttpError(400, `Invalid workspace slug "${slug}"`, 'derive a name that yields a valid URL slug');
     }
     return parsed.data;

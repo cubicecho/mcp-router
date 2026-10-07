@@ -39,7 +39,8 @@ export function buildApp(deps: AppDeps): express.Express {
   if (existsSync(appDist)) {
     app.use(express.static(appDist));
     app.use((req, res, next) => {
-      if (req.method === 'GET' && !req.path.startsWith('/api') && !req.path.startsWith('/mcp')) {
+      const isBackendPath = req.path.startsWith('/api') || req.path.startsWith('/mcp');
+      if (req.method === 'GET' && isBackendPath === false) {
         res.sendFile(path.join(appDist, 'index.html'));
         return;
       }

@@ -59,7 +59,7 @@ export function ConnectCard({
       description={description}
       actionSlot={
         authEnabled &&
-        !!token && (
+        Boolean(token) && (
           <Button
             variant="outline"
             size="sm"

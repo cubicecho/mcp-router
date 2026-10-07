@@ -58,7 +58,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
             value={field.state.value}
             inputMode="decimal"
             aria-label="Idle timeout in minutes"
-            aria-invalid={!valid}
+            aria-invalid={valid === false}
             className="h-8 w-20 tabular-nums"
             onBlur={field.handleBlur}
             onChange={(event) => field.handleChange(event.target.value)}
@@ -67,7 +67,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
       </form.Field>
       <span className="text-muted-foreground">minutes</span>
       <form.AppForm>
-        <form.SubmitButton size="sm" variant="outline" disabled={!changed} content="Save" />
+        <form.SubmitButton size="sm" variant="outline" disabled={changed === false} content="Save" />
       </form.AppForm>
     </form>
   );

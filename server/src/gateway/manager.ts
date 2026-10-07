@@ -25,7 +25,7 @@ import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
-import { type InstanceKey, isWorkspaceKey, workspaceInstanceKey } from './instance-key.ts';
+import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './instance-key.ts';
 
 /**
  * What the router keeps per managed instance, beside what the pool holds.
@@ -237,7 +237,7 @@ export class GatewayManager {
       meta.config = next;
     }
     for (const [key, config] of desired) {
-      if (!this.meta.has(key)) {
+      if (this.meta.has(key) === false) {
         this.meta.set(key, { config, callCount: 0 });
       }
     }
@@ -340,7 +340,8 @@ export class GatewayManager {
    * means the pool declined to dial, the second that it dialled and could not.
    */
   private fail(key: InstanceKey, cause: unknown): never {
-    if (!(cause instanceof McpPoolError)) {
+    const isPoolError = cause instanceof McpPoolError;
+    if (isPoolError === false) {
       throw cause;
     }
     const name = this.meta.get(key)?.config.name ?? key;
@@ -370,13 +371,13 @@ export class GatewayManager {
     const state = this.connectionState();
     // Only base servers are exposed as "servers"; workspace-scoped instances are an internal detail.
     return [...this.meta]
-      .filter(([key]) => !isWorkspaceKey(key))
+      .filter(([key]) => isBaseServerKey(key))
       .map(([key, meta]) => toStatus(meta, state.get(key)))
       .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
   runningCount(): number {
-    return this.pool.state().filter((row) => !isWorkspaceKey(row.id) && row.status === 'ready').length;
+    return this.pool.state().filter((row) => isBaseServerKey(row.id) && row.status === 'ready').length;
   }
 
   /**
@@ -426,7 +427,7 @@ export class GatewayManager {
   /** Names of all enabled base servers (for the global aggregate endpoint). */
   enabledNames(): string[] {
     return [...this.meta]
-      .filter(([key, meta]) => !isWorkspaceKey(key) && meta.config.enabled)
+      .filter(([key, meta]) => isBaseServerKey(key) && meta.config.enabled)
       .map(([, meta]) => meta.config.name)
       .sort();
   }

@@ -53,7 +53,8 @@ export class BoundedEventStore implements EventStore {
     { send }: { send: (eventId: EventId, message: JSONRPCMessage) => Promise<void> },
   ): Promise<StreamId> {
     // No anchor (or it has aged out of the buffer) → we cannot know what was missed.
-    if (!lastEventId || !this.events.has(lastEventId)) {
+    const isBuffered = Boolean(lastEventId) && this.events.has(lastEventId);
+    if (isBuffered === false) {
       return '';
     }
     const streamId = this.streamIdOf(lastEventId);

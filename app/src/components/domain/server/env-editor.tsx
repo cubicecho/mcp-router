@@ -28,7 +28,7 @@ export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorPro
       // An array, not a record keyed by variable name: a name is free text, and a dot in it would read as a path.
       declared: declared.map(([name]) => ({ key: name, value: env[name] ?? '' })),
       extraRows: recordToRows(
-        Object.fromEntries(Object.entries(env).filter(([name]) => !Object.hasOwn(envMeta, name))),
+        Object.fromEntries(Object.entries(env).filter(([name]) => Object.hasOwn(envMeta, name) === false)),
       ),
     },
     onSubmit: async ({ value }) => {

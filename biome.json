@@ -1,5 +1,11 @@
 {
   "$schema": "https://biomejs.dev/schemas/2.4.6/schema.json",
+  "vcs": {
+    "enabled": true,
+    "clientKind": "git",
+    "useIgnoreFile": true
+  },
+  "plugins": ["./no-negation.grit"],
   "formatter": {
     "enabled": true,
     "indentStyle": "space",
@@ -33,11 +39,24 @@
         "useExhaustiveDependencies": "warn",
         "useHookAtTopLevel": "error",
         "noUnusedImports": "error",
-        "noUnusedVariables": "error"
+        "noUnusedVariables": "error",
+        "noUnusedFunctionParameters": "error"
       },
       "style": {
         "useImportType": "error",
-        "noNonNullAssertion": "off",
+        "useConst": "error",
+        "useBlockStatements": "error",
+        "noCommonJs": "error",
+        "noEnum": "error",
+        "noNamespace": "error",
+        "noParameterProperties": "error",
+        "noNonNullAssertion": "error",
+        "useFilenamingConvention": {
+          "level": "error",
+          "options": {
+            "filenameCases": ["kebab-case"]
+          }
+        },
         "noUnusedTemplateLiteral": "off"
       },
       "suspicious": {
@@ -73,6 +92,16 @@
         "rules": {
           "suspicious": {
             "noUnknownAtRules": "off"
+          }
+        }
+      }
+    },
+    {
+      "includes": ["app/src/routes/**"],
+      "linter": {
+        "rules": {
+          "style": {
+            "useFilenamingConvention": "off"
           }
         }
       }

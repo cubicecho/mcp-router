@@ -28,7 +28,7 @@ npm run dev:server       # Express + MCP gateway only (port 3001)
 npm run dev:app          # Vite dev server only (port 3000, proxies /api + /mcp)
 
 # Quality — run before every commit; CI fails otherwise
-npm run check            # biome check + tsc --noEmit for all packages
+npm run check            # biome check (writes safe fixes) + tsc --noEmit for all packages; CI runs `biome ci`
 npm run check:fix        # biome with auto-fix
 npm run lint / lint:fix  # biome lint only
 npm test                 # vitest run

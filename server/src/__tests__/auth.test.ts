@@ -5,6 +5,7 @@ import {
   authDisabledByEnv,
   createAuthMiddleware,
   createOriginMiddleware,
+  effectiveAuth,
   isLoopbackOrigin,
   tokensEqual,
 } from '../auth.ts';
@@ -82,6 +83,18 @@ describe('authDisabledByEnv', () => {
     for (const value of ['false', '0', 'no', 'off', '']) {
       expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(false);
     }
+  });
+});
+
+describe('effectiveAuth', () => {
+  const settings = { authEnabled: true, authToken: 'stored-token' };
+
+  it('prefers the token from the environment', () => {
+    expect(effectiveAuth(settings, { MCP_ROUTER_TOKEN: 'env-token' }).token).toBe('env-token');
+  });
+
+  it('falls back to the stored token when the environment variable is empty', () => {
+    expect(effectiveAuth(settings, { MCP_ROUTER_TOKEN: '' }).token).toBe('stored-token');
   });
 });
 

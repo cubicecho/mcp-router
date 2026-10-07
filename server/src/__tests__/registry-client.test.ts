@@ -78,6 +78,18 @@ describe('RegistryClient.listServers', () => {
     });
   });
 
+  it('gives up on a registry that does not answer in time with a 504', async () => {
+    const neverAnswers: typeof fetch = (_url, init) =>
+      new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () => reject(init.signal?.reason));
+      });
+    const client = new RegistryClient(neverAnswers, 10);
+    await expect(client.listServers(registry)).rejects.toMatchObject({
+      status: 504,
+      message: 'Registry "official" did not answer within 10 ms',
+    });
+  });
+
   it('wraps unexpected response shapes in a friendly 502', async () => {
     const { client } = clientReturning({ nope: true });
     await expect(client.listServers(registry)).rejects.toMatchObject({

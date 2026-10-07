@@ -356,6 +356,26 @@ describe('buildServerConfig', () => {
     ).rejects.toMatchObject({ status: 500, detail: expect.stringContaining('404 Not Found') });
   });
 
+  it('reports an npm install that was killed for running too long as a 504', async () => {
+    deps.execFileImpl = async () => {
+      throw Object.assign(new Error('Command failed'), { killed: true });
+    };
+    await expect(
+      buildServerConfig({ source: { type: 'npm', package: 'slow-pkg' }, env: {}, enabled: true }, deps),
+    ).rejects.toMatchObject({ status: 504, message: expect.stringContaining('did not finish within') });
+  });
+
+  it('gives npm install a time limit', async () => {
+    const timeouts: number[] = [];
+    const install = fakeExec('tool', { bin: 'cli.js' });
+    deps.execFileImpl = (command, args, options) => {
+      timeouts.push(options.timeout);
+      return install(command, args, options);
+    };
+    await buildServerConfig({ source: { type: 'npm', package: 'tool' }, env: {}, enabled: true }, deps);
+    expect(timeouts).toEqual([300_000]);
+  });
+
   it('uninstall removes the install dir', async () => {
     deps.execFileImpl = fakeExec('tool', { bin: 'cli.js' });
     await buildServerConfig({ source: { type: 'npm', package: 'tool' }, env: {}, enabled: true }, deps);
