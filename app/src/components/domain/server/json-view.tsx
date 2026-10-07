@@ -1,5 +1,7 @@
 import { type ReactNode, useState } from 'react';
-import { ChevronRight } from '@/components/ui/icons';
+import { Disclosure } from '@/components/disclosure';
+import { CodeBlock } from '@/components/ui/code';
+import { SegmentedButton, SegmentedGroup } from '@/components/ui/segmented';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { cn } from '@/lib/utils';
 
@@ -30,6 +32,12 @@ function parseEmbedded(value: string): unknown {
   } catch {
     return undefined;
   }
+}
+
+/** "3 items" for an array, "1 key" for an object. */
+function formatSize(count: number, isArray: boolean): string {
+  const noun = isArray ? 'item' : 'key';
+  return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }
 
 function Key({ name }: { name?: string }) {
@@ -117,16 +125,14 @@ function Node({
   }
 
   return (
-    <div>
-      <button
-        type="button"
-        onClick={() => setOpen((v) => !v)}
-        className="flex w-full items-start gap-1 text-left hover:opacity-80"
-      >
-        <ChevronRight
-          className={cn('mt-[0.15rem] size-3.5 shrink-0 text-foreground/60 transition-transform', open && 'rotate-90')}
-        />
-        <span className="min-w-0">
+    <Disclosure
+      open={open}
+      onOpenChange={setOpen}
+      className="gap-0"
+      titleClassName="font-mono font-normal text-xs"
+      contentClassName="gap-0"
+      title={
+        <>
           <Key name={name} />
           {embedded && (
             <span className="mr-1 rounded bg-foreground/10 px-1 text-[0.65rem] text-foreground/60">json</span>
@@ -135,17 +141,14 @@ function Node({
           {open === false && (
             <span className="text-foreground/60">
               … {closeBracket}
-              <span className="ml-1 text-[0.7rem]">
-                {entries.length}{' '}
-                {isArray ? (entries.length === 1 ? 'item' : 'items') : entries.length === 1 ? 'key' : 'keys'}
-              </span>
+              <span className="ml-1 text-[0.7rem]">{formatSize(entries.length, isArray)}</span>
             </span>
           )}
-        </span>
-      </button>
-      {open && (
+        </>
+      }
+      contentSlot={
         <>
-          <div className="ml-[0.4rem] border-l border-foreground/10 pl-3">
+          <div className="ml-2 border-l border-foreground/10 pl-3">
             {entries.map(([key, child], i) => (
               <Node
                 key={key}
@@ -156,13 +159,13 @@ function Node({
               />
             ))}
           </div>
-          <div className="pl-[1.15rem] text-foreground/60">
+          <div className="pl-[1.375rem] text-foreground/60">
             {closeBracket}
             {comma && ','}
           </div>
         </>
-      )}
-    </div>
+      }
+    />
   );
 }
 
@@ -175,45 +178,42 @@ function JsonTree({ value }: { value: unknown }) {
   );
 }
 
+const VIEW_TEXT = 'text';
+const VIEW_TREE = 'json';
+
 /**
  * Labeled data panel with a Text / JSON toggle: renders the value as plain
  * pretty-printed text or as a collapsible syntax-highlighted tree.
  */
 export function DataBlock({ value, label, isError }: { value: unknown; label: string; isError?: boolean }) {
-  const [view, setView] = useState<'text' | 'json'>('text');
+  const [view, setView] = useState<typeof VIEW_TEXT | typeof VIEW_TREE>(VIEW_TEXT);
+  const errorBorder = isError ? 'border-negative/40' : undefined;
   return (
-    <div>
+    <div className="flex flex-col gap-1">
       <div className="flex items-center justify-between gap-2">
         <p className={cn('text-xs font-medium', isError ? 'text-negative' : 'text-foreground/60')}>{label}</p>
-        <div className="inline-flex overflow-hidden rounded border text-xs">
-          {(['text', 'json'] as const).map((option) => (
-            <button
-              key={option}
-              type="button"
-              aria-pressed={view === option}
-              onClick={() => setView(option)}
-              className={cn(
-                'px-2 py-0.5 font-medium capitalize transition-colors',
-                view === option ? 'bg-foreground/10 text-foreground' : 'text-foreground/60 hover:text-foreground',
-              )}
-            >
-              {option}
-            </button>
-          ))}
-        </div>
+        <SegmentedGroup
+          variant="plain"
+          aria-label={`${label} view`}
+          value={view}
+          onValueChange={(next) => setView(next === VIEW_TREE ? VIEW_TREE : VIEW_TEXT)}
+        >
+          <SegmentedButton value={VIEW_TEXT}>Text</SegmentedButton>
+          <SegmentedButton value={VIEW_TREE}>JSON</SegmentedButton>
+        </SegmentedGroup>
       </div>
-      <div
-        className={cn(
-          'mt-1 max-h-96 overflow-auto rounded bg-foreground/10 p-2',
-          isError && 'border border-negative/40',
-        )}
-      >
-        {view === 'text' ? (
-          <pre className="whitespace-pre-wrap text-xs">{toText(value)}</pre>
-        ) : (
+      {view === VIEW_TEXT ? (
+        <CodeBlock content={toText(value)} wrap maxHeight="lg" className={errorBorder} />
+      ) : (
+        <div
+          className={cn(
+            'max-h-96 overflow-auto rounded-md border border-foreground/10 bg-foreground/10 p-3',
+            errorBorder,
+          )}
+        >
           <JsonTree value={value} />
-        )}
-      </div>
+        </div>
+      )}
     </div>
   );
 }
