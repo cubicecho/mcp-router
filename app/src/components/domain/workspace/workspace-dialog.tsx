@@ -20,8 +20,10 @@ import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { SCOPE_WORKSPACE } from '@/lib/api';
+import { argsFromLines } from '@/lib/arg-lines';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 /**
@@ -65,8 +67,6 @@ const linesToRecord = (text: string): Record<string, string> => {
 
 const FORM_ID = 'workspace-form';
 
-const textToArgs = (text: string): string[] => text.split('\n').filter((line) => line.trim().length > 0);
-
 const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
   Object.entries(members).map(([name, member]) => ({
     name,
@@ -91,7 +91,7 @@ function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<st
       if (Object.keys(env).length > 0) {
         member.env = env;
       }
-      const args = textToArgs(draft.args);
+      const args = argsFromLines(draft.args);
       if (args.length > 0) {
         member.args = args;
       }
@@ -120,7 +120,10 @@ interface WorkspaceDialogProps {
 
 export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
   const isEdit = workspace !== undefined;
-  const { data: servers = [] } = useServers();
+  // Undefined until the installed servers are known. The member list is drawn from them and rebuilt from
+  // them on save, so until then there is nothing to choose from and nothing safe to send.
+  const { data: loadedServers } = useServers();
+  const servers = loadedServers ?? [];
   const create = useCreateWorkspace();
   const update = useUpdateWorkspace();
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -138,7 +141,8 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
         name: value.name.trim(),
         enabled: value.enabled,
         description: value.description.trim() || undefined,
-        members: buildMembers(value.members, servers),
+        // Left out while the servers are unknown: the API then keeps the members the workspace already has.
+        ...(loadedServers ? { members: buildMembers(value.members, loadedServers) } : {}),
       };
       try {
         if (isEdit) {
@@ -260,7 +264,9 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
             description="Choose which servers this workspace exposes. Expand a server to override its parameters for this workspace only."
             controlSlot={
               <div className="divide-y rounded-md border">
-                {servers.length === 0 && <EmptyState compact title="No servers installed yet." className="p-3" />}
+                {loadedServers?.length === 0 && (
+                  <EmptyState compact title="No servers installed yet." className="p-3" />
+                )}
                 {servers.map((server) => {
                   const serverName = server.config.name;
                   const index = values.members.findIndex((member) => member.name === serverName);
@@ -366,7 +372,7 @@ function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overr
       <div className="flex items-center gap-3">
         <Switch checked={included} onCheckedChange={onToggle} aria-label={`Include ${name}`} />
         <div className="min-w-0 flex-1">
-          <span className="font-medium">{server.config.displayName || name}</span>
+          <span className="font-medium">{serverLabel(name, server.config.displayName)}</span>
           {server.config.displayName && <span className="ml-2 text-xs text-muted-foreground">{name}</span>}
         </div>
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>

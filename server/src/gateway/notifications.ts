@@ -1,5 +1,5 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import type { Notification, ServerNotification } from '@modelcontextprotocol/sdk/types.js';
+import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { errorMessage } from '../errors.ts';
 import { namespaceName } from './naming.ts';
 
@@ -25,7 +25,7 @@ export function namespaceNotification(notification: Notification, prefix?: strin
  * send failure is logged, never thrown, so one dead session can't break relay.
  */
 export function pushNotification(server: Server, notification: Notification): void {
-  server.notification(notification as ServerNotification).catch((err: unknown) => {
+  server.notification(notification).catch((err: unknown) => {
     console.warn(`Failed to relay notification "${notification.method}": ${errorMessage(err)}`);
   });
 }
