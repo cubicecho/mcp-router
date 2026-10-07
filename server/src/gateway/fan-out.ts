@@ -42,7 +42,7 @@ export async function collectFrom<T>(
         );
         return listed ?? [];
       } catch (err) {
-        console.warn(`Skipping ${describe(name)}: ${errorDetailMessage(err)}`);
+        console.warn(`[gateway] skipping ${describe(name)}: ${errorDetailMessage(err)}`);
         return [];
       }
     }),

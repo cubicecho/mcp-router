@@ -122,7 +122,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
       // via emptyOnMissing; any other error → warn + null) rather than fatal to the
       // whole endpoint.
       emptyOnMissing(() => manager.withClient(name, listAllResourceTemplates)).catch((cause: unknown) => {
-        console.warn(`Listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
+        console.warn(`[api] listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
         return null;
       }),
     ]);

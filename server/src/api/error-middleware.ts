@@ -39,6 +39,6 @@ export function errorMiddleware(err: unknown, _req: Request, res: Response, _nex
     res.status(clientError.status).json({ error: clientError.message });
     return;
   }
-  console.error('Unhandled API error:', err);
+  console.error('[api] unhandled error:', err);
   res.status(HttpStatus.InternalServerError).json({ error: INTERNAL_ERROR_MESSAGE });
 }

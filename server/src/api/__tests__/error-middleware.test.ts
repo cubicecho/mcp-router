@@ -27,7 +27,7 @@ describe('errorMiddleware', () => {
 
     expect(res.status).toBe(500);
     expect(res.body).toEqual({ error: 'Internal server error' });
-    expect(logged).toHaveBeenCalledWith('Unhandled API error:', cause);
+    expect(logged).toHaveBeenCalledWith('[api] unhandled error:', cause);
   });
 
   it('sends the status, message and detail of an HttpError', async () => {

@@ -23,9 +23,9 @@ async function main(): Promise<void> {
   const manager = new GatewayManager(() => store.getSettings());
   await manager.reconcile(store.getServers(), store.getWorkspaces());
   store.on('change', (state) => {
-    console.log('Config changed on disk; reconciling servers');
+    console.log('[config] changed on disk, reconciling servers');
     manager.reconcile(state.servers, state.workspaces).catch((err: unknown) => {
-      console.warn(`Reconcile after config change failed: ${errorMessage(err)}`);
+      console.warn(`[config] reconcile after a config change failed: ${errorMessage(err)}`);
     });
   });
   store.startWatching();
@@ -35,16 +35,17 @@ async function main(): Promise<void> {
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
   const host = listenHost(store.getSettings().host);
   const onListen = () => {
-    console.log(`mcp-router listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
+    console.log(`[server] listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
     if (authDisabledByEnv()) {
-      console.log('Auth: disabled (SECURE_LOCAL_NET env var) — /api and /mcp are open on this network');
+      console.warn('[auth] SECURE_LOCAL_NET is on: /api and /mcp are open to this network. Private networks only.');
     } else if (settings.authEnabled === false) {
-      console.log('Auth: disabled (authEnabled: false in settings.json)');
+      console.warn('[auth] authEnabled is false in settings.json: /api and /mcp are open.');
     } else if (envToken() !== undefined) {
-      console.log('Auth: bearer token from MCP_ROUTER_TOKEN env var (overrides settings.json)');
+      console.log('[auth] bearer token from MCP_ROUTER_TOKEN, which overrides settings.json');
     } else {
-      console.log(`Auth: bearer token from ${path.join(dataDir, 'config/settings.json')}:\n  ${settings.authToken}`);
+      // The path, never the token: boot logs are kept and shipped, and the token is printed once, when it is generated.
+      console.log(`[auth] bearer token is authToken in ${path.join(dataDir, 'config/settings.json')}`);
     }
   };
   const httpServer = host ? app.listen(port, host, onListen) : app.listen(port, onListen);
@@ -55,6 +56,6 @@ async function main(): Promise<void> {
 }
 
 main().catch((err: unknown) => {
-  console.error('Fatal startup error:', err);
+  console.error('[server] could not start:', err);
   process.exit(1);
 });
