@@ -218,7 +218,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       settings = settingsFileSchema.parse({});
       dirty = true;
     }
-    if (effectiveAuth(settings).enabled && !settings.authToken && !process.env.MCP_ROUTER_TOKEN) {
+    const auth = effectiveAuth(settings);
+    // Auth is on and neither settings.json nor MCP_ROUTER_TOKEN holds a token.
+    if (auth.enabled && !auth.token) {
       settings.authToken = randomBytes(CONFIG_DEFAULTS.authTokenBytes).toString('hex');
       dirty = true;
       console.log(`Generated auth token (persisted to ${file}):\n  ${settings.authToken}`);

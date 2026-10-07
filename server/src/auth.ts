@@ -1,22 +1,11 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
 import { HttpStatus, type SettingsFile } from '@mcp-router/shared';
 import type { RequestHandler } from 'express';
+import { authDisabledByEnv, envToken } from './config/env.ts';
 
 export interface AuthConfig {
   enabled: boolean;
   token: string | null;
-}
-
-const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
-
-/**
- * `SECURE_LOCAL_NET=true` disables bearer auth entirely for both /api and /mcp
- * — an escape hatch for running on a trusted local network without minting or
- * passing tokens. Overrides `authEnabled` in settings.json.
- */
-export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
-  const value = env.SECURE_LOCAL_NET;
-  return value !== undefined && TRUTHY_ENV.has(value.trim().toLowerCase());
 }
 
 /**
@@ -25,12 +14,11 @@ export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean
  */
 export function effectiveAuth(
   settings: Pick<SettingsFile, 'authEnabled' | 'authToken'>,
-  env: NodeJS.ProcessEnv = process.env,
+  env?: NodeJS.ProcessEnv,
 ): AuthConfig {
   return {
     enabled: settings.authEnabled && !authDisabledByEnv(env),
-    // `||`, not `??`: compose passes an unset variable through as an empty string.
-    token: env.MCP_ROUTER_TOKEN || settings.authToken,
+    token: envToken(env) ?? settings.authToken,
   };
 }
 

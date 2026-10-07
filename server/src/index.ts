@@ -1,15 +1,21 @@
 import path from 'node:path';
 import { buildApp } from './app.ts';
-import { authDisabledByEnv } from './auth.ts';
-import { listenPort, refusePlaceholderToken } from './config/env.ts';
+import {
+  authDisabledByEnv,
+  dataDir as envDataDir,
+  envToken,
+  listenHost,
+  listenPort,
+  refusePlaceholderToken,
+} from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
 import { tuneInbound } from './http-tuning.ts';
 
 async function main(): Promise<void> {
-  refusePlaceholderToken(process.env);
-  const dataDir = path.resolve(process.env.DATA_DIR ?? './data');
+  refusePlaceholderToken();
+  const dataDir = envDataDir();
   const store = new ConfigStore(dataDir);
   await store.init();
 
@@ -24,9 +30,9 @@ async function main(): Promise<void> {
   store.startWatching();
 
   const app = buildApp({ store, manager });
-  const port = listenPort(process.env, store.getSettings().port);
+  const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
-  const host = process.env.HOST ?? store.getSettings().host;
+  const host = listenHost(store.getSettings().host);
   const onListen = () => {
     console.log(`mcp-router listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
@@ -34,7 +40,7 @@ async function main(): Promise<void> {
       console.log('Auth: disabled (SECURE_LOCAL_NET env var) — /api and /mcp are open on this network');
     } else if (settings.authEnabled === false) {
       console.log('Auth: disabled (authEnabled: false in settings.json)');
-    } else if (process.env.MCP_ROUTER_TOKEN) {
+    } else if (envToken() !== undefined) {
       console.log('Auth: bearer token from MCP_ROUTER_TOKEN env var (overrides settings.json)');
     } else {
       console.log(`Auth: bearer token from ${path.join(dataDir, 'config/settings.json')}:\n  ${settings.authToken}`);
