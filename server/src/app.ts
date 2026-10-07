@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import type { Health } from '@mcp-router/shared';
 import express from 'express';
 import { errorMiddleware } from './api/error-middleware.ts';
 import { createApiRouter } from './api/router.ts';
@@ -9,6 +10,7 @@ import { HTTP_DEFAULTS } from './defaults.ts';
 import type { GatewayManager } from './gateway/manager.ts';
 import { createMcpRouter } from './gateway/routes.ts';
 import { RegistryClient } from './registry/client.ts';
+import { SERVER_VERSION } from './version.ts';
 
 export interface AppDeps {
   store: ConfigStore;
@@ -31,6 +33,13 @@ export function buildApp(deps: AppDeps): express.Express {
   // Origin check first so a DNS-rebound browser request is rejected regardless of the bearer token
   // (which it cannot read anyway) — the one guard that still applies when SECURE_LOCAL_NET drops auth.
   const originGuard = createOriginMiddleware(() => store.getSettings().allowedOrigins);
+
+  // Before the auth middleware: Docker's healthcheck and a load balancer carry no token. It reads nothing the
+  // router holds, so a healthy answer means only that the process is serving.
+  app.get('/healthz', (_req, res) => {
+    const health: Health = { ok: true, version: SERVER_VERSION };
+    res.json(health);
+  });
 
   app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir }));
   app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));

@@ -263,6 +263,15 @@ export const updateWorkspaceRequestSchema = z.object({
 });
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
+// --- GET /healthz ---
+
+/** What `GET /healthz` answers. No auth, so it says nothing but that the process is serving. */
+export interface Health {
+  ok: boolean;
+  /** The released version. */
+  version: string;
+}
+
 // --- GET /api/status ---
 
 export interface RouterStatus {
