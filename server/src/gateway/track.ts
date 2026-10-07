@@ -1,5 +1,5 @@
 import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
-import { errorDetailMessage } from '../errors.ts';
+import { errorDetailMessage } from '../core/errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import type { WithClient } from './downstream.ts';
 import { type RecordedCallContext, recordedCall } from './recorded-call.ts';

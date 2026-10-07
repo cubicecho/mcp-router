@@ -1,6 +1,6 @@
 import { CallVia, promptGetRequestSchema, resourceReadRequestSchema, toolCallRequestSchema } from '@mcp-router/shared';
 import type { Router } from 'express';
-import { errorMessage, HttpError, upstreamFailed } from '../errors.ts';
+import { errorMessage, HttpError, upstreamFailed } from '../core/errors.ts';
 import type { DownstreamClient } from '../gateway/downstream.ts';
 import type { InstanceKey } from '../gateway/instance-key.ts';
 import type { GatewayManager } from '../gateway/manager.ts';

@@ -21,10 +21,10 @@ import {
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
-import { GATEWAY_DEFAULTS } from '../defaults.ts';
-import { notFound, unavailable, upstreamFailed } from '../errors.ts';
-import { outboundFetch } from '../http-tuning.ts';
-import { SERVER_VERSION } from '../version.ts';
+import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
+import { notFound, unavailable, upstreamFailed } from '../core/errors.ts';
+import { SERVER_VERSION } from '../core/version.ts';
+import { outboundFetch } from '../http/tuning.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
 import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './instance-key.ts';

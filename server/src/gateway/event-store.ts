@@ -1,6 +1,6 @@
 import type { EventId, EventStore, StreamId } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { GATEWAY_DEFAULTS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
 
 /** Width the counter in an event id is padded to. Sixteen digits holds every safe integer. */
 const SEQUENCE_DIGITS = 16;

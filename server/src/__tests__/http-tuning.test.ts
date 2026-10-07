@@ -1,8 +1,8 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it } from 'vitest';
-import { HTTP_DEFAULTS } from '../defaults.ts';
-import { outboundFetch, tuneInbound } from '../http-tuning.ts';
+import { HTTP_DEFAULTS } from '../core/defaults.ts';
+import { outboundFetch, tuneInbound } from '../http/tuning.ts';
 
 const servers: Server[] = [];
 

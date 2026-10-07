@@ -1,6 +1,6 @@
 import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { errorDetailMessage } from '../errors.ts';
+import { errorDetailMessage } from '../core/errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import { emptyOnMissing } from './capability.ts';
 import type { WithClient } from './downstream.ts';

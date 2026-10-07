@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import path from 'node:path';
 import type { Registry } from '@mcp-router/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { HttpError } from '../errors.ts';
+import { HttpError } from '../core/errors.ts';
 import { RegistryClient } from '../registry/client.ts';
 
 const FIXTURES = path.join(import.meta.dirname, 'fixtures');

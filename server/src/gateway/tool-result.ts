@@ -1,4 +1,4 @@
-import { isRecord } from '../is-record.ts';
+import { isRecord } from '../core/is-record.ts';
 
 /** A tool call that resolves with `isError: true` is a downstream failure, not a success. */
 export function toolCallFailed(result: unknown): boolean {

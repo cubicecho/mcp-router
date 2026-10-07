@@ -1,6 +1,6 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { Notification, ServerNotification } from '@modelcontextprotocol/sdk/types.js';
-import { errorMessage } from '../errors.ts';
+import { errorMessage } from '../core/errors.ts';
 import { namespaceName } from './naming.ts';
 
 const RESOURCE_UPDATED = 'notifications/resources/updated';

@@ -1,5 +1,5 @@
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
-import { GATEWAY_DEFAULTS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
 
 /**
  * Drain a paginated downstream list. A caller can't forward a single client

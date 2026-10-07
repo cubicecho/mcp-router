@@ -1,7 +1,7 @@
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { stopOnSignals } from '../shutdown.ts';
+import { stopOnSignals } from '../http/shutdown.ts';
 
 const SIGNALS = ['SIGTERM', 'SIGINT'] as const;
 

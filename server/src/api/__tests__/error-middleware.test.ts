@@ -2,7 +2,7 @@ import { ErrorCode } from '@mcp-router/shared';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { conflict } from '../../errors.ts';
+import { conflict } from '../../core/errors.ts';
 import { errorMiddleware } from '../error-middleware.ts';
 
 function appThrowing(err: unknown) {
