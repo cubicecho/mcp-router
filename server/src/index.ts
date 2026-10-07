@@ -12,6 +12,7 @@ import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
 import { tuneInbound } from './http-tuning.ts';
+import { stopOnSignals } from './shutdown.ts';
 
 async function main(): Promise<void> {
   refusePlaceholderToken();
@@ -49,20 +50,8 @@ async function main(): Promise<void> {
   const httpServer = host ? app.listen(port, host, onListen) : app.listen(port, onListen);
   tuneInbound(httpServer);
 
-  let shuttingDown = false;
-  const shutdown = (signal: NodeJS.Signals) => {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-    console.log(`Received ${signal}; shutting down`);
-    httpServer.close();
-    Promise.allSettled([store.close(), manager.stopAll()]).then(() => {
-      process.exit(0);
-    });
-  };
-  process.on('SIGTERM', shutdown);
-  process.on('SIGINT', shutdown);
+  // The watcher stops first, so a config edit during the drain starts nothing. The children go last, once no request needs them.
+  stopOnSignals(httpServer, { before: () => store.close(), after: () => manager.stopAll() });
 }
 
 main().catch((err: unknown) => {
