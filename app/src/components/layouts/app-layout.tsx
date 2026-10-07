@@ -1,49 +1,8 @@
-import { createLink, useLocation } from '@tanstack/react-router';
-import { CompassIcon, LayersIcon, RouteIcon, ServerIcon } from 'lucide-react';
-import { ActionButton } from '@/components/action-button';
-import { BarNavItem, Sidebar, SidebarNavItem, SidebarSection } from '@/components/sidebar';
+import { RouteIcon } from 'lucide-react';
+import { Sidebar, SidebarSection } from '@/components/sidebar';
 import { SidebarLayout } from '@/components/split-layout';
-import { Library, Lock, Settings } from '@/components/ui/icons';
 import { ThemePicker } from '@/components/ui/theme-picker';
-import { clearToken, requireAuth } from '@/lib/auth';
-import { useRouterStatus } from '@/lib/queries';
 import type { SlotNode } from '@/lib/utils';
-
-const NAV_ITEMS = [
-  { to: '/', label: 'Servers', icon: ServerIcon },
-  { to: '/browse', label: 'Browse', icon: CompassIcon },
-  { to: '/workspaces', label: 'Workspaces', icon: LayersIcon },
-  { to: '/registries', label: 'Registries', icon: Library },
-  { to: '/settings', label: 'Settings', icon: Settings },
-] as const;
-
-const SidebarLink = createLink(SidebarNavItem);
-const BarLink = createLink(BarNavItem);
-
-/** Clears the stored bearer token and brings the token gate back — for shared machines. */
-function LockButton() {
-  const { data } = useRouterStatus();
-
-  if (data?.authEnabled !== true) {
-    return null;
-  }
-
-  const lock = () => {
-    clearToken();
-    requireAuth();
-  };
-
-  return (
-    <ActionButton
-      variant="ghost"
-      size="icon-sm"
-      label="Lock (forget the stored token)"
-      hint="Lock — forget the stored token"
-      onClick={lock}
-      iconSlot={<Lock />}
-    />
-  );
-}
 
 function Brand() {
   return (
@@ -54,16 +13,20 @@ function Brand() {
   );
 }
 
-export function AppLayout({ contentSlot }: { contentSlot: SlotNode }) {
-  const pathname = useLocation({ select: (location) => location.pathname });
-  const { data } = useRouterStatus();
-  const status = data ? `${data.runningCount}/${data.serverCount} servers running` : undefined;
-  // Servers owns "/" and the detail pages under /servers; every other place owns the paths under it.
-  const isActive = (to: string) =>
-    to === '/'
-      ? pathname === '/' || pathname.startsWith('/servers/')
-      : pathname === to || pathname.startsWith(`${to}/`);
+interface AppLayoutProps {
+  /** The places of the app as sidebar items, shown on wide screens. */
+  sidebarNavSlot: SlotNode;
+  /** The same places as bar items, shown on narrow screens. */
+  barNavSlot: SlotNode;
+  /** One line about the app's state, under the navigation. */
+  status?: string;
+  /** Actions that sit beside the theme picker. */
+  actionSlot?: SlotNode;
+  contentSlot: SlotNode;
+}
 
+/** The app's frame: brand, navigation, status, theme picker and the page. It holds no data and no routing. */
+export function AppLayout({ sidebarNavSlot, barNavSlot, status, actionSlot, contentSlot }: AppLayoutProps) {
   return (
     <SidebarLayout
       sidebarPosition="start"
@@ -74,15 +37,7 @@ export function AppLayout({ contentSlot }: { contentSlot: SlotNode }) {
         <Sidebar
           label="Main"
           headerSlot={<Brand />}
-          contentSlot={
-            <SidebarSection
-              as="nav"
-              label="Main"
-              contentSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-                <SidebarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
-              ))}
-            />
-          }
+          contentSlot={<SidebarSection as="nav" label="Main" contentSlot={sidebarNavSlot} />}
           footerSlot={
             <div className="flex flex-col gap-2">
               {status && <span className="text-foreground/60 text-xs">{status}</span>}
@@ -90,21 +45,19 @@ export function AppLayout({ contentSlot }: { contentSlot: SlotNode }) {
                 <div className="min-w-0 flex-1">
                   <ThemePicker variant="compact" />
                 </div>
-                <LockButton />
+                {actionSlot}
               </div>
             </div>
           }
         />
       }
       brandSlot={<RouteIcon className="size-5" aria-label="MCP Router" />}
-      navSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
-        <BarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
-      ))}
+      navSlot={barNavSlot}
       navLabel="Main"
       status={status}
       actionSlot={
         <>
-          <LockButton />
+          {actionSlot}
           <div className="w-24">
             <ThemePicker variant="compact" />
           </div>
