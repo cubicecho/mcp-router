@@ -6,7 +6,6 @@ import {
   type EnvVarMeta,
   HttpStatus,
   type InstallRequest,
-  NAME_DEFAULTS,
   type Registry,
   type RegistryArgument,
   type RegistryKeyValueInput,
@@ -18,6 +17,7 @@ import {
   SourceType,
   serverConfigSchema,
   serverNameSchema,
+  suggestServerName,
   TRANSPORT_STDIO,
   TRANSPORT_STREAMABLE_HTTP,
 } from '@mcp-router/shared';
@@ -53,13 +53,7 @@ export async function uninstall(dataDir: string, name: string): Promise<void> {
 
 /** Derive a valid local server name from a package or registry server name. */
 export function deriveServerName(raw: string): string {
-  const base = raw.split('/').pop() ?? raw;
-  const sanitized = base
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
-  const result = serverNameSchema.safeParse(sanitized);
+  const result = serverNameSchema.safeParse(suggestServerName(raw));
   if (result.success === false) {
     throw new HttpError(
       HttpStatus.BadRequest,

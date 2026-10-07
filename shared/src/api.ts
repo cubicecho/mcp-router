@@ -266,6 +266,13 @@ export const updateSettingsRequestSchema = z.object({
 });
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 
+/** Query of GET /api/registries/:name/servers, passed through to the registry. */
+export interface RegistrySearchParams {
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
+
 /** Standard error envelope for non-2xx responses. */
 export interface ApiError {
   error: string;

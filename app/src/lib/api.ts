@@ -9,6 +9,7 @@ import {
   type PromptGetResponse,
   type Registry,
   type RegistryListResponse,
+  type RegistrySearchParams,
   type ResourceReadRequest,
   type ResourceReadResponse,
   type RouterStatus,
@@ -176,12 +177,6 @@ export function createRegistry(body: CreateRegistryRequest): Promise<Registry> {
 
 export function deleteRegistry(name: string): Promise<void> {
   return request(`/api/registries/${encodeURIComponent(name)}`, { method: 'DELETE' });
-}
-
-export interface RegistrySearchParams {
-  search?: string;
-  cursor?: string;
-  limit?: number;
 }
 
 export function searchRegistryServers(

@@ -1,11 +1,4 @@
-import {
-  MS_PER_SECOND,
-  NAME_DEFAULTS,
-  SECONDS_PER_HOUR,
-  SECONDS_PER_MINUTE,
-  type ServerSource,
-  SourceType,
-} from '@mcp-router/shared';
+import { MS_PER_SECOND, SECONDS_PER_HOUR, SECONDS_PER_MINUTE, type ServerSource, SourceType } from '@mcp-router/shared';
 import { DISPLAY_DEFAULTS } from './defaults.ts';
 
 const MINUTES_PER_HOUR = 60;
@@ -44,16 +37,6 @@ export function formatRelativeTime(iso: string, now = Date.now()): string {
     return `${hours}h ago`;
   }
   return `${Math.floor(hours / HOURS_PER_DAY)}d ago`;
-}
-
-/** Derive a local server name suggestion from a registry/npm name like "io.github.owner/repo". */
-export function suggestLocalName(name: string): string {
-  const lastSegment = name.split('/').pop() ?? name;
-  return lastSegment
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-')
-    .replace(/^[^a-z0-9]+/, '')
-    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
 }
 
 /** A timestamp in the viewer's locale, or the raw text when it does not parse. */

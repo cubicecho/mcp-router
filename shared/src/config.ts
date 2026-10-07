@@ -214,12 +214,26 @@ export const workspaceConfigSchema = z
 export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
+/** Lower-cased text cut down to the characters a server name may hold, starting alphanumeric. */
+function toNameChars(text: string): string {
+  return text
+    .toLowerCase()
+    .replace(/[^a-z0-9._-]+/g, '-')
+    .replace(/^[^a-z0-9]+/, '');
+}
+
 /** Derive a URL slug (a valid serverNameSchema value) from a display name. */
 export function slugify(name: string): string {
-  return name
-    .toLowerCase()
-    .replace(/[^a-z0-9._-]+/g, '-') // non-slug chars → single dash
-    .replace(/^[^a-z0-9]+/, '') // must start alphanumeric
+  return toNameChars(name)
     .replace(/[-.]+$/, '') // no trailing dash/dot
     .slice(0, NAME_DEFAULTS.serverNameMaxLength);
+}
+
+/**
+ * The local server name suggested by a package or registry name like "io.github.owner/repo".
+ * Empty when nothing usable is left, so validate it before saving.
+ */
+export function suggestServerName(raw: string): string {
+  const lastSegment = raw.split('/').pop() ?? raw;
+  return toNameChars(lastSegment).slice(0, NAME_DEFAULTS.serverNameMaxLength);
 }

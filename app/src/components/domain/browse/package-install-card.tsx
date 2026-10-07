@@ -1,10 +1,9 @@
-import { type InstallRequest, serverNameSchema } from '@mcp-router/shared';
+import { type InstallRequest, serverNameSchema, suggestServerName } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { KeyValueRows } from '@/components/domain/key-value-rows';
-import { suggestLocalName } from '@/lib/format';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
@@ -26,7 +25,7 @@ const COPY: Record<Ecosystem, { title: string; description: string; packagePlace
 };
 
 /** The name that will be installed: the typed one, else one suggested from the package. */
-const effectiveName = (name: string, pkg: string) => name || suggestLocalName(pkg);
+const effectiveName = (name: string, pkg: string) => name || suggestServerName(pkg);
 
 export function PackageInstallCard({
   ecosystem,
@@ -80,7 +79,7 @@ export function PackageInstallCard({
               form={form}
               name="name"
               label="Local name"
-              placeholder={suggestLocalName(pkg) || 'my-server'}
+              placeholder={suggestServerName(pkg) || 'my-server'}
               // Only a typed name is checked here; an empty one falls back to the suggestion, and an
               // unusable suggestion keeps Install disabled.
               validators={{

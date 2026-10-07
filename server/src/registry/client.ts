@@ -2,6 +2,7 @@ import {
   HttpStatus,
   type Registry,
   type RegistryListResponse,
+  type RegistrySearchParams,
   type RegistryServerEntry,
   registryListResponseSchema,
   registryServerEntrySchema,
@@ -9,12 +10,6 @@ import {
 import { REGISTRY_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
-
-export interface RegistrySearchParams {
-  search?: string;
-  cursor?: string;
-  limit?: number;
-}
 
 /**
  * Client for MCP-registry-API-compatible services
