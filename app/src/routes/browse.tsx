@@ -12,10 +12,21 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRegistries, useRegistrySearch } from '@/lib/queries';
 
+/** The `/browse` route. */
 export const Route = createFileRoute('/browse')({
   component: BrowsePage,
 });
 
+/**
+ * Registry picker, search box and paged result cards.
+ *
+ * @param props.onInstalled - Called with the local name of a server installed from a result.
+ * @returns The search panel.
+ *
+ * @remarks
+ * A search runs on submit rather than per keystroke. Until one is picked, the registry is "official", else the first
+ * configured.
+ */
 export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) => void }) {
   const registriesQuery = useRegistries();
   const { data: registries, isPending: registriesPending, error: registriesError } = registriesQuery;
@@ -105,6 +116,11 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
   );
 }
 
+/**
+ * The Browse page: install from a registry, from npm or from PyPI, then go to the new server's page.
+ *
+ * @returns The page.
+ */
 function BrowsePage() {
   const navigate = useNavigate();
   const handleInstalled = (name: string) => {

@@ -18,6 +18,7 @@ import { endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
+/** The `/workspaces` route. */
 export const Route = createFileRoute('/workspaces')({
   component: WorkspacesPage,
 });
@@ -25,6 +26,11 @@ export const Route = createFileRoute('/workspaces')({
 /** create → the New button; edit → a specific workspace; null → closed. */
 type DialogState = { mode: 'create' } | { mode: 'edit'; workspace: WorkspaceStatus } | null;
 
+/**
+ * The Workspaces page: every workspace with its URL and enabled-member count, and the create/edit dialog.
+ *
+ * @returns The page.
+ */
 function WorkspacesPage() {
   const workspaces = useWorkspaces();
   const { data } = workspaces;

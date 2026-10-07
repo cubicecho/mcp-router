@@ -30,6 +30,20 @@ interface InstallDialogProps {
   onInstalled?: (name: string) => void;
 }
 
+/**
+ * Dialog that installs one registry entry under a local name.
+ *
+ * @param props.registry - Name of the registry the entry was found in.
+ * @param props.server - The registry entry; its packages and remotes become the package choices.
+ * @param props.open - Whether the dialog is shown.
+ * @param props.onOpenChange - Called with false on cancel and after a successful install.
+ * @param [props.onInstalled] - Called with the installed server's local name.
+ * @returns The dialog.
+ *
+ * @remarks
+ * A filled declared env var and every additional row with a value are sent; an additional row wins over a declared
+ * variable of the same name.
+ */
 export function InstallDialog({ registry, server, open, onOpenChange, onInstalled }: InstallDialogProps) {
   const install = useInstallServer();
   const options = useMemo(() => buildOptions(server), [server]);

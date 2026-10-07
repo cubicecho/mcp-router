@@ -7,6 +7,7 @@ import { z } from 'zod';
  * fields the router consumes.
  */
 
+/** A named input a registry entry declares: an env var or a header. */
 export const registryKeyValueInputSchema = z
   .object({
     name: z.string(),
@@ -21,6 +22,7 @@ export const registryKeyValueInputSchema = z
   })
   .loose();
 
+/** A command-line argument a registry package declares, positional or named. */
 export const registryArgumentSchema = registryKeyValueInputSchema
   .extend({
     // Positional arguments carry no `name` (they use `value`/`valueHint`);
@@ -32,6 +34,7 @@ export const registryArgumentSchema = registryKeyValueInputSchema
   })
   .loose();
 
+/** The transport a registry package says it speaks. */
 export const registryTransportSchema = z
   .object({
     type: z.string(), // 'stdio' | 'streamable-http' | 'sse'
@@ -40,6 +43,7 @@ export const registryTransportSchema = z
   })
   .loose();
 
+/** One installable package of a registry entry. */
 export const registryPackageSchema = z
   .object({
     registryType: z.string(), // 'npm' | 'pypi' | 'oci' | 'nuget' | 'mcpb'
@@ -54,6 +58,7 @@ export const registryPackageSchema = z
   })
   .loose();
 
+/** One hosted endpoint of a registry entry, proxied to rather than installed. */
 export const registryRemoteSchema = z
   .object({
     type: z.string(), // 'streamable-http' | 'sse'
@@ -84,6 +89,7 @@ export const registryServerEntrySchema = z
   })
   .loose();
 
+/** A page of `GET /v0/servers`; `metadata.nextCursor` asks for the page after it. */
 export const registryListResponseSchema = z
   .object({
     servers: z.array(registryServerEntrySchema),
@@ -97,10 +103,17 @@ export const registryListResponseSchema = z
   })
   .loose();
 
+/** An env var or header a registry entry declares. */
 export type RegistryKeyValueInput = z.infer<typeof registryKeyValueInputSchema>;
+/** A command-line argument a registry package declares. */
 export type RegistryArgument = z.infer<typeof registryArgumentSchema>;
+/** One installable package of a registry entry. */
 export type RegistryPackage = z.infer<typeof registryPackageSchema>;
+/** One hosted endpoint of a registry entry. */
 export type RegistryRemote = z.infer<typeof registryRemoteSchema>;
+/** A registry entry's `server` object. */
 export type RegistryServer = z.infer<typeof registryServerSchema>;
+/** One entry of a registry's server list. */
 export type RegistryServerEntry = z.infer<typeof registryServerEntrySchema>;
+/** A page of a registry's server list. */
 export type RegistryListResponse = z.infer<typeof registryListResponseSchema>;

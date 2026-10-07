@@ -26,10 +26,16 @@ import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
+/** The `/servers/$name` route. */
 export const Route = createFileRoute('/servers/$name')({
   component: ServerDetailPage,
 });
 
+/**
+ * The page of one server: overview and actions, env editor for a stdio server, and the capability tabs.
+ *
+ * @returns The page.
+ */
 function ServerDetailPage() {
   const { name } = Route.useParams();
   const navigate = useNavigate();

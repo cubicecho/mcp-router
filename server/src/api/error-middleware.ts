@@ -8,11 +8,13 @@ import { isRecord } from '../core/is-record.ts';
 const INTERNAL_ERROR_MESSAGE = 'Internal server error';
 
 /**
- * The status and message of an error Express's own middleware raised for a bad
- * request (a malformed or oversized body), which it marks as safe to show.
+ * Reads the status and message of an error Express's own middleware marked as safe to show.
  *
  * @param err - The thrown value.
  * @returns The status and message to send, or undefined for any other error.
+ *
+ * @remarks
+ * Express raises these for a bad request, such as a malformed or oversized body.
  */
 function exposedClientError(err: unknown): { status: number; message: string } | undefined {
   if (isRecord(err) && err.expose === true && typeof err.status === 'number' && typeof err.message === 'string') {
@@ -21,7 +23,14 @@ function exposedClientError(err: unknown): { status: number; message: string } |
   return undefined;
 }
 
-/** Renders every thrown error as the JSON envelope { error, code, detail? }. */
+/**
+ * Renders every thrown error as the JSON envelope { error, code, detail? }.
+ *
+ * @param err - The thrown value; anything unrecognised is logged and sent as a 500 with a fixed message.
+ * @param _req - Unused.
+ * @param res - The response to write.
+ * @param _next - Unused.
+ */
 export function errorMiddleware(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof ZodError) {
     const detail = err.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ');

@@ -11,11 +11,17 @@ import * as api from './api.ts';
 import { type CapabilityScope, SCOPE_SERVER } from './api.ts';
 import { POLLING_DEFAULTS } from './defaults.ts';
 
-/** Root query key for a capability scope; capability keys hang off it. */
+/**
+ * Builds the root query key of a capability scope; capability keys hang off it.
+ *
+ * @param scope - The server or workspace.
+ * @returns `['servers', name]` or `['workspaces', slug]`, the same key as that server's or workspace's detail query.
+ */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {
   return scope.kind === SCOPE_SERVER ? ['servers', scope.name] : ['workspaces', scope.slug];
 }
 
+/** Every query key the app uses; a key that starts with another is invalidated along with it. */
 export const queryKeys = {
   status: ['status'] as const,
   servers: ['servers'] as const,
@@ -30,6 +36,11 @@ export const queryKeys = {
   workspace: (slug: string) => ['workspaces', slug] as const,
 };
 
+/**
+ * Reads the router's status and keeps it polled.
+ *
+ * @returns The query; `data` is the router status.
+ */
 export function useRouterStatus() {
   return useQuery({
     queryKey: queryKeys.status,
@@ -38,6 +49,11 @@ export function useRouterStatus() {
   });
 }
 
+/**
+ * Lists every server and keeps the list polled.
+ *
+ * @returns The query; `data` is each server's config and live status.
+ */
 export function useServers() {
   return useQuery({
     queryKey: queryKeys.servers,
@@ -47,6 +63,12 @@ export function useServers() {
   });
 }
 
+/**
+ * Reads one server and keeps it polled.
+ *
+ * @param name - The server's local name.
+ * @returns The query; `data` is the server's config and live status.
+ */
 export function useServer(name: string) {
   return useQuery({
     queryKey: queryKeys.server(name),
@@ -59,6 +81,12 @@ export function useServer(name: string) {
 /** A capability listing may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
 const CAPABILITY_LISTING = { retry: false, staleTime: POLLING_DEFAULTS.capabilityStaleMs } as const;
 
+/**
+ * Lists a scope's tools.
+ *
+ * @param scope - The server or workspace.
+ * @returns The query; `data` is the tools listing. Never retried, since a failed listing may have spawned a server.
+ */
 export function useCapabilityTools(scope: CapabilityScope) {
   return useQuery({
     ...CAPABILITY_LISTING,
@@ -67,6 +95,12 @@ export function useCapabilityTools(scope: CapabilityScope) {
   });
 }
 
+/**
+ * Lists a scope's resources.
+ *
+ * @param scope - The server or workspace.
+ * @returns The query; `data` is the resources and resource templates. Never retried.
+ */
 export function useCapabilityResources(scope: CapabilityScope) {
   return useQuery({
     ...CAPABILITY_LISTING,
@@ -75,6 +109,12 @@ export function useCapabilityResources(scope: CapabilityScope) {
   });
 }
 
+/**
+ * Lists a scope's prompts.
+ *
+ * @param scope - The server or workspace.
+ * @returns The query; `data` is the prompts listing. Never retried.
+ */
 export function useCapabilityPrompts(scope: CapabilityScope) {
   return useQuery({
     ...CAPABILITY_LISTING,
@@ -83,7 +123,12 @@ export function useCapabilityPrompts(scope: CapabilityScope) {
   });
 }
 
-/** Proxied call log for a server or workspace (in-memory on the server); polls while the tab is open. */
+/**
+ * Reads the proxied-call log of a server or workspace, polling while mounted.
+ *
+ * @param scope - The server or workspace.
+ * @returns The query; `data` is the recorded calls, which the server keeps in memory only.
+ */
 export function useCapabilityActivity(scope: CapabilityScope) {
   return useQuery({
     queryKey: queryKeys.capabilityActivity(scope),
@@ -92,7 +137,12 @@ export function useCapabilityActivity(scope: CapabilityScope) {
   });
 }
 
-/** Single workspace detail; kept live so member/enabled changes reflect promptly. */
+/**
+ * Reads one workspace and keeps it polled, so member and enabled changes show promptly.
+ *
+ * @param slug - The workspace's slug.
+ * @returns The query; `data` is the workspace's config and endpoint path.
+ */
 export function useWorkspace(slug: string) {
   return useQuery({
     queryKey: queryKeys.workspace(slug),
@@ -101,6 +151,11 @@ export function useWorkspace(slug: string) {
   });
 }
 
+/**
+ * Lists the configured registries.
+ *
+ * @returns The query; `data` is each registry's name and URL.
+ */
 export function useRegistries() {
   return useQuery({
     queryKey: queryKeys.registries,
@@ -108,6 +163,13 @@ export function useRegistries() {
   });
 }
 
+/**
+ * Searches one registry's servers, a page at a time.
+ *
+ * @param registry - The registry's name; the query stays idle while it is empty.
+ * @param search - Search text; empty lists everything.
+ * @returns The infinite query; each page is one cursor's worth of entries.
+ */
 export function useRegistrySearch(registry: string, search: string) {
   return useInfiniteQuery({
     queryKey: queryKeys.registrySearch(registry, search),
@@ -119,6 +181,11 @@ export function useRegistrySearch(registry: string, search: string) {
   });
 }
 
+/**
+ * Lists every workspace.
+ *
+ * @returns The query; `data` is each workspace's config and endpoint path.
+ */
 export function useWorkspaces() {
   return useQuery({
     queryKey: queryKeys.workspaces,
@@ -126,6 +193,11 @@ export function useWorkspaces() {
   });
 }
 
+/**
+ * Gives a mutation a way to mark queries stale.
+ *
+ * @returns A function that invalidates every query under each key it is given.
+ */
 function useInvalidate() {
   const queryClient = useQueryClient();
   return (...keys: readonly (readonly string[])[]) => {
@@ -141,6 +213,12 @@ function useInvalidate() {
  */
 const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.workspaces] as const;
 
+/**
+ * Installs a server.
+ *
+ * @returns The mutation; takes the install request, yields the new server's status, and invalidates everything a server
+ * change makes stale.
+ */
 export function useInstallServer() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -149,6 +227,12 @@ export function useInstallServer() {
   });
 }
 
+/**
+ * Changes a server's config.
+ *
+ * @returns The mutation; takes the server's `name` plus the fields to change, yields its status, and invalidates
+ * everything a server change makes stale.
+ */
 export function useUpdateServer() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -157,6 +241,11 @@ export function useUpdateServer() {
   });
 }
 
+/**
+ * Uninstalls a server.
+ *
+ * @returns The mutation; takes the server's name and invalidates everything a server change makes stale.
+ */
 export function useDeleteServer() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -165,6 +254,12 @@ export function useDeleteServer() {
   });
 }
 
+/**
+ * Restarts a server.
+ *
+ * @returns The mutation; takes the server's name, yields its status, and invalidates everything a server change makes
+ * stale.
+ */
 export function useRestartServer() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -173,7 +268,12 @@ export function useRestartServer() {
   });
 }
 
-/** Health check: connect (spawning if needed) and list tools; refreshes state + tool count. */
+/**
+ * Health-checks a server by connecting (spawning it if needed) and listing its tools.
+ *
+ * @returns The mutation; takes the server's name, yields the tools listing, and invalidates everything a server change
+ * makes stale, so state and tool count refresh.
+ */
 export function useTestServerConnection() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -182,7 +282,16 @@ export function useTestServerConnection() {
   });
 }
 
-/** Run one test call from the UI; it also lands in the scope's activity log. */
+/**
+ * Runs one test call from the UI against a scope.
+ *
+ * @typeParam Body - What the call sends.
+ * @typeParam Result - What the call answers.
+ * @param scope - The server or workspace to call.
+ * @param run - The API client function that makes the call.
+ * @returns The mutation; takes the body, yields the result, and invalidates the scope's activity log (where the call
+ * also lands), every server query and the router status.
+ */
 function useUiCall<Body, Result>(scope: CapabilityScope, run: (scope: CapabilityScope, body: Body) => Promise<Result>) {
   const invalidate = useInvalidate();
   return useMutation({
@@ -191,18 +300,42 @@ function useUiCall<Body, Result>(scope: CapabilityScope, run: (scope: Capability
   });
 }
 
+/**
+ * Calls a tool from the UI.
+ *
+ * @param scope - The server or workspace that serves the tool.
+ * @returns The mutation; takes the tool and arguments, yields the tool's result. Invalidates as `useUiCall` does.
+ */
 export function useCallTool(scope: CapabilityScope) {
   return useUiCall(scope, api.callTool);
 }
 
+/**
+ * Reads a resource from the UI.
+ *
+ * @param scope - The server or workspace that serves the resource.
+ * @returns The mutation; takes which resource, yields its contents. Invalidates as `useUiCall` does.
+ */
 export function useReadResource(scope: CapabilityScope) {
   return useUiCall(scope, api.readResource);
 }
 
+/**
+ * Renders a prompt from the UI.
+ *
+ * @param scope - The server or workspace that serves the prompt.
+ * @returns The mutation; takes the prompt and arguments, yields its messages. Invalidates as `useUiCall` does.
+ */
 export function useGetPrompt(scope: CapabilityScope) {
   return useUiCall(scope, api.getPrompt);
 }
 
+/**
+ * Empties a scope's proxied-call log.
+ *
+ * @param scope - The server or workspace.
+ * @returns The mutation; takes nothing and invalidates the scope's activity log.
+ */
 export function useClearActivity(scope: CapabilityScope) {
   const invalidate = useInvalidate();
   return useMutation({
@@ -211,6 +344,11 @@ export function useClearActivity(scope: CapabilityScope) {
   });
 }
 
+/**
+ * Adds a registry.
+ *
+ * @returns The mutation; takes the registry to add, yields it as saved, and invalidates the registry list.
+ */
 export function useCreateRegistry() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -219,6 +357,11 @@ export function useCreateRegistry() {
   });
 }
 
+/**
+ * Removes a registry.
+ *
+ * @returns The mutation; takes the registry's name and invalidates the registry list and its searches.
+ */
 export function useDeleteRegistry() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -227,6 +370,11 @@ export function useDeleteRegistry() {
   });
 }
 
+/**
+ * Creates a workspace.
+ *
+ * @returns The mutation; takes the workspace to create, yields it as saved, and invalidates every workspace query.
+ */
 export function useCreateWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -235,6 +383,12 @@ export function useCreateWorkspace() {
   });
 }
 
+/**
+ * Changes a workspace.
+ *
+ * @returns The mutation; takes the workspace's `slug` plus the fields to change, yields the workspace, and invalidates
+ * every workspace query.
+ */
 export function useUpdateWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -243,6 +397,11 @@ export function useUpdateWorkspace() {
   });
 }
 
+/**
+ * Deletes a workspace.
+ *
+ * @returns The mutation; takes the workspace's slug and invalidates every workspace query.
+ */
 export function useDeleteWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -251,6 +410,11 @@ export function useDeleteWorkspace() {
   });
 }
 
+/**
+ * Changes router settings.
+ *
+ * @returns The mutation; takes the settings to change, yields them as saved, and invalidates the router status.
+ */
 export function useUpdateSettings() {
   const invalidate = useInvalidate();
   return useMutation({
@@ -259,6 +423,11 @@ export function useUpdateSettings() {
   });
 }
 
+/**
+ * Makes the router re-read its config files.
+ *
+ * @returns The mutation; takes nothing, yields the reload result, and invalidates every query in the cache.
+ */
 export function useReloadConfig() {
   const queryClient = useQueryClient();
   return useMutation({

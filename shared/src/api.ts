@@ -22,10 +22,13 @@ export const ServerRuntimeState = {
   Running: 'running',
   Error: 'error',
 } as const;
+/** One of the {@link ServerRuntimeState} values. */
 export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof ServerRuntimeState];
 
+/** Validates a {@link ServerRuntimeState} value. */
 export const serverRuntimeStateSchema = z.enum(ServerRuntimeState);
 
+/** A server as the API returns it: its stored config plus its runtime state. */
 export const serverStatusSchema = z.object({
   config: serverConfigSchema,
   state: serverRuntimeStateSchema,
@@ -39,8 +42,10 @@ export const serverStatusSchema = z.object({
   /** ISO timestamp of the most recent proxied call, if any. */
   lastCalledAt: z.string().optional(),
 });
+/** A server's stored config plus its runtime state. */
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 
+/** Body of the install-server request. */
 export const installRequestSchema = z.object({
   /** Local name; also the route segment. Derived from the package/server name when omitted. */
   name: serverNameSchema.optional(),
@@ -53,8 +58,10 @@ export const installRequestSchema = z.object({
   env: z.record(z.string(), z.string()).default({}),
   enabled: z.boolean().default(true),
 });
+/** Body of the install-server request, fallbacks filled in. */
 export type InstallRequest = z.infer<typeof installRequestSchema>;
 
+/** Body of the update-server request; an absent key is left unchanged. */
 export const updateServerRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
@@ -63,6 +70,7 @@ export const updateServerRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().nullable().optional(),
   transport: serverTransportSchema.optional(),
 });
+/** Body of the update-server request. */
 export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
 
 /** Which door a recorded call came in by. */
@@ -74,6 +82,7 @@ export const CallVia = {
   /** The web UI's tool runner. */
   Ui: 'ui',
 } as const;
+/** One of the {@link CallVia} values. */
 export type CallVia = (typeof CallVia)[keyof typeof CallVia];
 
 /** A single proxied MCP call (request + response/error) recorded in memory for debugging. */
@@ -99,11 +108,14 @@ export const activityEntrySchema = z.object({
   /** Error message when not `ok`. */
   error: z.string().optional(),
 });
+/** One recorded proxied MCP call. */
 export type ActivityEntry = z.infer<typeof activityEntrySchema>;
 
+/** The recorded calls of a server or workspace. */
 export const activityResponseSchema = z.object({
   entries: z.array(activityEntrySchema),
 });
+/** The recorded calls of a server or workspace. */
 export type ActivityResponse = z.infer<typeof activityResponseSchema>;
 
 /** One tool of a downstream server, as reported by MCP tools/list. */
@@ -114,9 +126,12 @@ export const serverToolSchema = z
     inputSchema: z.unknown().optional(),
   })
   .loose();
+/** One tool of a downstream server. */
 export type ServerTool = z.infer<typeof serverToolSchema>;
 
+/** The tools of a server or workspace. */
 export const serverToolsResponseSchema = z.object({ tools: z.array(serverToolSchema) });
+/** The tools of a server or workspace. */
 export type ServerToolsResponse = z.infer<typeof serverToolsResponseSchema>;
 
 /** One resource of a downstream server, as reported by MCP resources/list. */
@@ -128,6 +143,7 @@ export const serverResourceSchema = z
     mimeType: z.string().optional(),
   })
   .loose();
+/** One resource of a downstream server. */
 export type ServerResource = z.infer<typeof serverResourceSchema>;
 
 /** One resource template of a downstream server, as reported by MCP resources/templates/list. */
@@ -139,12 +155,15 @@ export const serverResourceTemplateSchema = z
     mimeType: z.string().optional(),
   })
   .loose();
+/** One resource template of a downstream server. */
 export type ServerResourceTemplate = z.infer<typeof serverResourceTemplateSchema>;
 
+/** The resources and resource templates of a server or workspace. */
 export const serverResourcesResponseSchema = z.object({
   resources: z.array(serverResourceSchema),
   resourceTemplates: z.array(serverResourceTemplateSchema),
 });
+/** The resources and resource templates of a server or workspace. */
 export type ServerResourcesResponse = z.infer<typeof serverResourcesResponseSchema>;
 
 /** One prompt of a downstream server, as reported by MCP prompts/list. */
@@ -157,9 +176,12 @@ export const serverPromptSchema = z
       .optional(),
   })
   .loose();
+/** One prompt of a downstream server. */
 export type ServerPrompt = z.infer<typeof serverPromptSchema>;
 
+/** The prompts of a server or workspace. */
 export const serverPromptsResponseSchema = z.object({ prompts: z.array(serverPromptSchema) });
+/** The prompts of a server or workspace. */
 export type ServerPromptsResponse = z.infer<typeof serverPromptsResponseSchema>;
 
 /** Run one tool of a downstream server from the UI. */
@@ -167,6 +189,7 @@ export const toolCallRequestSchema = z.object({
   name: z.string().min(1),
   arguments: z.record(z.string(), z.unknown()).default({}),
 });
+/** Body of a tool run from the UI. */
 export type ToolCallRequest = z.infer<typeof toolCallRequestSchema>;
 
 /** MCP CallToolResult, loosely typed — content shape is tool-defined. */
@@ -177,6 +200,7 @@ export const toolCallResponseSchema = z
     isError: z.boolean().optional(),
   })
   .loose();
+/** A tool call's result, as MCP returned it. */
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
 /** Read one resource of a downstream server from the UI. The URI is either a
@@ -184,6 +208,7 @@ export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 export const resourceReadRequestSchema = z.object({
   uri: z.string().min(1),
 });
+/** Body of a resource read from the UI. */
 export type ResourceReadRequest = z.infer<typeof resourceReadRequestSchema>;
 
 /** MCP ReadResourceResult, loosely typed — contents shape is resource-defined. */
@@ -192,6 +217,7 @@ export const resourceReadResponseSchema = z
     contents: z.array(z.unknown()).optional(),
   })
   .loose();
+/** A resource read's result, as MCP returned it. */
 export type ResourceReadResponse = z.infer<typeof resourceReadResponseSchema>;
 
 /** Get one prompt of a downstream server from the UI. MCP prompt argument
@@ -200,6 +226,7 @@ export const promptGetRequestSchema = z.object({
   name: z.string().min(1),
   arguments: z.record(z.string(), z.string()).default({}),
 });
+/** Body of a prompt get from the UI. */
 export type PromptGetRequest = z.infer<typeof promptGetRequestSchema>;
 
 /** MCP GetPromptResult, loosely typed — messages shape is prompt-defined. */
@@ -209,12 +236,15 @@ export const promptGetResponseSchema = z
     messages: z.array(z.unknown()).optional(),
   })
   .loose();
+/** A prompt get's result, as MCP returned it. */
 export type PromptGetResponse = z.infer<typeof promptGetResponseSchema>;
 
+/** Body of the add-registry request. */
 export const createRegistryRequestSchema = z.object({
   name: serverNameSchema,
   url: z.url(),
 });
+/** Body of the add-registry request. */
 export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
 
 /** A workspace as returned by the API: its stored config plus the derived endpoint path. */
@@ -222,8 +252,10 @@ export const workspaceStatusSchema = workspaceConfigSchema.extend({
   /** Endpoint path of the workspace aggregate, e.g. "/mcp/w/my-workspace". */
   path: z.string(),
 });
+/** A workspace's stored config plus its endpoint path. */
 export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
 
+/** Body of the create-workspace request. */
 export const createWorkspaceRequestSchema = z.object({
   name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength),
   /** Slug for the URL; derived from `name` when omitted. */
@@ -233,8 +265,10 @@ export const createWorkspaceRequestSchema = z.object({
   /** Members keyed by base server name; only listed servers are in the workspace. */
   members: z.record(z.string(), workspaceMemberSchema).optional(),
 });
+/** Body of the create-workspace request. */
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 
+/** Body of the update-workspace request; an absent key is left unchanged. */
 export const updateWorkspaceRequestSchema = z.object({
   name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength).optional(),
   enabled: z.boolean().optional(),
@@ -242,6 +276,7 @@ export const updateWorkspaceRequestSchema = z.object({
   /** Full replacement of the members map when provided. */
   members: z.record(z.string(), workspaceMemberSchema).optional(),
 });
+/** Body of the update-workspace request. */
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
 /** What `GET /healthz` answers. No auth, so it says nothing but that the process is serving. */
@@ -251,6 +286,7 @@ export interface Health {
   version: string;
 }
 
+/** The router's own status: version, uptime, server counts and whether auth is on. */
 export const routerStatusSchema = z.object({
   version: z.string(),
   uptimeSeconds: z.number(),
@@ -260,18 +296,21 @@ export const routerStatusSchema = z.object({
   /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
   idleTimeoutMs: z.number(),
 });
+/** The router's own status. */
 export type RouterStatus = z.infer<typeof routerStatusSchema>;
 
 /** The subset of settings.json editable from the UI. */
 export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
 });
+/** Body of `PATCH /api/settings`. */
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 
 /** What `PATCH /api/settings` answers: the editable settings as they now stand. */
 export const updateSettingsResponseSchema = z.object({
   idleTimeoutMs: z.number(),
 });
+/** What `PATCH /api/settings` answers. */
 export type UpdateSettingsResponse = z.infer<typeof updateSettingsResponseSchema>;
 
 /** What `POST /api/reload` answers. */
@@ -279,6 +318,7 @@ export const reloadResponseSchema = z.object({
   reloaded: z.boolean(),
   serverCount: z.number(),
 });
+/** What `POST /api/reload` answers. */
 export type ReloadResponse = z.infer<typeof reloadResponseSchema>;
 
 /** Query of GET /api/registries/:name/servers, passed through to the registry. */
@@ -294,4 +334,5 @@ export const apiErrorSchema = z.object({
   code: z.enum(ErrorCode),
   detail: z.string().optional(),
 });
+/** The error envelope of a non-2xx response. */
 export type ApiError = z.infer<typeof apiErrorSchema>;

@@ -14,36 +14,53 @@ export type WireRelay = (server: Server) => () => void;
 /** One client's stateful connection to an endpoint, with a last-touched clock for idle reclamation. */
 interface Session {
   transport: StreamableHTTPServerTransport;
+  /** When the session last saw a request or lost a stream, in ms since the epoch. */
   lastActivity: number;
   /**
    * GET SSE streams the client is holding open on this session right now.
    *
-   * A held stream is the client saying it is still here: an SDK client opens one right after
-   * initialize and keeps it for the life of the connection, so a session in the middle of a
-   * long lull between tool calls is not abandoned, however long ago its last POST was.
+   * @remarks
+   * A held stream is the client saying it is still here: an SDK client opens one right after initialize and keeps it
+   * for the life of the connection, so a session in a long lull between tool calls is not abandoned.
    */
   openStreams: number;
 }
 
+/**
+ * Reads the MCP session id a request carries.
+ *
+ * @param req - The request.
+ * @returns The `mcp-session-id` header (the first, if repeated), or undefined when there is none.
+ */
 const sessionId = (req: Request): string | undefined => {
   const raw = req.headers['mcp-session-id'];
   return Array.isArray(raw) ? raw[0] : raw;
 };
 
 /**
- * The live sessions of every endpoint, by MCP session id: resumes a request onto its session,
- * starts one for an initialize request, and reclaims the idle and the excess.
+ * Holds the live sessions of every endpoint, by MCP session id.
+ *
+ * @remarks
+ * It resumes a request onto its session, starts one for an initialize request, and reclaims the idle and the excess.
  */
 export class SessionRegistry {
   private readonly sessions = new Map<string, Session>();
   private readonly settings: () => Pick<SettingsFile, 'sessionIdleTimeoutMs' | 'maxSessions'>;
 
-  /** @param settings - Read on every request, so an edited TTL or cap applies without a restart. */
+  /**
+   * Builds an empty registry.
+   *
+   * @param settings - Read on every request, so an edited TTL or cap applies without a restart.
+   */
   constructor(settings: () => Pick<SettingsFile, 'sessionIdleTimeoutMs' | 'maxSessions'>) {
     this.settings = settings;
   }
 
-  /** Drop and close a session, removing it from the map up front so a racing request can't reuse it. */
+  /**
+   * Drop and close a session, removing it from the map up front so a racing request can't reuse it.
+   *
+   * @param id - The session id; an unknown one is a no-op.
+   */
   private drop(id: string): void {
     const session = this.sessions.get(id);
     if (!session) {
@@ -56,16 +73,12 @@ export class SessionRegistry {
   }
 
   /**
-   * Reclaim sessions idle past the configured TTL. Run opportunistically on every request
-   * rather than on a timer, so there is no background handle to tear down (important for tests
-   * and clean shutdown). Idleness is measured from the last request on the session, or from when
-   * its last GET SSE stream closed, and a session holding a stream open is never idle.
+   * Reclaim sessions idle past the configured TTL; one holding a GET SSE stream open is never idle.
    *
-   * That exemption is not a nicety. The SDK's client transport does not re-initialize on a 404 —
-   * it keeps the dead session id and fails every later call with it — so reclaiming a session
-   * whose client is merely between tool calls breaks that client until it is reconnected by hand.
-   * A dead peer's stream still closes (TCP keepalive is armed on it below), and `maxSessions`
-   * bounds whatever is left.
+   * @remarks
+   * Run on every request rather than on a timer, so there is no background handle to tear down. The stream exemption
+   * matters: the SDK's client transport does not re-initialize on a 404, so reclaiming a session whose client is
+   * merely between tool calls breaks that client until it is reconnected by hand.
    */
   private sweepIdle(): void {
     const ttl = this.settings().sessionIdleTimeoutMs;
@@ -90,7 +103,13 @@ export class SessionRegistry {
     }
   }
 
-  /** Route a request that carries a session id to its existing transport. Returns false if there is none. */
+  /**
+   * Route a request that carries a session id to its existing transport.
+   *
+   * @param req - The request; a GET counts as a held stream until its response closes.
+   * @param res - The response; answered 404 here when the id names no live session.
+   * @returns False when the request carries no session id, so nothing was sent; true once it has been answered.
+   */
   async resume(req: Request, res: Response): Promise<boolean> {
     this.sweepIdle();
     const id = sessionId(req);
@@ -121,9 +140,14 @@ export class SessionRegistry {
   /**
    * Start a new session for an initialize request; anything else without a session id is a 400.
    *
-   * `buildServer` may be async because a proxy Server's `instructions` are the downstream's own,
-   * and reading them can mean connecting first. It runs after the initialize check, so a
-   * malformed request never spawns anything.
+   * @param req - The request, with its JSON body already parsed.
+   * @param res - The response the initialize is answered on.
+   * @param buildServer - Makes the session's proxy Server; runs after the initialize check.
+   * @param wire - Subscribes the server to downstream notifications; its unsubscribe runs when the session closes.
+   *
+   * @remarks
+   * `buildServer` may be async because a proxy Server's `instructions` are the downstream's own, and reading them can
+   * mean connecting first. Running it after the check means a malformed request never spawns anything.
    */
   async start(
     req: Request,

@@ -4,7 +4,12 @@ import { DISPLAY_DEFAULTS } from './defaults.ts';
 const MINUTES_PER_HOUR = 60;
 const HOURS_PER_DAY = 24;
 
-/** Human-readable one-liner for a server's install source. */
+/**
+ * Describes a server's install source in one line.
+ *
+ * @param source - Where the server was installed from.
+ * @returns E.g. `official: io.github.x/y@1.2.0` or `npm: pkg@latest`; `manual` for a remote.
+ */
 export function formatSource(source: ServerSource): string {
   switch (source.type) {
     case SourceType.Registry:
@@ -18,7 +23,14 @@ export function formatSource(source: ServerSource): string {
   }
 }
 
-/** Compact "how long ago" text for an ISO timestamp, e.g. "just now", "5m ago", "2h ago". */
+/**
+ * Says how long ago an ISO timestamp was, compactly.
+ *
+ * @param iso - ISO 8601 timestamp.
+ * @param [now] - The moment to measure from, in ms since the epoch.
+ * @returns "just now", "5m ago", "2h ago" or "3d ago"; a future time reads "just now", and unparseable text comes
+ * back unchanged.
+ */
 export function formatRelativeTime(iso: string, now = Date.now()): string {
   const then = new Date(iso).getTime();
   if (Number.isNaN(then)) {
@@ -39,13 +51,23 @@ export function formatRelativeTime(iso: string, now = Date.now()): string {
   return `${Math.floor(hours / HOURS_PER_DAY)}d ago`;
 }
 
-/** A timestamp in the viewer's locale, or the raw text when it does not parse. */
+/**
+ * Formats a timestamp in the viewer's locale.
+ *
+ * @param iso - ISO 8601 timestamp.
+ * @returns The date and time, or the raw text when it does not parse.
+ */
 export function formatAbsoluteTime(iso: string): string {
   const date = new Date(iso);
   return Number.isNaN(date.getTime()) ? iso : date.toLocaleString();
 }
 
-/** Compact uptime, e.g. "3h 12m" or "4m 7s". */
+/**
+ * Formats an uptime compactly.
+ *
+ * @param seconds - Uptime in seconds.
+ * @returns E.g. "3h 12m" from an hour up, "4m 7s" below.
+ */
 export function formatUptime(seconds: number): string {
   const hours = Math.floor(seconds / SECONDS_PER_HOUR);
   const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);

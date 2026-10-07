@@ -5,7 +5,13 @@ import { effectiveAuth } from '../../auth/middleware.ts';
 import { SERVER_VERSION } from '../../core/version.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
-/** Router-wide endpoints: status, global settings, and a config reload. */
+/**
+ * Builds the router-wide endpoints: status, global settings, and a config reload.
+ *
+ * @param deps.store - Holds the settings and is what a reload re-reads.
+ * @param deps.manager - Reconciled after a settings change or a reload.
+ * @returns The router, with paths relative to /api; uptime counts from this call.
+ */
 export function createSystemRoutes({ store, manager }: ApiDeps): Router {
   const startedAt = Date.now();
   const router = Router();

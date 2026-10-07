@@ -31,7 +31,7 @@ function envMs(value: string | undefined, fallback: number, min: number): number
 /**
  * The directory config and installed packages live in: `DATA_DIR`, or `./data`.
  *
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @returns The absolute path.
  */
 export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
@@ -42,7 +42,7 @@ export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
  * The port to listen on: `PORT` when it is set, otherwise the one in settings.json.
  *
  * @param settingsPort - The port from settings.json.
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @returns The port number.
  * @throws When `PORT` is set to something that is not a port number.
  */
@@ -63,7 +63,7 @@ export function listenPort(settingsPort: number, env: NodeJS.ProcessEnv = proces
  * The interface to bind: `HOST` when it is set, otherwise the one in settings.json.
  *
  * @param settingsHost - The host from settings.json.
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @returns The host, or undefined to bind every interface.
  */
 export function listenHost(settingsHost: string | undefined, env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -74,7 +74,7 @@ export function listenHost(settingsHost: string | undefined, env: NodeJS.Process
  * Whether `SECURE_LOCAL_NET` has turned bearer auth off for /api and /mcp. It overrides `authEnabled` in
  * settings.json, for a trusted local network where minting and passing tokens is not worth it.
  *
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @returns True when the variable is set to a truthy value.
  */
 export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -85,7 +85,7 @@ export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean
 /**
  * The bearer token from `MCP_ROUTER_TOKEN`, which replaces the one stored in settings.json.
  *
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @returns The token, or undefined when the variable is unset or empty (compose passes an unset variable as '').
  */
 export function envToken(env: NodeJS.ProcessEnv = process.env): string | undefined {
@@ -95,7 +95,7 @@ export function envToken(env: NodeJS.ProcessEnv = process.env): string | undefin
 /**
  * Idle time before an inbound keep-alive connection is closed: `HTTP_KEEP_ALIVE_TIMEOUT_MS`, or the default.
  *
- * @param env - The process environment. `0` never closes an idle connection.
+ * @param [env] - The process environment. `0` never closes an idle connection.
  * @returns The timeout in ms.
  */
 export function keepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -105,7 +105,7 @@ export function keepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env): number
 /**
  * Idle time before an outbound connection is closed: `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS`, or the default.
  *
- * @param env - The process environment. The default applies when the value is not a positive whole number.
+ * @param [env] - The process environment. The default applies when the value is not a positive whole number.
  * @returns The timeout in ms.
  */
 export function outboundKeepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
@@ -115,7 +115,7 @@ export function outboundKeepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env)
 /**
  * Refuse to start with the placeholder token from `.env.example`.
  *
- * @param env - The process environment.
+ * @param [env] - The process environment.
  * @throws When `MCP_ROUTER_TOKEN` is the placeholder and auth is on.
  */
 export function refusePlaceholderToken(env: NodeJS.ProcessEnv = process.env): void {

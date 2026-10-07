@@ -20,6 +20,16 @@ import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateSe
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
+/**
+ * Table row for one installed server: state, usage, the enable switch and the actions menu.
+ *
+ * @param props.server - The server's config and runtime status.
+ * @param props.onEdit - Called with the server when Edit is picked from the menu.
+ * @returns The row.
+ *
+ * @remarks
+ * A click anywhere but on the row's own controls opens the server's page.
+ */
 function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
   const navigate = useNavigate();
   const update = useUpdateServer();
@@ -154,6 +164,12 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
   );
 }
 
+/**
+ * Table of installed servers, with a filter box once there are enough of them, and the edit dialog.
+ *
+ * @param props.servers - Every installed server; the filter matches name, display name and source, ignoring case.
+ * @returns The table.
+ */
 export function ServerList({ servers }: { servers: ServerStatus[] }) {
   const [editing, setEditing] = useState<ServerStatus | null>(null);
   const [filter, setFilter] = useState('');

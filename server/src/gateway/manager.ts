@@ -32,10 +32,10 @@ import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './insta
 /**
  * What the router keeps per managed instance, beside what the pool holds.
  *
- * The pool's own `state()` row is the connection: status, pid, start time, the
- * last error. None of this is — `config` is this repo's discriminated-union
- * shape rather than the flat row the pool was handed, and the call bookkeeping
- * is counted from proxied traffic the pool never sees.
+ * @remarks
+ * The pool's own `state()` row is the connection: status, pid, start time, the last error. None of this is: `config`
+ * is this repo's discriminated-union shape rather than the flat row the pool was handed, and the call bookkeeping is
+ * counted from proxied traffic the pool never sees.
  */
 interface ServerMeta {
   config: ServerConfig;
@@ -44,9 +44,9 @@ interface ServerMeta {
   /**
    * What the downstream said at its last connect.
    *
-   * Kept because the proxy `Server` that re-emits it is built when a client
-   * initializes, which for an aggregate is long before most members have spawned.
-   * Cleared with the config it was read under: a server whose command or env
+   * @remarks
+   * Kept because the proxy `Server` that re-emits it is built when a client initializes, which for an aggregate is
+   * long before most members have spawned. Cleared with the config it was read under: a server whose command or env
    * changed is a different server, and stale guidance is worse than none.
    */
   handshake?: Handshake;
@@ -57,12 +57,16 @@ interface ServerMeta {
 }
 
 /**
- * Effective downstream config for a server as used by a workspace: the base
- * server config with per-workspace overrides applied. `env`/`headers` merge over
- * the base (workspace wins); `args` replaces the base stdio args and `url` replaces
- * the base streamable-http URL. The config keeps the base server's `name` so
- * aggregate tool namespacing is unaffected; its `enabled` reflects both the
- * workspace and the member being on.
+ * Resolves the downstream config for a server as used by a workspace: the base config with the overrides applied.
+ *
+ * @param base - The server's own config; not mutated.
+ * @param member - The overrides: `env` and `headers` merge over the base, `args` and `url` replace it.
+ * @param workspace - The owning workspace; when it is disabled, so is the result.
+ * @returns A config under the base server's `name`, enabled only when both the workspace and the member are.
+ *
+ * @remarks
+ * Keeping the base `name` leaves aggregate tool namespacing unaffected. `args` applies to a stdio server only, and
+ * `url` and `headers` to a streamable-http one.
  */
 function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, workspace: WorkspaceConfig): ServerConfig {
   let transport = base.transport;
@@ -84,11 +88,13 @@ function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, worksp
 }
 
 /**
- * The connection half of a server config as the pool wants it: one arm of the
- * pool's own `transport` union (pool 3.0), mapped from this repo's.
+ * Maps the connection half of a server config onto one arm of the pool's own `transport` union (pool 3.0).
  *
- * `env` goes on the stdio arm only — it is a child's environment, and a remote
- * server has no child to hand it to.
+ * @param config - The server config.
+ * @returns The stdio or http connection fields.
+ *
+ * @remarks
+ * `env` goes on the stdio arm only: it is a child's environment, and a remote server has no child to hand it to.
  */
 function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
@@ -105,12 +111,17 @@ function toConnection(config: ServerConfig): McpConnection {
 }
 
 /**
- * One managed instance as a pool row.
+ * Builds the pool row for one managed instance.
  *
- * The instance key is the row's id — a base server's name, or `w:<slug>:<server>`
- * — so a workspace member is an entry of its own with its own child, independent
- * of the base server's. `slug` is left unset and never read: the pool indexes no
- * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
+ * @param key - Becomes the row's id: a base server's name, or `w:<slug>:<server>`.
+ * @param config - The instance's effective config.
+ * @param settings - Supplies the connect timeout, and the idle timeout a stdio server without its own falls back to.
+ * @returns The row. A remote server's idle timeout is 0, the pool's "never".
+ *
+ * @remarks
+ * Keying by instance makes a workspace member an entry of its own with its own child, independent of the base
+ * server's. `slug` is left unset and never read: the pool indexes no tools here (see `indexTools` below) and
+ * `gateway/naming.ts` owns namespacing.
  */
 function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
   const stdio = config.transport.type === TRANSPORT_STDIO;
@@ -130,17 +141,25 @@ function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: Settings
 }
 
 /**
- * True when two configs differ in a way that restarts the downstream connection.
+ * Tells whether two configs differ in a way that restarts the downstream connection.
  *
- * Asks the pool's own `sameConnection` — which decides the restart — about the
- * rows `toPoolConfig` would hand it, for the one piece of derived state the router
- * keeps across a reconcile: a tool count read from the old child is not true of a
- * new one. Only the connection fields matter, so the identity is left blank.
+ * @param a - The config in force.
+ * @param b - The config about to replace it.
+ * @returns True when the pool's own `sameConnection`, which decides the restart, says the two differ.
+ *
+ * @remarks
+ * Asked so the state read from the old child (tool count, handshake) is dropped when the pool replaces it.
  */
 function needsRestart(a: ServerConfig, b: ServerConfig): boolean {
   return !sameConnection(connectionRow(a), connectionRow(b));
 }
 
+/**
+ * Builds the row `sameConnection` compares: the connection fields and `enabled`, with the identity left blank.
+ *
+ * @param config - The server config.
+ * @returns A pool row with an empty id and label.
+ */
 function connectionRow(config: ServerConfig): McpServerConfig {
   return { id: '', label: '', enabled: config.enabled, ...toConnection(config) };
 }
@@ -157,11 +176,10 @@ const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
 /**
  * One downstream MCP client per managed instance, over `@cubicecho/agent-mcp-pool`.
  *
- * The pool owns the lifecycle — reconciling rows against live children, lazy
- * spawn on first use, idle reap, crash backoff, and the notification relay. What
- * stays here is what the pool has no view of: this repo's config shape, the
- * workspace-scoped instance keys, the proxied-call activity log, and the HTTP
- * status codes the router answers a refusal with.
+ * @remarks
+ * The pool owns the lifecycle: reconciling rows against live children, lazy spawn on first use, idle reap, crash
+ * backoff, and the notification relay. What stays here is what the pool has no view of: this repo's config shape, the
+ * workspace-scoped instance keys, the proxied-call activity log, and the HTTP status codes a refusal is answered with.
  */
 export class GatewayManager {
   private readonly pool: McpPool;
@@ -169,6 +187,11 @@ export class GatewayManager {
   private readonly meta = new Map<InstanceKey, ServerMeta>();
   private readonly activity = new ActivityLog();
 
+  /**
+   * Builds a manager with no instances; `reconcile` gives it some.
+   *
+   * @param getSettings - Read on every reconcile, for the timeouts that can change while the router runs.
+   */
   constructor(getSettings: () => SettingsFile) {
     this.getSettings = getSettings;
     this.pool = new McpPool({
@@ -192,14 +215,15 @@ export class GatewayManager {
   }
 
   /**
-   * Sync managed instances with the given server + workspace configs: drop removed,
-   * restart changed/disabled, add new. Base servers are keyed by name; each
-   * workspace member that references an existing server gets its own isolated
-   * downstream instance keyed `w:<slug>:<server>` with per-workspace overrides
-   * applied, so a workspace can run a server independently of its global state.
+   * Sync managed instances with the given server + workspace configs: drop removed, restart changed, add new.
    *
-   * Awaiting it is what makes a write visible to the read that follows — the pool
-   * serializes reconciles behind whatever it is already doing.
+   * @param configs - Every base server; each is keyed by its name.
+   * @param [workspaces] - Every workspace; a member whose server is not in `configs` is skipped.
+   *
+   * @remarks
+   * Each workspace member gets its own instance keyed `w:<slug>:<server>` with the workspace's overrides applied, so a
+   * workspace can run a server independently of its global state. Awaiting it is what makes a write visible to the
+   * read that follows: the pool serializes reconciles behind whatever it is already doing.
    */
   async reconcile(configs: ServerConfig[], workspaces: WorkspaceConfig[] = []): Promise<void> {
     const byName = new Map(configs.map((c) => [c.name, c]));
@@ -238,9 +262,11 @@ export class GatewayManager {
   }
 
   /**
-   * Connect (spawning if needed) and return the downstream client for the given
-   * instance key. Resets the idle timer. For base servers the key is the server
-   * name; a workspace-scoped instance is keyed by {@link workspaceInstanceKey}.
+   * Connect (spawning if needed) and return the downstream client for the given instance key.
+   *
+   * @param key - A base server's name, or a workspace instance's {@link workspaceInstanceKey}.
+   * @returns The connected client. Throws a 404 for an unknown or disabled instance, a 503 while it is backed off
+   * after a crash, and a 502 when it will not connect.
    */
   async getClient(key: InstanceKey): Promise<Client> {
     let client: Client;
@@ -256,10 +282,12 @@ export class GatewayManager {
   /**
    * Keep what the downstream said about itself in the handshake `client` came from.
    *
-   * Read on every use rather than only on the connects: the SDK kept these from
-   * the initialize result, so they are field accesses, and there is no event to
-   * hang them off — the pool reaps, respawns and redials on its own, and each of
-   * those is a fresh handshake that may say something new.
+   * @param key - The instance; an unknown one is ignored.
+   * @param client - The connected client, read for its instructions and server capabilities.
+   *
+   * @remarks
+   * Read on every use rather than only on the connects: these are field accesses, and there is no event to hang them
+   * off, since the pool reaps, respawns and redials on its own and each of those is a fresh handshake.
    */
   private observe(key: InstanceKey, client: Client): void {
     const meta = this.meta.get(key);
@@ -269,18 +297,18 @@ export class GatewayManager {
   }
 
   /**
-   * Run one downstream request against the instance's client, on a fresh
-   * connection if the one it had turns out to hold a session the downstream has
-   * dropped.
+   * Run one downstream request against the instance's client, redialling if its session turns out to be dropped.
    *
-   * The redial is the pool's (`McpPool.use`): a remote server that restarts or
-   * reclaims a session answers every later request `404`, or `400` to a client
-   * that joined while it was stateless, without closing anything — so the row
-   * stays `ready`, a remote row is never idle-reaped, and an aggregate quietly
-   * lists its other members without it. Both are refusals before dispatch, which
-   * is what makes the second attempt safe for a `tools/call`.
+   * @typeParam T - What the request resolves to.
+   * @param key - The instance to reach.
+   * @param run - The request. Called a second time, with the new client, after a redial.
+   * @returns What `run` resolved to. A refusal by the pool is thrown as `getClient` throws it; what `run` rejects
+   * with is rethrown untouched.
    *
-   * @param run The request. Called a second time, with the new client, after a redial.
+   * @remarks
+   * The redial is the pool's (`McpPool.use`): a remote server that restarts or reclaims a session answers every later
+   * request `404` or `400` without closing anything, so the row stays `ready` and is never reaped. Both are refusals
+   * before dispatch, which is what makes the second attempt safe for a `tools/call`.
    */
   async withClient<T>(key: InstanceKey, run: (client: Client) => Promise<T>): Promise<T> {
     try {
@@ -295,12 +323,14 @@ export class GatewayManager {
   }
 
   /**
-   * What the downstream said at its last connect; empty if it has not connected
-   * in this process.
+   * Reads what the downstream said at its last connect, without connecting.
    *
-   * Deliberately does not connect: the aggregate endpoint asks this for every
-   * member while a client is initializing, and spawning a dozen children to
-   * write a preamble the session may never act on is not a trade worth making.
+   * @param key - The instance.
+   * @returns The handshake; empty when the instance is unknown or has not connected since its connection last changed.
+   *
+   * @remarks
+   * The aggregate endpoint asks this for every member while a client is initializing, and spawning a dozen children
+   * to write a preamble the session may never act on is not a trade worth making.
    */
   handshake(key: InstanceKey): Handshake {
     return this.meta.get(key)?.handshake ?? {};
@@ -309,14 +339,13 @@ export class GatewayManager {
   /**
    * Drop an instance's connection and dial it again.
    *
-   * `stop` rather than `reconnect`, though both close the child: `stop` leaves
-   * the row idle with its `error`/`failedAt` cleared, so the `getClient` below is
-   * the dial, and a restart that fails reports as a 502 carrying the child's
-   * stderr. `reconnect` dials the child itself (pool 2.2.0), which lands a failed
-   * restart inside a backoff it started a millisecond earlier — the same call
-   * would then answer 503 "crashed recently", naming a crash the operator just
-   * asked to be retried. Clearing that backoff is what pressing Restart on a
-   * crash-looping server is for.
+   * @param key - The instance to restart.
+   * @returns The new client. Throws as `getClient` does; a restart that fails is a 502 carrying the child's stderr.
+   *
+   * @remarks
+   * `stop` rather than the pool's `reconnect`: `stop` clears the row's error and backoff, so the `getClient` after it
+   * is the dial. `reconnect` dials itself (pool 2.2.0), so a failed restart lands in a backoff it just started and
+   * answers 503 "crashed recently", naming a crash the operator just asked to be retried.
    */
   async restart(key: InstanceKey): Promise<Client> {
     await this.pool.stop(key);
@@ -326,10 +355,13 @@ export class GatewayManager {
   /**
    * Re-throw one of the pool's refusals as the status this API answers it with.
    *
-   * The wording stays the router's own: these strings are part of the REST
-   * contract and are read by the UI, while the pool's are written for an agent.
-   * `backoff` and `connect-failed` are the pair worth keeping apart — the first
-   * means the pool declined to dial, the second that it dialled and could not.
+   * @param key - The instance, named in the message by its server name.
+   * @param cause - What was caught; anything but an McpPoolError is rethrown untouched.
+   *
+   * @remarks
+   * The wording stays the router's own: these strings are part of the REST contract and are read by the UI. `backoff`
+   * (503) and `connect-failed` (502) are kept apart: the first means the pool declined to dial, the second that it
+   * dialled and could not.
    */
   private fail(key: InstanceKey, cause: unknown): never {
     const isPoolError = cause instanceof McpPoolError;
@@ -349,16 +381,31 @@ export class GatewayManager {
     }
   }
 
-  /** The pool's connection rows by instance key. Secrets are left out: nothing here reads the row's config. */
+  /**
+   * Reads the pool's connection rows.
+   *
+   * @returns The rows by instance key, without their secrets: nothing here reads a row's config.
+   */
   private connectionState(): Map<InstanceKey, McpServerState> {
     return new Map(this.pool.state().map((row) => [row.id, row]));
   }
 
+  /**
+   * Reports one instance's config, connection state and call bookkeeping.
+   *
+   * @param key - The instance.
+   * @returns The status, or undefined for an instance this manager does not hold.
+   */
   status(key: InstanceKey): ServerStatus | undefined {
     const meta = this.meta.get(key);
     return meta ? toStatus(meta, this.connectionState().get(key)) : undefined;
   }
 
+  /**
+   * Reports every base server's status.
+   *
+   * @returns The statuses sorted by server name; workspace instances are left out.
+   */
   statusAll(): ServerStatus[] {
     const state = this.connectionState();
     // Only base servers are exposed as "servers"; workspace-scoped instances are an internal detail.
@@ -368,22 +415,35 @@ export class GatewayManager {
       .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
+  /**
+   * Counts the base servers with a live connection.
+   *
+   * @returns How many are `ready`; workspace instances are not counted.
+   */
   runningCount(): number {
     return this.pool.state().filter((row) => isBaseServerKey(row.id) && row.status === 'ready').length;
   }
 
   /**
-   * Subscribe to downstream server→client notifications. The listener is called
-   * with the instance key (base server name, or `w:<slug>:<server>` for a
-   * workspace instance) and the raw notification. Returns an unsubscribe function.
-   * Used by MCP sessions to relay list_changed / resources/updated / log
-   * messages to their upstream client; survives downstream respawns because the
-   * pool re-installs the handler on every connect.
+   * Subscribe to downstream server→client notifications.
+   *
+   * @param listener - Called with the instance key and the raw notification, for every instance.
+   * @returns An unsubscribe function.
+   *
+   * @remarks
+   * Used by MCP sessions to relay list_changed / resources/updated / log messages to their upstream client. It
+   * survives downstream respawns because the pool re-installs the handler on every connect.
    */
   onNotification(listener: (key: InstanceKey, notification: Notification) => void): () => void {
     return this.pool.onNotification(listener);
   }
 
+  /**
+   * Notes how many tools an instance last listed, for its status.
+   *
+   * @param key - The instance; an unknown one is ignored.
+   * @param count - The size of the full `tools/list`.
+   */
   recordToolCount(key: InstanceKey, count: number): void {
     const meta = this.meta.get(key);
     if (meta) {
@@ -391,7 +451,12 @@ export class GatewayManager {
     }
   }
 
-  /** Count a call against its instance and append it to the activity log. */
+  /**
+   * Count a call against its instance and append it to the activity log.
+   *
+   * @param key - The instance; a call for one that has been removed is dropped.
+   * @param entry - The call; its `at` becomes the instance's last-called time.
+   */
   recordActivity(key: InstanceKey, entry: ActivityRecord): void {
     // A call that finishes after its server was removed must not bring the log
     // back. One that finishes after a Clear is new activity and is kept.
@@ -404,16 +469,30 @@ export class GatewayManager {
     this.activity.record(key, entry);
   }
 
-  /** Recorded activity for an instance, newest first. */
+  /**
+   * Reads the recorded activity for an instance.
+   *
+   * @param key - The instance.
+   * @returns The entries, newest first; empty for an unknown instance.
+   */
   getActivity(key: InstanceKey): ActivityEntry[] {
     return this.activity.newestFirst(key);
   }
 
+  /**
+   * Empties an instance's activity log; its call count is kept.
+   *
+   * @param key - The instance.
+   */
   clearActivity(key: InstanceKey): void {
     this.activity.clear(key);
   }
 
-  /** Names of all enabled base servers (for the global aggregate endpoint). */
+  /**
+   * Lists the enabled base servers, for the global aggregate endpoint.
+   *
+   * @returns Their names, sorted.
+   */
   enabledNames(): string[] {
     return [...this.meta]
       .filter(([key, meta]) => isBaseServerKey(key) && meta.config.enabled)
@@ -427,6 +506,13 @@ export class GatewayManager {
   }
 }
 
+/**
+ * Joins the router's bookkeeping with the pool's connection row into the status the API reports.
+ *
+ * @param meta - The config and call bookkeeping.
+ * @param state - The pool's row; undefined reads as stopped.
+ * @returns The status, with the pool's empty-string "no error" reported as absent.
+ */
 function toStatus(meta: ServerMeta, state: McpServerState | undefined): ServerStatus {
   return {
     config: meta.config,

@@ -13,7 +13,12 @@ const CONNECT_DESCRIPTION: Record<CapabilityScope['kind'], (label: string) => st
   workspace: () => `Point an MCP client at this workspace's aggregate endpoint (tools are <server>__-namespaced).`,
 };
 
-/** The tools, resources, prompts, activity and connect tabs of one server or workspace. */
+/**
+ * The tools, resources, prompts, activity and connect tabs of one server or workspace.
+ *
+ * @param props.scope - The server or workspace every tab reads from.
+ * @returns The tabs, opened on Tools.
+ */
 export function CapabilityTabs({ scope }: { scope: CapabilityScope }) {
   const label = scope.kind === SCOPE_SERVER ? scope.name : scope.slug;
   return (

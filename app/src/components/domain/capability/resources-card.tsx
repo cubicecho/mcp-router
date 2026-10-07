@@ -17,6 +17,13 @@ interface ResourceRowData {
   mimeType?: string;
 }
 
+/**
+ * Collapsible row for one resource or template, with an editable URI and a Read button.
+ *
+ * @param props.scope - The server or workspace the resource is read through.
+ * @param props.data - What the row shows and what its URI field starts with.
+ * @returns The row.
+ */
 function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRowData }) {
   const read = useReadResource(scope);
   const { result, run } = useCapabilityRun(read);
@@ -71,6 +78,12 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
   );
 }
 
+/**
+ * Turns a concrete resource into row data.
+ *
+ * @param resource - The resource as the server listed it.
+ * @returns The row data, labelled by the resource's name, or its URI when it has none.
+ */
 function toRow(resource: ServerResource): ResourceRowData {
   return {
     label: resource.name ?? resource.uri,
@@ -81,6 +94,12 @@ function toRow(resource: ServerResource): ResourceRowData {
   };
 }
 
+/**
+ * Turns a resource template into row data.
+ *
+ * @param template - The template as the server listed it.
+ * @returns The row data, flagged as a template and labelled by its name, or its URI template when it has none.
+ */
 function templateToRow(template: ServerResourceTemplate): ResourceRowData {
   return {
     label: template.name ?? template.uriTemplate,
@@ -91,6 +110,12 @@ function templateToRow(template: ServerResourceTemplate): ResourceRowData {
   };
 }
 
+/**
+ * Card listing the resources of a server or workspace, concrete ones first and templates after.
+ *
+ * @param props.scope - The server or workspace whose resources are listed.
+ * @returns The card.
+ */
 export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
   const query = useCapabilityResources(scope);
   const { data } = query;

@@ -1,4 +1,10 @@
-/** Prefill the args editor from the tool's input schema: one key per property. */
+/**
+ * Prefills the args editor from a tool's input schema, one key per property.
+ *
+ * @param inputSchema - The tool's JSON Schema; anything without `properties` counts as taking no arguments.
+ * @returns Pretty-printed JSON: each key holds the schema's default, else the empty value of its type. `'{}'` when
+ * there are no properties.
+ */
 export function argsTemplate(inputSchema: unknown): string {
   const properties = (inputSchema as { properties?: Record<string, { type?: string; default?: unknown }> } | undefined)
     ?.properties;

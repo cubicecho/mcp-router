@@ -28,6 +28,12 @@ const FORM_ID = 'add-server-form';
 
 type Mode = 'stdio' | 'http';
 
+/**
+ * Checks that typed text parses as a URL.
+ *
+ * @param value - The typed text; surrounding whitespace is ignored.
+ * @returns The message to show, or undefined when it parses or is blank.
+ */
 function urlError(value: string): string | undefined {
   if (!value.trim()) {
     return undefined;
@@ -40,6 +46,18 @@ function urlError(value: string): string | undefined {
   }
 }
 
+/**
+ * Dialog that adds a server by hand, as a stdio command or a streamable-HTTP URL, or edits an existing one.
+ *
+ * @param props.open - Whether the dialog is shown.
+ * @param props.onOpenChange - Called with false on cancel and after a successful save.
+ * @param [props.server] - When provided, the dialog edits this server (prefilled) instead of creating one.
+ * @returns The dialog.
+ *
+ * @remarks
+ * Editing never renames, and saving on the HTTP tab leaves the stored env untouched. A pasted config only fills the
+ * stdio fields, from the first server in it.
+ */
 export function AddServerDialog({
   open,
   onOpenChange,

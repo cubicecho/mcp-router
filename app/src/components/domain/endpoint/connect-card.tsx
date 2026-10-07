@@ -13,6 +13,13 @@ import { toastCopyError } from '@/lib/toast';
 const TOKEN_PLACEHOLDER = '<YOUR_TOKEN>';
 const TOKEN_MASK = '••••••••••••';
 
+/**
+ * Code block whose copy button copies different text from what it shows.
+ *
+ * @param props.display - What is shown, with the token masked or a placeholder.
+ * @param props.copyText - What the copy button copies, with the real token when there is one.
+ * @returns The code block.
+ */
 function Snippet({ display, copyText }: { display: string; copyText: string }) {
   return (
     <CodeBlock
@@ -24,8 +31,17 @@ function Snippet({ display, copyText }: { display: string; copyText: string }) {
 }
 
 /**
- * Ready-to-paste client configuration for an MCP endpoint. Copying embeds the
- * real bearer token; on screen it stays masked unless revealed.
+ * Ready-to-paste client configuration for an MCP endpoint.
+ *
+ * @param props.endpoint - Absolute URL of the endpoint.
+ * @param props.label - Name the snippets register the endpoint under.
+ * @param props.description - Line under the card title.
+ * @param [props.level] - Heading rank of the card title: `2` under a page title, `3` inside a dialog.
+ * @returns The card.
+ *
+ * @remarks
+ * Copying embeds the real bearer token; on screen it stays masked unless revealed. With auth on and no stored token,
+ * both carry a placeholder.
  */
 export function ConnectCard({
   endpoint,

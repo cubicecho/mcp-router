@@ -15,11 +15,17 @@ interface EnvEditorProps {
 }
 
 /**
- * Form over a server's env vars. The ones the registry declared (`envMeta`) are
- * fixed fields — named, described, masked with a reveal toggle when secret —
- * and everything else in `env` is a free key/value row that can be renamed,
- * added and removed. Save emits the resulting env record (entries with an empty
- * key or value are dropped).
+ * Form over a server's env vars.
+ *
+ * @param props.env - The current values, by variable name.
+ * @param props.envMeta - The variables the registry declared, by name; each is a fixed, described field.
+ * @param props.onSave - Called with the whole env record; a returned promise keeps Save showing progress.
+ * @param [props.loading] - Disables Save while a save runs that `onSave` returns nothing to wait on.
+ * @returns The form.
+ *
+ * @remarks
+ * Declared variables are masked with a reveal toggle when secret; everything else in `env` is a free row that can be
+ * renamed, added and removed. Entries with an empty key or value are dropped on save.
  */
 export function EnvEditor({ env, envMeta, onSave, loading = false }: EnvEditorProps) {
   const declared = Object.entries(envMeta);

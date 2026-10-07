@@ -6,7 +6,13 @@ import type { InstanceKey } from './instance-key.ts';
 const HIGH_SURROGATE_FIRST = 0xd800;
 const HIGH_SURROGATE_LAST = 0xdbff;
 
-/** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
+/**
+ * Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker.
+ *
+ * @param value - The string to bound.
+ * @param max - Most UTF-16 code units kept; the marker is added on top of them.
+ * @returns The string unchanged when it fits, else its head and a marker giving the original length.
+ */
 function truncateString(value: string, max: number): string {
   if (value.length <= max) {
     return value;
@@ -21,12 +27,13 @@ function truncateString(value: string, max: number): string {
 /**
  * Snapshot a recorded params/result into a bounded, detached value.
  *
- * Never retains a reference to the caller's value: a small payload is returned
- * as a fresh structural clone (so it can't pin memory or alias later mutations
- * into the log, yet keeps its shape — the schema's `unknown` stays truthful and
- * the UI can pretty-print it), and an over-large one collapses to a truncation
- * marker string. Serialization is compact so the size budget isn't spent on
- * indentation.
+ * @param value - The caller's value; no reference to it is kept.
+ * @returns A JSON clone, a truncated JSON string when it is over `ACTIVITY_DEFAULTS.valueMaxChars`,
+ * `'[unserializable]'` when it cannot be serialized, or undefined when it serializes to nothing.
+ *
+ * @remarks
+ * The clone cannot pin memory or alias later mutations into the log, yet keeps its shape so the UI can pretty-print
+ * it. Serialization is compact so the size budget isn't spent on indentation.
  */
 function snapshotValue(value: unknown): unknown {
   if (value === undefined) {
@@ -55,7 +62,12 @@ export class ActivityLog {
   private readonly entries = new Map<InstanceKey, ActivityEntry[]>();
   private sequence = 0;
 
-  /** Append a call to an instance's log, dropping the oldest past `ACTIVITY_DEFAULTS.maxEntries`. */
+  /**
+   * Append a call to an instance's log, dropping the oldest past `ACTIVITY_DEFAULTS.maxEntries`.
+   *
+   * @param key - The instance the call ran against.
+   * @param record - The call; its target, error, params and result are stored bounded, never by reference.
+   */
   record(key: InstanceKey, record: ActivityRecord): void {
     const log = this.entries.get(key) ?? [];
     log.push({
@@ -74,11 +86,21 @@ export class ActivityLog {
     this.entries.set(key, log);
   }
 
-  /** An instance's recorded calls, newest first (at most `ACTIVITY_DEFAULTS.maxEntries`). */
+  /**
+   * Reads an instance's recorded calls, newest first.
+   *
+   * @param key - The instance.
+   * @returns A new array of at most `ACTIVITY_DEFAULTS.maxEntries` entries; empty for an unknown key.
+   */
   newestFirst(key: InstanceKey): ActivityEntry[] {
     return [...(this.entries.get(key) ?? [])].reverse();
   }
 
+  /**
+   * Forgets an instance's recorded calls.
+   *
+   * @param key - The instance; an unknown one is a no-op.
+   */
   clear(key: InstanceKey): void {
     this.entries.delete(key);
   }

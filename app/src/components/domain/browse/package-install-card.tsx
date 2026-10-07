@@ -24,9 +24,22 @@ const COPY: Record<Ecosystem, { title: string; description: string; packagePlace
   },
 };
 
-/** The name that will be installed: the typed one, else one suggested from the package. */
+/**
+ * Picks the name that will be installed.
+ *
+ * @param name - The typed local name; empty means none was typed.
+ * @param pkg - Package identifier a name is suggested from.
+ * @returns The typed name, else the suggestion, which is empty when the package has no usable characters.
+ */
 const effectiveName = (name: string, pkg: string) => name || suggestServerName(pkg);
 
+/**
+ * Card with a form that installs a package straight from npm or PyPI.
+ *
+ * @param props.ecosystem - Which package index to install from; picks the copy and the source type.
+ * @param [props.onInstalled] - Called with the installed server's local name.
+ * @returns The card.
+ */
 export function PackageInstallCard({
   ecosystem,
   onInstalled,

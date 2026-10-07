@@ -1,8 +1,8 @@
 /**
- * Head of the aggregate's instructions, explaining the one thing that is true of
- * this endpoint and of no server behind it: the names are prefixed. Without it a
- * member's own guidance ("call `resolve-library-id` first") names tools the
- * client was never offered.
+ * Head of the aggregate's instructions, explaining that the names on this endpoint are prefixed.
+ *
+ * @remarks
+ * Without it a member's own guidance ("call `resolve-library-id` first") names tools the client was never offered.
  */
 const AGGREGATE_INSTRUCTIONS_PREAMBLE =
   'This endpoint merges several MCP servers. Every tool name, prompt name and resource URI is ' +
@@ -10,12 +10,10 @@ const AGGREGATE_INSTRUCTIONS_PREAMBLE =
   "names in it as carrying that section's prefix.";
 
 /**
- * The aggregate's `instructions`: every member's own, under a heading naming the
- * server whose prefix they belong to. Servers with nothing to say are left out
- * entirely, and if none of them has anything the whole field is absent rather
- * than a lone preamble explaining a scheme with no content under it.
+ * Builds the aggregate's `instructions`: every member's own, under a heading naming the server they belong to.
  *
- * @param members `[server name, its instructions]` in the order they should read.
+ * @param members - `[server name, its instructions]` in the order they should read; blank ones are left out.
+ * @returns The preamble and the sections, or undefined when no member has anything to say.
  */
 export function mergeInstructions(members: [name: string, instructions: string | undefined][]): string | undefined {
   const sections = members

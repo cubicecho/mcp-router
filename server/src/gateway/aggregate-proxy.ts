@@ -25,20 +25,22 @@ import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
 import { EMPTY_COMPLETION, type ProxyDeps, track } from './track.ts';
 
+/** What an aggregate proxy needs: the proxy deps, plus which servers it merges. */
 export interface AggregateDeps extends ProxyDeps {
   /** Names of all enabled servers at request time. */
   serverNames: () => string[];
 }
 
 /**
- * MCP server merging all enabled downstream servers (used for /mcp).
- * Tool/prompt names and resource URIs are prefixed `<server>__`; calls strip
- * the prefix and route to the owning client. Downstream servers that fail to
- * connect (or lack a capability) are skipped, not fatal.
+ * Builds the MCP server that merges several downstream servers (used for /mcp and /mcp/w/:slug).
  *
- * @param instructions The merged member instructions — see `mergeInstructions`.
- *   Fixed for the life of the session, because `instructions` travels only in
- *   the initialize result.
+ * @param deps - Reaches each member by name and says which names are exposed, re-read on every request.
+ * @param [instructions] - The merged member instructions (see `mergeInstructions`), fixed for the life of the session.
+ * @returns The server, not yet connected to a transport.
+ *
+ * @remarks
+ * Tool/prompt names and resource URIs are prefixed `<server>__`; calls strip the prefix and route to the owning
+ * client. In a listing, a member that fails to connect or lacks the capability is skipped, not fatal.
  */
 export function createAggregateServer(deps: AggregateDeps, instructions?: string): Server {
   const server = new Server(
@@ -65,12 +67,16 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   /**
    * Route a namespaced name to its owning server and run the call there with the prefix stripped.
    *
-   * Routing runs before track(): a name that resolves to no known server is a caller argument
-   * error with no server to attribute it to (the same shape as hitting /mcp/<unknown>, which also
-   * 404s unrecorded). Once resolved, every outcome — including downstream failures — is recorded
-   * under that server.
-   *
+   * @param method - The MCP method, as recorded.
+   * @param kind - What is being named ("tool", "resource", "prompt"), for the error message.
+   * @param full - The namespaced name or URI as the client sent it.
    * @param strip - Rebuilds the request params around the un-prefixed name.
+   * @param run - The call, given the owning client and the rebuilt params.
+   * @returns What `run` resolved to. Throws InvalidParams, unrecorded, when no exposed server owns the name.
+   *
+   * @remarks
+   * Routing runs before track(): a name that resolves to no known server has no server to attribute it to. Once
+   * resolved, every outcome, downstream failures included, is recorded under that server.
    */
   const routedCall = <P, R>(
     method: string,

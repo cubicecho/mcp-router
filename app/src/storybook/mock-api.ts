@@ -13,6 +13,12 @@ class MockApiError {
   readonly status: HttpStatus;
   readonly body: ApiError;
 
+  /**
+   * Pairs a status with the envelope to answer with.
+   *
+   * @param status - The HTTP status to answer with.
+   * @param body - The error envelope sent as the JSON body.
+   */
   constructor(status: HttpStatus, body: ApiError) {
     this.status = status;
     this.body = body;
@@ -36,33 +42,47 @@ export type ApiRoutes = Record<string, unknown>;
 export const apiRequest = fn<(key: string, body: unknown) => void>();
 
 /**
- * A failed answer for a mocked route.
+ * Builds a failed answer for a mocked route.
  *
  * @param status - The HTTP status to answer with.
  * @param code - The error code of the envelope.
  * @param error - The message of the envelope.
- * @param detail - The detail of the envelope, if any.
+ * @param [detail] - The detail of the envelope; left off when empty.
  * @returns The value to put in a story's `parameters.api`.
  */
 export function apiError(status: HttpStatus, code: ErrorCode, error: string, detail?: string): MockApiError {
   return new MockApiError(status, { error, code, ...(detail ? { detail } : {}) });
 }
 
-/** An answer that never arrives, for a story about the loading state. */
+/**
+ * Builds an answer that never arrives, for a story about the loading state.
+ *
+ * @returns The value to put in a story's `parameters.api`.
+ */
 export function pending(): typeof PENDING {
   return PENDING;
 }
 
+/**
+ * Builds a JSON response.
+ *
+ * @param status - The HTTP status.
+ * @param body - Serialised as the JSON body.
+ * @returns The response, with a JSON Content-Type.
+ */
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
 /**
- * Replace `fetch` with a story's server for the length of one story. A request with no route
- * is answered 404 and logged, so a story that forgot one fails where it is read.
+ * Replaces `fetch` with a story's server for the length of one story.
  *
- * @param routes - The story's `parameters.api`.
+ * @param [routes] - The story's `parameters.api`.
  * @returns The cleanup that puts the real `fetch` back and forgets any auth state.
+ *
+ * @remarks
+ * A request with no route is answered 404 and logged, so a story that forgot one fails where it is read. Also clears
+ * the calls recorded on `apiRequest`.
  */
 export function installApiMock(routes: ApiRoutes = {}): () => void {
   const realFetch = window.fetch;

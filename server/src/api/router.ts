@@ -8,8 +8,13 @@ import { createWorkspaceRoutes } from './routes/workspaces.ts';
 export type { ApiDeps } from './deps.ts';
 
 /**
- * The REST API mounted at /api, assembled from one router per resource. Each
- * sub-router owns its own path prefix, so its routes are written relative to it.
+ * Builds the REST API mounted at /api, assembled from one router per resource.
+ *
+ * @param deps - Handed whole to every route module.
+ * @returns The router, with paths relative to /api.
+ *
+ * @remarks
+ * Each sub-router owns its own path prefix, so its routes are written relative to it.
  */
 export function createApiRouter(deps: ApiDeps): Router {
   const router = Router();

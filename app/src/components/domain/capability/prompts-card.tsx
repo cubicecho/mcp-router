@@ -5,6 +5,16 @@ import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './list.tsx';
 
+/**
+ * Collapsible row for one prompt, with a field per declared argument and a Get button.
+ *
+ * @param props.scope - The server or workspace the prompt is fetched through.
+ * @param props.prompt - The prompt; its declared arguments become the fields.
+ * @returns The row.
+ *
+ * @remarks
+ * Only arguments with non-blank text are sent, so a whitespace-only entry counts as unset.
+ */
 function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
   const get = useGetPrompt(scope);
   const { result, run } = useCapabilityRun(get);
@@ -63,6 +73,12 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
   );
 }
 
+/**
+ * Card listing the prompts of a server or workspace.
+ *
+ * @param props.scope - The server or workspace whose prompts are listed.
+ * @returns The card.
+ */
 export function PromptsCard({ scope }: { scope: CapabilityScope }) {
   const query = useCapabilityPrompts(scope);
   const { data } = query;

@@ -14,6 +14,7 @@ export interface PollingSettings {
   capabilityStaleMs: number;
 }
 
+/** The polling intervals and stale times the query hooks use. */
 export const POLLING_DEFAULTS: Readonly<PollingSettings> = Object.freeze({
   statusMs: 15_000,
   serverListMs: 5_000,
@@ -36,6 +37,7 @@ export interface DisplaySettings {
   justNowSeconds: number;
 }
 
+/** The display thresholds the components use. */
 export const DISPLAY_DEFAULTS: Readonly<DisplaySettings> = Object.freeze({
   jsonOpenDepth: 3,
   filterAboveServers: 5,
