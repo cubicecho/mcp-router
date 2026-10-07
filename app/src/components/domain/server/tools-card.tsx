@@ -1,6 +1,7 @@
 import type { ServerTool } from '@mcp-router/shared';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { EmptyState } from '@/components/page';
 import { Textarea } from '@/components/ui/textarea';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
@@ -13,7 +14,7 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
   const [seededSig, setSeededSig] = useState(schemaSig);
   const [argsText, setArgsText] = useState(() => argsTemplate(tool.inputSchema));
   const call = useCallTool(scope);
-  const { result, run, pending } = useCapabilityRun(call);
+  const { result, run, loading } = useCapabilityRun(call);
 
   // A refetch that genuinely changes this tool's schema re-seeds the args editor
   // in place (rather than remounting the row), so the last result stays visible.
@@ -53,7 +54,7 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
             aria-label={`Arguments for ${tool.name}`}
             onChange={(event) => setArgsText(event.target.value)}
           />
-          <RunButton label="Run" pending={pending} onClick={submit} />
+          <RunButton label="Run" loading={loading} onClick={submit} />
           {result && (
             <ResultBlock
               result={result}
@@ -68,7 +69,8 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
 }
 
 export function ToolsCard({ scope }: { scope: CapabilityScope }) {
-  const { data, isPending, error, refetch } = useCapabilityTools(scope);
+  const query = useCapabilityTools(scope);
+  const { data } = query;
   const tools = data?.tools ?? [];
   const description =
     scope.kind === SCOPE_WORKSPACE
@@ -79,12 +81,10 @@ export function ToolsCard({ scope }: { scope: CapabilityScope }) {
     <CapabilityList
       title="Tools"
       description={description}
-      isPending={isPending}
-      error={error}
-      refetch={refetch}
+      query={query}
       what="tools"
-      emptyText="No tools reported."
-      rowsSlot={tools.map((tool) => <ToolRow key={tool.name} scope={scope} tool={tool} />)}
+      emptySlot={<EmptyState compact title="No tools reported." />}
+      contentSlot={tools.map((tool) => <ToolRow key={tool.name} scope={scope} tool={tool} />)}
     />
   );
 }

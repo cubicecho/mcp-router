@@ -260,8 +260,8 @@ export function AddServerDialog({
                     keyLabel="Environment variables name"
                     unnamed="new entry"
                     addLabel="Add variable"
-                    rows={field.state.value}
-                    onChange={field.handleChange}
+                    value={field.state.value}
+                    onValueChange={field.handleChange}
                   />
                 )}
               </form.Field>
@@ -287,8 +287,8 @@ export function AddServerDialog({
                     keyLabel="Headers name"
                     unnamed="new entry"
                     addLabel="Add header"
-                    rows={field.state.value}
-                    onChange={field.handleChange}
+                    value={field.state.value}
+                    onValueChange={field.handleChange}
                   />
                 )}
               </form.Field>

@@ -10,7 +10,8 @@ interface EnvEditorProps {
   envMeta: Record<string, EnvVarMeta>;
   /** A returned promise keeps Save showing progress until it settles. */
   onSave: (env: Record<string, string>) => void | Promise<void>;
-  saving?: boolean;
+  /** The save is still running, when `onSave` returns nothing to wait on. */
+  loading?: boolean;
 }
 
 /**
@@ -20,7 +21,7 @@ interface EnvEditorProps {
  * added and removed. Save emits the resulting env record (entries with an empty
  * key or value are dropped).
  */
-export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorProps) {
+export function EnvEditor({ env, envMeta, onSave, loading = false }: EnvEditorProps) {
   const declared = Object.entries(envMeta);
 
   const form = useAppForm({
@@ -87,8 +88,8 @@ export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorPro
               keyLabel="Variable name"
               unnamed="new variable"
               addLabel="Add variable"
-              rows={field.state.value}
-              onChange={field.handleChange}
+              value={field.state.value}
+              onValueChange={field.handleChange}
             />
           </>
         )}
@@ -96,7 +97,7 @@ export function EnvEditor({ env, envMeta, onSave, saving = false }: EnvEditorPro
 
       <div className="flex justify-end">
         <form.AppForm>
-          <form.SubmitButton size="sm" disabled={saving} />
+          <form.SubmitButton size="sm" disabled={loading} />
         </form.AppForm>
       </div>
     </form>

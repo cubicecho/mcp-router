@@ -212,7 +212,7 @@ function ServerDetailPage() {
                       env={server.config.env}
                       envMeta={server.config.envMeta}
                       onSave={handleSaveEnv}
-                      saving={update.isPending}
+                      loading={update.isPending}
                     />
                   }
                 />

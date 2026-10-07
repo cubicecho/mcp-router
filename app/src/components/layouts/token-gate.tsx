@@ -1,23 +1,23 @@
 import { useStore } from '@tanstack/react-form';
 import { useQueryClient } from '@tanstack/react-query';
 import { KeyRoundIcon } from 'lucide-react';
-import type { ReactNode } from 'react';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { FormField } from '@/components/form-field';
 import { PasswordInput } from '@/components/password-input';
 import { setToken, useNeedsAuth } from '@/lib/auth';
+import type { SlotNode } from '@/lib/utils';
 
 /**
- * Renders its children normally; when any API call has come back 401 it swaps
+ * Renders `contentSlot` normally; when any API call has come back 401 it swaps
  * in a token-entry screen. Submitting stores the token in localStorage and
  * refetches everything.
  */
-export function TokenGate({ children }: { children: ReactNode }) {
+export function TokenGate({ contentSlot }: { contentSlot: SlotNode }) {
   const needsAuth = useNeedsAuth();
 
   if (!needsAuth) {
-    return children;
+    return contentSlot;
   }
   return <TokenForm />;
 }

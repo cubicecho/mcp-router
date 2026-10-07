@@ -10,7 +10,7 @@ import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun
 function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
   const [args, setArgs] = useState<Record<string, string>>({});
   const get = useGetPrompt(scope);
-  const { result, run, pending } = useCapabilityRun(get);
+  const { result, run, loading } = useCapabilityRun(get);
   const declaredArgs = prompt.arguments ?? [];
 
   const submit = () => {
@@ -43,7 +43,7 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
               }
             />
           ))}
-          <RunButton label="Get" pending={pending} disabled={missingRequired} onClick={submit} />
+          <RunButton label="Get" loading={loading} disabled={missingRequired} onClick={submit} />
           {result && <ResultBlock result={result} />}
         </>
       }
@@ -52,7 +52,8 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
 }
 
 export function PromptsCard({ scope }: { scope: CapabilityScope }) {
-  const { data, isPending, error, refetch } = useCapabilityPrompts(scope);
+  const query = useCapabilityPrompts(scope);
+  const { data } = query;
   const prompts = data?.prompts ?? [];
   const description =
     scope.kind === SCOPE_WORKSPACE
@@ -63,12 +64,10 @@ export function PromptsCard({ scope }: { scope: CapabilityScope }) {
     <CapabilityList
       title="Prompts"
       description={description}
-      isPending={isPending}
-      error={error}
-      refetch={refetch}
+      query={query}
       what="prompts"
-      emptyText="No prompts reported."
-      rowsSlot={prompts.map((prompt) => <PromptRow key={prompt.name} scope={scope} prompt={prompt} />)}
+      emptySlot={<EmptyState compact title="No prompts reported." />}
+      contentSlot={prompts.map((prompt) => <PromptRow key={prompt.name} scope={scope} prompt={prompt} />)}
     />
   );
 }
