@@ -1,10 +1,11 @@
 import { useStore } from '@tanstack/react-form';
 import { useQueryClient } from '@tanstack/react-query';
-import { KeyRoundIcon } from 'lucide-react';
 import { useAppForm } from '@/components/app-form';
-import { CardLayout } from '@/components/card-layout';
+import { CenteredLayout } from '@/components/centered-layout';
 import { FormField } from '@/components/form-field';
 import { PasswordInput } from '@/components/password-input';
+import { Code } from '@/components/ui/code';
+import { KeyRound } from '@/components/ui/icons';
 import { setToken, useNeedsAuth } from '@/lib/auth';
 import type { SlotNode } from '@/lib/utils';
 
@@ -39,49 +40,46 @@ function TokenForm() {
   const empty = useStore(form.store, (state) => !state.values.token.trim());
 
   return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <CardLayout
-        className="w-full max-w-sm"
-        iconSlot={<KeyRoundIcon />}
-        title="Authentication required"
-        description={
-          <>
-            Enter the router token (from <code>MCP_ROUTER_TOKEN</code> or <code>settings.json</code>).
-          </>
-        }
-        contentSlot={
-          <form
-            onSubmit={(event) => {
-              event.preventDefault();
-              form.handleSubmit();
-            }}
-            className="flex flex-col gap-4"
-          >
-            <form.Field name="token">
-              {(field) => (
-                <FormField
-                  label="Token"
-                  controlSlot={
-                    <PasswordInput
-                      id="token"
-                      autoFocus
-                      value={field.state.value}
-                      onBlur={field.handleBlur}
-                      onChange={(event) => field.handleChange(event.target.value)}
-                      placeholder="Bearer token"
-                      showLabel="Show token"
-                      hideLabel="Hide token"
-                    />
-                  }
-                />
-              )}
-            </form.Field>
-            <form.AppForm>
-              <form.SubmitButton disabled={empty} pendingLabel="Unlocking…" content="Unlock" />
-            </form.AppForm>
-          </form>
-        }
-      />
-    </div>
+    <CenteredLayout
+      iconSlot={<KeyRound />}
+      title="Authentication required"
+      description={
+        <>
+          Enter the router token (from <Code>MCP_ROUTER_TOKEN</Code> or <Code>settings.json</Code>).
+        </>
+      }
+      contentSlot={
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            form.handleSubmit();
+          }}
+          className="flex flex-col gap-4"
+        >
+          <form.Field name="token">
+            {(field) => (
+              <FormField
+                label="Token"
+                controlSlot={
+                  <PasswordInput
+                    id="token"
+                    autoFocus
+                    value={field.state.value}
+                    onBlur={field.handleBlur}
+                    onChange={(event) => field.handleChange(event.target.value)}
+                    placeholder="Bearer token"
+                    showLabel="Show token"
+                    hideLabel="Hide token"
+                  />
+                }
+              />
+            )}
+          </form.Field>
+          <form.AppForm>
+            <form.SubmitButton disabled={empty} pendingLabel="Unlocking…" content="Unlock" />
+          </form.AppForm>
+        </form>
+      }
+    />
   );
 }

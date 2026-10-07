@@ -83,7 +83,7 @@ function WorkspaceDetailPage() {
                       size="sm"
                       label={`Delete ${workspace.name}`}
                       tooltip={false}
-                      disabled={remove.isPending}
+                      loading={remove.isPending}
                       title={`Delete workspace ${workspace.name}?`}
                       description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                       onConfirm={handleDelete}

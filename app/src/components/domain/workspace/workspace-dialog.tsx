@@ -206,7 +206,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
       hasUnsavedChanges={() => form.state.isDefaultValue === false}
       footerActionsSlot={(close) => (
         <>
-          <Button type="button" variant="ghost" onClick={close} content="Cancel" />
+          <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
             <form.SubmitButton form={FORM_ID} content={isEdit ? 'Save changes' : 'Create workspace'} />
           </form.AppForm>
@@ -374,7 +374,7 @@ function MemberRow({ server, included, open, onToggle, onOpenChange, overridesSl
         {included && (
           <Button
             type="button"
-            variant="ghost"
+            variant="outline"
             size="sm"
             onClick={() => onOpenChange(open === false)}
             iconSlot={open ? <ChevronDown /> : <ChevronRight />}

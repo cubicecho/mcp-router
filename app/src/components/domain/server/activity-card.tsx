@@ -88,7 +88,8 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
           <ConfirmButton
             variant="outline"
             size="sm"
-            disabled={clear.isPending || entries.length === 0}
+            loading={clear.isPending}
+            disabled={entries.length === 0}
             label="Clear activity"
             title="Clear the activity log?"
             description={

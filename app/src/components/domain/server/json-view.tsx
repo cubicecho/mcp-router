@@ -1,5 +1,5 @@
-import { ChevronRightIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { ChevronRight } from '@/components/ui/icons';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { cn } from '@/lib/utils';
 
@@ -123,7 +123,7 @@ function Node({
         onClick={() => setOpen((v) => !v)}
         className="flex w-full items-start gap-1 text-left hover:opacity-80"
       >
-        <ChevronRightIcon
+        <ChevronRight
           className={cn('mt-[0.15rem] size-3.5 shrink-0 text-foreground/60 transition-transform', open && 'rotate-90')}
         />
         <span className="min-w-0">

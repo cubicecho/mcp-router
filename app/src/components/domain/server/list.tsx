@@ -127,7 +127,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             size="icon-sm"
             label={`Restart ${config.name}`}
             hint="Restart"
-            disabled={restart.isPending}
+            loading={restart.isPending}
             onClick={() =>
               restart.mutate(config.name, {
                 onSuccess: () => toast.success(`Restarted ${config.name}`),
@@ -142,7 +142,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             label={`Delete ${config.name}`}
             hint="Delete"
             title={`Delete ${config.name}?`}
-            description="This stops the server, deletes its config file, and removes its install directory. This cannot be undone."
+            description="This stops the server, deletes its config file, and removes its install directory."
             onConfirm={() =>
               remove.mutate(config.name, {
                 onSuccess: () => toast.success(`Deleted ${config.name}`),

@@ -1,11 +1,12 @@
 import { type RegistryServer, SourceType } from '@mcp-router/shared';
 import { Link } from '@tanstack/react-router';
-import { DownloadIcon, ExternalLinkIcon } from 'lucide-react';
+import { ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
 import { InstallDialog } from '@/components/domain/browse/install-dialog';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
+import { Download } from '@/components/ui/icons';
 import { useServers } from '@/lib/queries';
 
 function summarizeDistribution(server: RegistryServer): string[] {
@@ -74,12 +75,12 @@ export function RegistryServerCard({
               content={`View ${installed.config.name}`}
             />
           ) : (
-            <Button size="sm" onClick={() => setInstallOpen(true)} iconSlot={<DownloadIcon />} content="Install" />
+            <Button size="sm" onClick={() => setInstallOpen(true)} iconSlot={<Download />} content="Install" />
           )}
           {linkUrl && (
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               // biome-ignore lint/a11y/useAnchorContent: Button draws its content inside the link it is handed
               linkSlot={<a href={linkUrl} target="_blank" rel="noreferrer" />}
               iconSlot={<ExternalLinkIcon />}
