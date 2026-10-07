@@ -95,7 +95,7 @@ try {
 ```
 
 **Config writes are atomic:** write to a temp file in the same dir, `chmod
-0600`, then `rename`. Parse leniently (`.passthrough()`) so hand-added keys
+0600`, then `rename`. Parse leniently (`.loose()`) so hand-added keys
 survive round-trips.
 
 **Child processes:** always `execFile`/`spawn` with arg arrays — never string

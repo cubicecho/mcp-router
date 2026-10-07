@@ -81,7 +81,6 @@ export function RegistryServerCard({
             <Button
               size="sm"
               variant="outline"
-              // biome-ignore lint/a11y/useAnchorContent: Button draws its content inside the link it is handed
               linkSlot={<a href={linkUrl} target="_blank" rel="noreferrer" />}
               iconSlot={<ExternalLinkIcon />}
               content={server.websiteUrl ? 'Website' : 'Repository'}

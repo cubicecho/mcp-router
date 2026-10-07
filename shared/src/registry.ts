@@ -19,7 +19,7 @@ export const registryKeyValueInputSchema = z
     value: z.string().optional(),
     format: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 
 export const registryArgumentSchema = registryKeyValueInputSchema
   .extend({
@@ -30,7 +30,7 @@ export const registryArgumentSchema = registryKeyValueInputSchema
     valueHint: z.string().optional(),
     isRepeated: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();
 
 export const registryTransportSchema = z
   .object({
@@ -38,7 +38,7 @@ export const registryTransportSchema = z
     url: z.string().optional(),
     headers: z.array(registryKeyValueInputSchema).optional(),
   })
-  .passthrough();
+  .loose();
 
 export const registryPackageSchema = z
   .object({
@@ -52,7 +52,7 @@ export const registryPackageSchema = z
     packageArguments: z.array(registryArgumentSchema).optional(),
     environmentVariables: z.array(registryKeyValueInputSchema).optional(),
   })
-  .passthrough();
+  .loose();
 
 export const registryRemoteSchema = z
   .object({
@@ -60,7 +60,7 @@ export const registryRemoteSchema = z
     url: z.string(),
     headers: z.array(registryKeyValueInputSchema).optional(),
   })
-  .passthrough();
+  .loose();
 
 /** The `server` object inside a registry list/detail response. */
 export const registryServerSchema = z
@@ -70,19 +70,19 @@ export const registryServerSchema = z
     description: z.string().optional(),
     version: z.string().optional(),
     websiteUrl: z.string().optional(),
-    repository: z.object({ url: z.string().optional(), source: z.string().optional() }).passthrough().optional(),
+    repository: z.object({ url: z.string().optional(), source: z.string().optional() }).loose().optional(),
     packages: z.array(registryPackageSchema).optional(),
     remotes: z.array(registryRemoteSchema).optional(),
   })
-  .passthrough();
+  .loose();
 
 /** One entry of GET /v0/servers — { server, _meta }. */
 export const registryServerEntrySchema = z
   .object({
     server: registryServerSchema,
-    _meta: z.record(z.unknown()).optional(),
+    _meta: z.record(z.string(), z.unknown()).optional(),
   })
-  .passthrough();
+  .loose();
 
 export const registryListResponseSchema = z
   .object({
@@ -92,10 +92,10 @@ export const registryListResponseSchema = z
         nextCursor: z.string().optional(),
         count: z.number().optional(),
       })
-      .passthrough()
+      .loose()
       .optional(),
   })
-  .passthrough();
+  .loose();
 
 export type RegistryKeyValueInput = z.infer<typeof registryKeyValueInputSchema>;
 export type RegistryArgument = z.infer<typeof registryArgumentSchema>;
