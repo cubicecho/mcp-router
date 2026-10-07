@@ -3,18 +3,28 @@
 
 /** Settings for the HTTP doors. */
 export interface HttpSettings {
-  /** Idle time before an inbound keep-alive connection is closed, in ms. Above the 60 s nginx and ALB hold theirs. `HTTP_KEEP_ALIVE_TIMEOUT_MS` overrides it. */
+  /**
+   * Idle time before an inbound keep-alive connection is closed, in ms. Above the 60 s nginx and ALB hold theirs.
+   * `HTTP_KEEP_ALIVE_TIMEOUT_MS` overrides it.
+   */
   keepAliveTimeoutMs: number;
-  /** Idle time before an outbound connection is closed when the remote names none, in ms. Below the 60 s most servers allow. `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` overrides it. */
+  /**
+   * Idle time before an outbound connection is closed when the remote names none, in ms. Below the 60 s most servers
+   * allow. `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` overrides it.
+   */
   outboundKeepAliveTimeoutMs: number;
   /** Largest JSON body /api and /mcp accept, as `express.json` reads it. */
   bodyLimit: string;
   /** How long in-flight requests get to finish after a stop signal, in seconds. Open streams are cut after it. */
   drainSeconds: number;
-  /** How long the whole shutdown may take before the process exits anyway, in seconds. Under the 10 s Docker waits before SIGKILL. */
+  /**
+   * How long the whole shutdown may take before the process exits anyway, in seconds. Under the 10 s Docker waits
+   * before SIGKILL.
+   */
   shutdownDeadlineSeconds: number;
 }
 
+/** The fixed HTTP settings this build ships with. */
 export const HTTP_DEFAULTS: Readonly<HttpSettings> = Object.freeze({
   keepAliveTimeoutMs: 75_000,
   outboundKeepAliveTimeoutMs: 30_000,
@@ -31,6 +41,7 @@ export interface ConfigSettings {
   authTokenBytes: number;
 }
 
+/** The fixed config-file settings this build ships with. */
 export const CONFIG_DEFAULTS: Readonly<ConfigSettings> = Object.freeze({
   watchDebounceMs: 300,
   authTokenBytes: 32,
@@ -48,6 +59,7 @@ export interface GatewaySettings {
   maxListPages: number;
 }
 
+/** The fixed gateway settings this build ships with. */
 export const GATEWAY_DEFAULTS: Readonly<GatewaySettings> = Object.freeze({
   crashBackoffMs: 5_000,
   maxBufferedEvents: 256,
@@ -63,6 +75,7 @@ export interface ActivitySettings {
   valueMaxChars: number;
 }
 
+/** The fixed activity-log settings this build ships with. */
 export const ACTIVITY_DEFAULTS: Readonly<ActivitySettings> = Object.freeze({
   maxEntries: 200,
   valueMaxChars: 8_000,
@@ -76,6 +89,7 @@ export interface RegistrySettings {
   errorBodyMaxChars: number;
 }
 
+/** The fixed registry settings this build ships with. */
 export const REGISTRY_DEFAULTS: Readonly<RegistrySettings> = Object.freeze({
   fetchTimeoutMs: 30_000,
   errorBodyMaxChars: 500,
@@ -89,6 +103,7 @@ export interface InstallSettings {
   stderrTailChars: number;
 }
 
+/** The fixed install settings this build ships with. */
 export const INSTALL_DEFAULTS: Readonly<InstallSettings> = Object.freeze({
   npmTimeoutMs: 300_000,
   stderrTailChars: 1_000,

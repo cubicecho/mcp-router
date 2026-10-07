@@ -17,9 +17,19 @@ const STATUS_BY_CODE = {
 /** An error carrying an error code; rendered as the envelope { error, code, detail? } with the code's HTTP status. */
 export class HttpError extends Error {
   readonly code: ErrorCode;
+  /** The HTTP status `code` maps to. */
   readonly status: HttpStatus;
+  /** Diagnostics beyond the one-line message, e.g. a child's stderr tail. */
   readonly detail?: string;
 
+  /**
+   * Builds the error, taking its HTTP status from the code.
+   *
+   * @param code - Decides the HTTP status.
+   * @param message - The envelope's `error`.
+   * @param [detail] - The envelope's `detail`; left out of it when empty.
+   * @param [options] - Carries the `cause`.
+   */
   constructor(code: ErrorCode, message: string, detail?: string, options?: ErrorOptions) {
     super(message, options);
     this.name = 'HttpError';
@@ -32,19 +42,34 @@ export class HttpError extends Error {
 /** Builds an HttpError of one code from a message, an optional detail and an optional cause. */
 type HttpErrorFactory = (message: string, detail?: string, options?: ErrorOptions) => HttpError;
 
+/**
+ * Makes the factory for one error code.
+ *
+ * @param code - The code every error it builds carries.
+ * @returns A factory taking the message, an optional detail and an optional cause.
+ */
 const factoryFor =
   (code: ErrorCode): HttpErrorFactory =>
   (message, detail, options) =>
     new HttpError(code, message, detail, options);
 
+/** Builds a 400 for input the caller got wrong. */
 export const badInput = factoryFor(ErrorCode.BadUserInput);
+/** Builds a 401 for a missing or wrong credential. */
 export const unauthenticated = factoryFor(ErrorCode.Unauthenticated);
+/** Builds a 403 for a request that is not allowed. */
 export const forbidden = factoryFor(ErrorCode.Forbidden);
+/** Builds a 404 for something that does not exist. */
 export const notFound = factoryFor(ErrorCode.NotFound);
+/** Builds a 409 for a clash with what already exists. */
 export const conflict = factoryFor(ErrorCode.Conflict);
+/** Builds a 500 for a failure of the router's own. */
 export const internal = factoryFor(ErrorCode.Internal);
+/** Builds a 502 for a downstream server or registry that failed. */
 export const upstreamFailed = factoryFor(ErrorCode.UpstreamFailed);
+/** Builds a 503 for something that cannot be reached right now. */
 export const unavailable = factoryFor(ErrorCode.Unavailable);
+/** Builds a 504 for a downstream server or registry that did not answer in time. */
 export const upstreamTimeout = factoryFor(ErrorCode.UpstreamTimeout);
 
 /**
@@ -58,7 +83,12 @@ export function sendError(res: Response, error: HttpError): void {
   res.status(error.status).json(body);
 }
 
-/** Extract a human-readable message from an unknown thrown value. */
+/**
+ * Extract a human-readable message from an unknown thrown value.
+ *
+ * @param err - The thrown value.
+ * @returns An Error's message, or the value as a string.
+ */
 export function errorMessage(err: unknown): string {
   if (err instanceof Error) {
     return err.message;
@@ -67,9 +97,14 @@ export function errorMessage(err: unknown): string {
 }
 
 /**
- * Like errorMessage, but appends an HttpError's detail — the manager puts the
- * actual diagnostics (e.g. a child's stderr tail) there, while the message is
- * a generic one-liner like `Failed to connect to server "x"`.
+ * Extract a message like errorMessage does, with an HttpError's detail appended.
+ *
+ * @param err - The thrown value.
+ * @returns `message: detail` for an HttpError that has a detail, else what errorMessage gives.
+ *
+ * @remarks
+ * The manager puts the actual diagnostics (e.g. a child's stderr tail) in the detail, while the message is a generic
+ * one-liner like `Failed to connect to server "x"`.
  */
 export function errorDetailMessage(err: unknown): string {
   if (err instanceof HttpError && err.detail) {

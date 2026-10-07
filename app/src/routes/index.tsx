@@ -12,10 +12,16 @@ import { Plus } from '@/components/ui/icons';
 import { AGGREGATE_ENDPOINT_PATH, endpointUrl } from '@/lib/endpoint';
 import { useServers } from '@/lib/queries';
 
+/** The `/` route. */
 export const Route = createFileRoute('/')({
   component: ServersPage,
 });
 
+/**
+ * The Servers page: the installed servers, the aggregate endpoint's connect card and the add-server dialog.
+ *
+ * @returns The page.
+ */
 function ServersPage() {
   const servers = useServers();
   const { data } = servers;

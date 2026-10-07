@@ -1,7 +1,11 @@
 import { toast } from 'sonner';
 import { ApiRequestError } from './api.ts';
 
-/** Standard error toast for failed mutations — includes the API detail when present. */
+/**
+ * Shows the standard error toast for a failed mutation.
+ *
+ * @param error - Whatever was thrown; an `ApiRequestError`'s detail becomes the toast's description.
+ */
 export function toastApiError(error: unknown): void {
   if (error instanceof ApiRequestError) {
     toast.error(error.message, { description: error.detail });
@@ -10,7 +14,7 @@ export function toastApiError(error: unknown): void {
   toast.error(error instanceof Error ? error.message : String(error));
 }
 
-/** Error toast for a `CopyButton` whose clipboard write was refused. */
+/** Shows the error toast for a `CopyButton` whose clipboard write was refused. */
 export function toastCopyError(): void {
   toast.error('Failed to copy to clipboard');
 }

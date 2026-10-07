@@ -14,6 +14,7 @@ export const serverNameSchema = z
   .max(NAME_DEFAULTS.serverNameMaxLength)
   .regex(/^[a-z0-9][a-z0-9._-]*$/, 'lowercase alphanumerics, dots, dashes, underscores; must start alphanumeric');
 
+/** One registry the router can browse and install from. */
 export const registrySchema = z
   .object({
     /** Unique short name, e.g. "official" */
@@ -23,20 +24,25 @@ export const registrySchema = z
   })
   .loose();
 
+/** Shape of `registries.json`. */
 export const registriesFileSchema = z
   .object({
     registries: z.array(registrySchema).default([]),
   })
   .loose();
 
+/** A configured registry. */
 export type Registry = z.infer<typeof registrySchema>;
+/** Parsed `registries.json`. */
 export type RegistriesFile = z.infer<typeof registriesFileSchema>;
 
+/** The registry seeded on first run. */
 export const DEFAULT_REGISTRY: Registry = {
   name: 'official',
   url: 'https://registry.modelcontextprotocol.io',
 };
 
+/** Shape of `settings.json`; every key has a fallback, so an empty object parses. */
 export const settingsFileSchema = z
   .object({
     /** HTTP port. Env PORT wins over this. */
@@ -74,6 +80,7 @@ export const settingsFileSchema = z
   })
   .loose();
 
+/** Parsed `settings.json`, fallbacks filled in. */
 export type SettingsFile = z.infer<typeof settingsFileSchema>;
 
 /** Where a server came from. */
@@ -87,6 +94,7 @@ export const SourceType = {
   /** A server added by hand: nothing was installed. */
   Remote: 'remote',
 } as const;
+/** One of the {@link SourceType} values. */
 export type SourceType = (typeof SourceType)[keyof typeof SourceType];
 
 /** A child process the router spawns and talks to over stdin and stdout. */
@@ -94,6 +102,7 @@ export const TRANSPORT_STDIO = 'stdio' as const;
 /** A server reached over streamable HTTP. */
 export const TRANSPORT_STREAMABLE_HTTP = 'streamable-http' as const;
 
+/** Where a server came from, discriminated on `type`. */
 export const serverSourceSchema = z.discriminatedUnion('type', [
   /** Installed from a configured registry. */
   z.object({
@@ -122,6 +131,7 @@ export const serverSourceSchema = z.discriminatedUnion('type', [
   }),
 ]);
 
+/** How the router reaches a server, discriminated on `type`: a spawned command or a URL. */
 export const serverTransportSchema = z.discriminatedUnion('type', [
   z.object({
     type: z.literal(TRANSPORT_STDIO),
@@ -149,6 +159,7 @@ export const envVarMetaSchema = z
   })
   .loose();
 
+/** Shape of `servers/<name>.json`: one installed server. */
 export const serverConfigSchema = z
   .object({
     name: serverNameSchema,
@@ -167,9 +178,13 @@ export const serverConfigSchema = z
   })
   .loose();
 
+/** Where a server came from. */
 export type ServerSource = z.infer<typeof serverSourceSchema>;
+/** How the router reaches a server. */
 export type ServerTransport = z.infer<typeof serverTransportSchema>;
+/** UI metadata for one env var. */
 export type EnvVarMeta = z.infer<typeof envVarMetaSchema>;
+/** One installed server's stored config. */
 export type ServerConfig = z.infer<typeof serverConfigSchema>;
 
 /**
@@ -211,10 +226,18 @@ export const workspaceConfigSchema = z
   })
   .loose();
 
+/** A server's participation in a workspace, with its overrides. */
 export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
+/** One workspace's stored config. */
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
 
-/** Lower-cased text cut down to the characters a server name may hold, starting alphanumeric. */
+/**
+ * Cuts text down to the characters a server name may hold.
+ *
+ * @param text - Any text.
+ * @returns Lower-cased text with each run of other characters turned into one dash and leading non-alphanumerics
+ * dropped; may be empty, and is not length-limited.
+ */
 function toNameChars(text: string): string {
   return text
     .toLowerCase()
@@ -222,7 +245,12 @@ function toNameChars(text: string): string {
     .replace(/^[^a-z0-9]+/, '');
 }
 
-/** Derive a URL slug (a valid serverNameSchema value) from a display name. */
+/**
+ * Derives a URL slug from a display name.
+ *
+ * @param name - The display name.
+ * @returns A value `serverNameSchema` accepts, or an empty string when the name has no usable characters.
+ */
 export function slugify(name: string): string {
   return toNameChars(name)
     .replace(/[-.]+$/, '') // no trailing dash/dot
@@ -230,8 +258,11 @@ export function slugify(name: string): string {
 }
 
 /**
- * The local server name suggested by a package or registry name like "io.github.owner/repo".
- * Empty when nothing usable is left, so validate it before saving.
+ * Suggests a local server name from a package or registry name.
+ *
+ * @param raw - A name like "io.github.owner/repo"; only the part after the last slash is used.
+ * @returns The suggestion, cut to the longest allowed name. Empty when nothing usable is left, so validate it before
+ * saving.
  */
 export function suggestServerName(raw: string): string {
   const lastSegment = raw.split('/').pop() ?? raw;

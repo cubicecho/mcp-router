@@ -15,7 +15,15 @@ import { buildServerConfig, resolveServerName, uninstall } from '../../installer
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
-/** Installed-server CRUD plus its capability listings and test calls, mounted at /api/servers. */
+/**
+ * Builds installed-server CRUD plus its capability listings and test calls, mounted at /api/servers.
+ *
+ * @param deps.store - Holds the server configs.
+ * @param deps.manager - Reports status and reaches the running servers.
+ * @param deps.registryClient - Looks up registry entries for an install.
+ * @param deps.dataDir - Where packages are installed and removed.
+ * @returns The router, with paths relative to /api/servers.
+ */
 export function createServerRoutes({ store, manager, registryClient, dataDir }: ApiDeps): Router {
   const router = Router();
 

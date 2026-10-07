@@ -12,15 +12,22 @@ import type { GatewayManager } from '../gateway/manager.ts';
 import { createMcpRouter } from '../gateway/routes.ts';
 import { RegistryClient } from '../registry/client.ts';
 
+/** What the Express app is built over. */
 export interface AppDeps {
   store: ConfigStore;
   manager: GatewayManager;
+  /** Override for tests; a client over the global fetch is made when absent. */
   registryClient?: RegistryClient;
-  /** Override for tests; defaults to <repo>/app/dist. */
+  /** Override for tests; `<repo>/app/dist` when absent. */
   appDistDir?: string;
 }
 
-/** Build the Express app (separate from listen() so tests can drive it with supertest). */
+/**
+ * Build the Express app (separate from listen() so tests can drive it with supertest).
+ *
+ * @param deps - The store and gateway, plus the test overrides.
+ * @returns The app: /healthz, /api, /mcp, and the built web UI when its directory exists.
+ */
 export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
   const registryClient = deps.registryClient ?? new RegistryClient();

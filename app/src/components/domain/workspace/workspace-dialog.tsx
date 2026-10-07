@@ -39,11 +39,23 @@ interface MemberDraft {
   url: string;
 }
 
+/**
+ * Writes a record as editable text.
+ *
+ * @param [record] - The record; undefined counts as empty.
+ * @returns One `KEY=VALUE` line per entry.
+ */
 const recordToLines = (record?: Record<string, string>): string =>
   Object.entries(record ?? {})
     .map(([key, value]) => `${key}=${value}`)
     .join('\n');
 
+/**
+ * Parses `KEY=VALUE` lines into a record.
+ *
+ * @param text - One pair per line, split at the first `=`; key and value are trimmed.
+ * @returns The record; a line with no `=` or no key is skipped, and a repeated key keeps its last value.
+ */
 const linesToRecord = (text: string): Record<string, string> => {
   const record: Record<string, string> = {};
   for (const line of text.split('\n')) {
@@ -65,8 +77,20 @@ const linesToRecord = (text: string): Record<string, string> => {
 
 const FORM_ID = 'workspace-form';
 
+/**
+ * Splits typed text into command-line arguments.
+ *
+ * @param text - One argument per line.
+ * @returns The non-blank lines, untrimmed.
+ */
 const textToArgs = (text: string): string[] => text.split('\n').filter((line) => line.trim().length > 0);
 
+/**
+ * Turns a workspace's stored members into the drafts the form edits.
+ *
+ * @param members - The stored members, by server name.
+ * @returns One draft per member, included only when the member is enabled.
+ */
 const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
   Object.entries(members).map(([name, member]) => ({
     name,
@@ -77,7 +101,16 @@ const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
     url: member.url ?? '',
   }));
 
-/** The members to save: every included draft whose server is still installed, with its overrides parsed. */
+/**
+ * Builds the members to save from the drafts.
+ *
+ * @param drafts - The edited drafts.
+ * @param servers - The installed servers; a draft for any other server is dropped.
+ * @returns One enabled member per included draft, by server name, with only the overrides its transport takes.
+ *
+ * @remarks
+ * Empty overrides and a URL equal to the server's own are left out.
+ */
 function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<string, WorkspaceMember> {
   const result: Record<string, WorkspaceMember> = {};
   for (const server of servers) {
@@ -118,6 +151,17 @@ interface WorkspaceDialogProps {
   workspace?: WorkspaceStatus;
 }
 
+/**
+ * Dialog that creates a workspace or edits one: its name, description, member servers and their overrides.
+ *
+ * @param props.open - Whether the dialog is shown.
+ * @param props.onOpenChange - Called with false on cancel and after a successful save.
+ * @param [props.workspace] - Present when editing an existing workspace; omitted when creating.
+ * @returns The dialog.
+ *
+ * @remarks
+ * The URL slug follows the name, so renaming a workspace moves its endpoint.
+ */
 export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDialogProps) {
   const isEdit = workspace !== undefined;
   const { data: servers = [] } = useServers();
@@ -359,6 +403,17 @@ interface MemberRowProps {
   overridesSlot: ReactElement;
 }
 
+/**
+ * One installed server in the dialog's list: an include switch and, once included, its override fields.
+ *
+ * @param props.server - The installed server the row is for.
+ * @param props.included - Whether the server is in the workspace.
+ * @param props.open - Whether the override fields are showing.
+ * @param props.onToggle - Called with the new included state.
+ * @param props.onOpenChange - Called with the new open state when Overrides is pressed.
+ * @param props.overridesSlot - The override fields for this server, drawn while it is included and open.
+ * @returns The row.
+ */
 function MemberRow({ server, included, open, onToggle, onOpenChange, overridesSlot }: MemberRowProps) {
   const isStdio = server.config.transport.type === TRANSPORT_STDIO;
   const name = server.config.name;

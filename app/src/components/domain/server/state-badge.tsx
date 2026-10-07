@@ -10,6 +10,13 @@ const STATE_VARIANTS = {
   [ServerRuntimeState.Error]: 'destructive',
 } as const satisfies Record<ServerRuntimeState, BadgeVariant>;
 
+/**
+ * Badge naming a server's runtime state, coloured by it.
+ *
+ * @param props.state - The runtime state; `starting` adds a spinner.
+ * @param [props.lastError] - Shown as a tooltip, in the error state only.
+ * @returns The badge.
+ */
 export function ServerStateBadge({ state, lastError }: { state: ServerRuntimeState; lastError?: string }) {
   const badge = (
     <Badge variant={STATE_VARIANTS[state]}>

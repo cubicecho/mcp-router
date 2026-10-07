@@ -5,7 +5,12 @@ import { SegmentedButton, SegmentedGroup } from '@/components/ui/segmented';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { cn } from '@/lib/utils';
 
-/** Plain-text rendering of a value: strings as-is, everything else pretty JSON. */
+/**
+ * Renders a value as plain text.
+ *
+ * @param value - Anything; a string is returned as-is.
+ * @returns Pretty-printed JSON, or `String(value)` when it cannot be serialized.
+ */
 function toText(value: unknown): string {
   if (typeof value === 'string') {
     return value;
@@ -18,8 +23,10 @@ function toText(value: unknown): string {
 }
 
 /**
- * If a string is itself a JSON object/array (common for MCP text content),
- * return the parsed value so the tree can drill into it; otherwise undefined.
+ * Parses a string that is itself a JSON object or array, as MCP text content often is.
+ *
+ * @param value - The string; surrounding whitespace is ignored.
+ * @returns The parsed object or array for the tree to drill into; undefined for anything else.
  */
 function parseEmbedded(value: string): unknown {
   const trimmed = value.trim();
@@ -34,12 +41,24 @@ function parseEmbedded(value: string): unknown {
   }
 }
 
-/** "3 items" for an array, "1 key" for an object. */
+/**
+ * Words the size of a collapsed container.
+ *
+ * @param count - Number of entries.
+ * @param isArray - True counts items, false counts keys.
+ * @returns e.g. "3 items" for an array, "1 key" for an object.
+ */
 function formatSize(count: number, isArray: boolean): string {
   const noun = isArray ? 'item' : 'key';
   return `${count} ${count === 1 ? noun : `${noun}s`}`;
 }
 
+/**
+ * The quoted property name and colon in front of a value.
+ *
+ * @param [props.name] - Property name; left out for array items and the root.
+ * @returns The label, or null without a name.
+ */
 function Key({ name }: { name?: string }) {
   if (name === undefined) {
     return null;
@@ -52,6 +71,14 @@ function Key({ name }: { name?: string }) {
   );
 }
 
+/**
+ * One line of the tree for a value with no children, coloured by its type.
+ *
+ * @param props.value - A primitive; anything else is drawn through `String()`.
+ * @param [props.name] - Property name; left out for array items and the root.
+ * @param props.comma - Whether a trailing comma follows the value.
+ * @returns The line.
+ */
 function Leaf({ value, name, comma }: { value: unknown; name?: string; comma: boolean }) {
   let body: ReactNode;
   if (value === null) {
@@ -76,6 +103,16 @@ function Leaf({ value, name, comma }: { value: unknown; name?: string; comma: bo
   );
 }
 
+/**
+ * One value of the tree: a leaf line, or a collapsible object or array that recurses into its entries.
+ *
+ * @param props.value - The value; a string holding a JSON object or array is parsed and drawn as a tree.
+ * @param [props.name] - Property name; left out for array items and the root.
+ * @param props.depth - Nesting level, 0 at the root; shallow levels start expanded.
+ * @param props.comma - Whether a trailing comma follows the value.
+ * @param [props.embedded] - True when the value was parsed out of a string, which tags it "json".
+ * @returns The line or the disclosure.
+ */
 function Node({
   value,
   name,
@@ -169,7 +206,12 @@ function Node({
   );
 }
 
-/** Syntax-highlighted, collapsible tree rendering of any JSON value. */
+/**
+ * Syntax-highlighted, collapsible tree rendering of any JSON value.
+ *
+ * @param props.value - The root value.
+ * @returns The tree.
+ */
 function JsonTree({ value }: { value: unknown }) {
   return (
     <div className="font-mono text-xs leading-relaxed">
@@ -182,8 +224,12 @@ const VIEW_TEXT = 'text';
 const VIEW_TREE = 'json';
 
 /**
- * Labeled data panel with a Text / JSON toggle: renders the value as plain
- * pretty-printed text or as a collapsible syntax-highlighted tree.
+ * Labeled data panel that shows a value as pretty-printed text or, on a toggle, as a collapsible tree.
+ *
+ * @param props.value - The data to show.
+ * @param props.label - Caption above the panel; also names the view toggle.
+ * @param [props.isError] - Draws the caption and border in the error colour.
+ * @returns The panel.
  */
 export function DataBlock({ value, label, isError }: { value: unknown; label: string; isError?: boolean }) {
   const [view, setView] = useState<typeof VIEW_TEXT | typeof VIEW_TREE>(VIEW_TEXT);

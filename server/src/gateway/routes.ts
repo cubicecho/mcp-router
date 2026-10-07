@@ -18,17 +18,22 @@ import { enabledMembers } from './members.ts';
 import { pushNotification } from './notifications.ts';
 import { SessionRegistry } from './session-registry.ts';
 
+/** What the /mcp endpoints are built over. */
 export interface McpRouterDeps {
   store: ConfigStore;
   manager: GatewayManager;
 }
 
 /**
- * Streamable-HTTP MCP endpoints in stateful mode: the initialize request mints
- * a session (its own proxy Server + transport), kept by the session registry and reused across
- * the session's subsequent POST/GET(SSE)/DELETE requests. A long-lived session
- * is what lets downstream notifications (list_changed, resources/updated, log
- * messages) reach the client over its GET SSE stream.
+ * Builds the streamable-HTTP MCP endpoints, in stateful mode: `/`, `/w/:slug` and `/:name`.
+ *
+ * @param deps - The store that says what exists and is enabled, and the manager that reaches it.
+ * @returns The router, with paths relative to /mcp and a session registry of its own.
+ *
+ * @remarks
+ * The initialize request mints a session (its own proxy Server + transport), reused across the session's later
+ * POST/GET(SSE)/DELETE requests. A long-lived session is what lets downstream notifications (list_changed,
+ * resources/updated, log messages) reach the client over its GET SSE stream.
  */
 export function createMcpRouter(deps: McpRouterDeps): Router {
   const { store, manager } = deps;
@@ -40,20 +45,28 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
   const everyServer = globalScope(manager);
 
   /**
-   * What a 1:1 session re-emits from the downstream's own handshake, connecting first to get it.
+   * Reads what a 1:1 session re-emits from the downstream's own handshake, connecting first to get it.
    *
-   * This endpoint is a client that asked for exactly this server, so the spawn it costs is one
-   * the session was going to pay anyway. A downstream that will not connect still gets its
-   * session, and falls back to advertising everything the proxy can relay: the failure belongs
-   * on the first request that needs the server, where it carries its own status and the child's
-   * stderr, not on initialize.
+   * @param name - The server to connect.
+   * @returns The handshake; empty, never a rejection, when the server will not connect.
+   *
+   * @remarks
+   * The client asked for exactly this server, so the spawn is one the session was going to pay anyway. A downstream
+   * that will not connect still gets its session: the failure belongs on the first request that needs the server,
+   * where it carries its own status and the child's stderr, not on initialize.
    */
   const connectedHandshake = async (name: string): Promise<Handshake> => {
     await manager.getClient(name).catch(() => {});
     return manager.handshake(name);
   };
 
-  /** Start an aggregate session over everything the scope exposes. */
+  /**
+   * Start an aggregate session over everything the scope exposes.
+   *
+   * @param req - The initialize request; anything else is answered 400.
+   * @param res - The response the session answers on.
+   * @param scope - The servers the session merges, and the instance each reaches.
+   */
   const startAggregate = (req: Request, res: Response, scope: EndpointScope): Promise<void> =>
     start(
       req,

@@ -15,6 +15,7 @@ export interface RouterSettings {
   connectTimeoutMs: number;
 }
 
+/** The values `settings.json` falls back to, frozen. */
 export const SETTINGS_DEFAULTS: Readonly<RouterSettings> = Object.freeze({
   port: 3000,
   idleTimeoutMs: 300_000,
@@ -31,6 +32,7 @@ export interface NameSettings {
   workspaceNameMaxLength: number;
 }
 
+/** The length limits on names in config files, frozen. */
 export const NAME_DEFAULTS: Readonly<NameSettings> = Object.freeze({
   serverNameMaxLength: 64,
   workspaceNameMaxLength: 100,

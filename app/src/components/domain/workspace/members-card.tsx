@@ -9,7 +9,12 @@ import { Switch } from '@/components/ui/switch';
 import { useServers, useUpdateWorkspace } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
-/** Which overrides a member carries, for the "overrides" hint badges. */
+/**
+ * Names the overrides a member carries, for the hint badges.
+ *
+ * @param member - The workspace member.
+ * @returns Any of "env", "args", "headers" and "url", in that order; an empty override does not count.
+ */
 function overrideLabels(member: WorkspaceMember): string[] {
   const labels: string[] = [];
   if (member.env && Object.keys(member.env).length > 0) {
@@ -27,6 +32,12 @@ function overrideLabels(member: WorkspaceMember): string[] {
   return labels;
 }
 
+/**
+ * Card listing a workspace's member servers, each with a switch that enables it in the workspace.
+ *
+ * @param props.workspace - The workspace; a member whose server is no longer installed is flagged.
+ * @returns The card.
+ */
 export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
   const { data: servers } = useServers();
   const update = useUpdateWorkspace();

@@ -2,13 +2,13 @@ import { readFileSync } from 'node:fs';
 import { isRecord } from './is-record.ts';
 
 /**
- * Version reported in RouterStatus and MCP server info.
+ * Reads the released version from the root package.json.
  *
- * Read from the root package.json at load time so it tracks the released
- * version — semantic-release bumps that file (via `@semantic-release/npm`) at
- * release time, and the Dockerfile copies it into the runtime image. The path
- * is three levels up from this module in both dev (`server/src/core/version.ts`) and
- * prod (`server/dist/core/version.js`), so it resolves to the repo/app root in both.
+ * @returns The version, or `0.0.0` when the file is missing, unreadable or has none.
+ *
+ * @remarks
+ * semantic-release bumps that file at release time and the Dockerfile copies it into the runtime image. The path is
+ * three levels up from this module in both dev (`server/src/core/version.ts`) and prod (`server/dist/core/version.js`).
  */
 function readVersion(): string {
   try {
@@ -20,4 +20,5 @@ function readVersion(): string {
   }
 }
 
+/** Version reported in RouterStatus and MCP server info, read once at load. */
 export const SERVER_VERSION = readVersion();

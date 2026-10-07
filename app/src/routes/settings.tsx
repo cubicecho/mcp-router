@@ -16,6 +16,7 @@ import { formatUptime } from '@/lib/format';
 import { useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
+/** The `/settings` route. */
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
@@ -26,7 +27,12 @@ const CONFIG_TREE = `config/
 └── servers/
     └── <name>.json      # one file per installed server`;
 
-/** Inline editor for the default idle timeout, entered in minutes. */
+/**
+ * Inline editor for the default idle timeout, entered in minutes.
+ *
+ * @param props.currentMs - The stored timeout, in ms.
+ * @returns The form; Save is enabled only for a positive number that differs from the stored timeout.
+ */
 function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
   const update = useUpdateSettings();
   const form = useAppForm({
@@ -78,6 +84,11 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
   );
 }
 
+/**
+ * The Settings page: router status, the idle timeout and the config-file layout with a reload button.
+ *
+ * @returns The page.
+ */
 function SettingsPage() {
   const status = useRouterStatus();
   const { data } = status;

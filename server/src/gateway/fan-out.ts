@@ -6,24 +6,28 @@ import { emptyOnMissing } from './capability.ts';
 import type { WithClient } from './downstream.ts';
 import { recordedCall } from './recorded-call.ts';
 
+/** What a fan-out needs: a way to reach each server, and its activity log. */
 export interface FanOutDeps {
   withClient: WithClient;
+  /** Writes an entry to the named server's activity log. */
   recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
 /**
- * Fan a listing out over several downstream servers and concatenate what they
- * return. One server must not be able to fail the whole list: a server that
- * lacks the capability contributes nothing silently, and any other failure is
- * skipped but recorded to that server's activity log — that failure is exactly
- * the "why doesn't my server show up here?" case the Activity view is for.
+ * Fan a listing out over several downstream servers and concatenate what they return.
  *
- * Routine successes are deliberately NOT recorded: list ops arrive on every
- * client (re)connect and every list_changed, and would evict the targeted calls
- * from the bounded per-server log.
+ * @typeParam T - The listed item.
+ * @param names - The servers to ask, all at once; the result keeps this order.
+ * @param method - The MCP method, as recorded in the activity log.
+ * @param deps - Reaches each server and records its failures.
+ * @param fn - Lists one server's items.
+ * @param [describe] - Names a skipped server in the warning line.
+ * @returns Every server's items. Never rejects for one server: a failing one contributes nothing.
  *
- * `describe` names the skipped server in the warning line, since the same
- * fan-out serves both the global aggregate and a workspace's members.
+ * @remarks
+ * A server that lacks the capability is skipped silently; any other failure is logged and recorded to that server's
+ * activity log. Successes are not recorded: list ops arrive on every client (re)connect and every list_changed, and
+ * would evict the targeted calls from the bounded log.
  */
 export async function collectFrom<T>(
   names: readonly string[],

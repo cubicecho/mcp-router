@@ -7,19 +7,26 @@ import type { GatewayManager } from '../gateway/manager.ts';
 import { McpMethod } from '../gateway/mcp-method.ts';
 import { recordedCall } from '../gateway/recorded-call.ts';
 
+/** What one UI call is recorded as, and how its failure is worded. */
 export interface UiCallContext {
+  /** The MCP method, e.g. `tools/call`. */
   method: string;
+  /** The tool name, prompt name or resource URI as the downstream server knows it. */
   target: string;
+  /** The request body, recorded as the call's params. */
   params: unknown;
+  /** The message of the 502 raised when the downstream call throws. */
   failLabel: string;
 }
 
 /**
- * Run one downstream call invoked from the UI (tool call, resource read, prompt
- * get) and record it to the activity log under via 'ui', exactly like proxied
- * calls. A thrown downstream error becomes a 502; a server that could not be
- * reached at all keeps the status the manager gave it, and is recorded too. A
- * workspace member's key records under its own instance.
+ * Run one downstream call invoked from the UI and record it to the activity log under via 'ui'.
+ *
+ * @param manager - Reaches the instance and holds its activity log.
+ * @param key - The instance to call; a workspace member's key records under its own instance.
+ * @param ctx - What to record, and the label for a failure.
+ * @param run - The call to make against the connected client.
+ * @returns What `run` resolved to. Throws a 502 when it throws; an HttpError from the manager is rethrown as is.
  */
 async function runUiCall(
   manager: GatewayManager,
@@ -46,7 +53,9 @@ async function runUiCall(
 
 /** Where one UI call lands: the instance to reach, and the name or URI as that server knows it. */
 export interface UiCallTarget {
+  /** The instance the call is made against. */
   key: InstanceKey;
+  /** The name or URI with any `<server>__` prefix removed. */
   target: string;
 }
 
@@ -55,16 +64,19 @@ export interface UiCallTarget {
  *
  * @param kind - What is being asked for ("tool", "resource", "prompt"), for the error message.
  * @param requested - The name or URI exactly as the caller sent it.
+ * @returns The instance and the downstream name; the locator throws when it cannot place the request.
  */
 export type LocateUiCall = (kind: string, requested: string) => UiCallTarget;
 
 /**
- * Register the three test-call routes the UI uses — `/:id/tools/call`,
- * `/:id/resources/read` (a static resource's URI, or one the caller expanded
- * from a template) and `/:id/prompts/get`. Each is recorded like a proxied
- * call, under via 'ui'.
+ * Register the three test-call routes the UI uses: `/:id/tools/call`, `/:id/resources/read` and `/:id/prompts/get`.
  *
+ * @param router - The router the POST routes are added to.
+ * @param manager - Makes the calls and records them, under via 'ui'.
  * @param scopeOf - Given the route's `:id`, rejects an unknown one and returns how its calls are located.
+ *
+ * @remarks
+ * A resource read takes a static resource's URI, or one the caller expanded from a template.
  */
 export function registerUiCallRoutes(router: Router, manager: GatewayManager, scopeOf: (id: string) => LocateUiCall) {
   const register = <B>(

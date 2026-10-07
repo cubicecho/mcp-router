@@ -9,12 +9,30 @@ import { Button } from '@/components/ui/button';
 import { Download } from '@/components/ui/icons';
 import { useServers } from '@/lib/queries';
 
+/**
+ * Lists the ways a registry entry can be installed.
+ *
+ * @param server - The registry entry.
+ * @returns One "type: identifier" line per package, then one "remote: url" line per remote; empty when it has neither.
+ */
 function summarizeDistribution(server: RegistryServer): string[] {
   const packages = (server.packages ?? []).map((pkg) => `${pkg.registryType}: ${pkg.identifier}`);
   const remotes = (server.remotes ?? []).map((remote) => `remote: ${remote.url}`);
   return [...packages, ...remotes];
 }
 
+/**
+ * Card for one registry search result, with an Install button or a link to the existing install.
+ *
+ * @param props.registry - Name of the registry the entry came from.
+ * @param props.server - The registry entry.
+ * @param [props.onInstalled] - Called with the installed server's local name.
+ * @returns The card.
+ *
+ * @remarks
+ * "Installed" is matched on the registry server name alone, so an install of the same name from another registry
+ * counts too.
+ */
 export function RegistryServerCard({
   registry,
   server,

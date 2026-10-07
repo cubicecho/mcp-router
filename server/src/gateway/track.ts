@@ -7,7 +7,12 @@ import { type RecordedCallContext, recordedCall } from './recorded-call.ts';
 /** Empty completion result used when a downstream server has no completions capability. */
 export const EMPTY_COMPLETION = { completion: { values: [], total: 0, hasMore: false } };
 
-/** Propagate a downstream failure as a proper MCP error. */
+/**
+ * Turns a downstream failure into a proper MCP error.
+ *
+ * @param err - The thrown value.
+ * @returns The value itself when it is already an McpError, else an InternalError carrying its message and detail.
+ */
 function toMcpError(err: unknown): McpError {
   if (err instanceof McpError) {
     return err;
@@ -15,16 +20,24 @@ function toMcpError(err: unknown): McpError {
   return new McpError(ErrorCode.InternalError, errorDetailMessage(err));
 }
 
+/** What a proxy server needs from the manager, by server name as the endpoint exposes it. */
 export interface ProxyDeps {
   withClient: WithClient;
+  /** Notes how many tools the named server last listed. */
   recordToolCount: (name: string, count: number) => void;
+  /** Writes an entry to the named server's activity log. */
   recordActivity: (name: string, entry: ActivityRecord) => void;
 }
 
 /**
- * Run a downstream call, recording its params + result/error and timing to the
- * server's activity log. Records both outcomes, converts a raw downstream
- * failure into a proper MCP error, and always re-raises.
+ * Run a downstream call, recording its params, result or error, and timing to the server's activity log.
+ *
+ * @typeParam T - What the call resolves to.
+ * @param deps - Holds the activity log.
+ * @param name - The server whose log gets the entry.
+ * @param ctx - What the entry says about the call.
+ * @param run - The call.
+ * @returns What `run` resolved to. A failure is recorded, then thrown as an McpError.
  */
 export async function track<T>(
   deps: ProxyDeps,

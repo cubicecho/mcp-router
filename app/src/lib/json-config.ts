@@ -1,10 +1,11 @@
-/** Parse a pasted JSON config into a single stdio server entry. Accepts:
- *  - a bare `{ command, args, env }` object,
- *  - a named entry `{ "my-server": { command, args } }`,
- *  - a `claude_desktop_config.json` wrapper `{ mcpServers: { "my-server": {...} } }`
- *    (or a `servers` wrapper).
- *  When several servers are present, the first is used and `extraCount` reports
- *  how many were skipped. Trailing commas (a common copy-paste artifact) are tolerated. */
+/**
+ * Parses a pasted JSON config into a single stdio server entry.
+ *
+ * @param text - A bare `{ command, args, env }` object, a named entry `{ "my-server": {...} }`, or a
+ * `claude_desktop_config.json`-style `mcpServers` / `servers` wrapper. Trailing commas are tolerated.
+ * @returns The first server found; `name` is undefined for a bare object, and `extraCount` is how many other
+ * entries were skipped. Throws when the text is not JSON, has no entries, or the entry has no `command` string.
+ */
 export function parseJsonConfig(text: string): {
   name?: string;
   command: string;

@@ -1,12 +1,20 @@
 import type { RegistryKeyValueInput, RegistryServer } from '@mcp-router/shared';
 
+/** One way a registry entry can be installed: a package or a remote. */
 export interface PackageOption {
+  /** The package's index as a string, or `remote:<index>` for a remote. */
   selector: string;
   label: string;
+  /** The env vars the package declares; always empty for a remote. */
   envVars: RegistryKeyValueInput[];
 }
 
-/** Everything a registry entry can be installed from: its packages, then its remotes. */
+/**
+ * Lists everything a registry entry can be installed from.
+ *
+ * @param server - The registry entry.
+ * @returns Its packages, then its remotes; empty when it has neither.
+ */
 export function buildOptions(server: RegistryServer): PackageOption[] {
   const packages = (server.packages ?? []).map((pkg, index) => ({
     selector: String(index),
@@ -21,7 +29,13 @@ export function buildOptions(server: RegistryServer): PackageOption[] {
   return [...packages, ...remotes];
 }
 
-/** Default: the first npm package, else the first package, else the first remote ('' when there is nothing). */
+/**
+ * Picks the install option to preselect for a registry entry.
+ *
+ * @param server - The registry entry.
+ * @returns The selector of the first npm package, else the first package, else the first remote; `''` when there is
+ * nothing to install.
+ */
 export function defaultSelector(server: RegistryServer): string {
   const packages = server.packages ?? [];
   const npmIndex = packages.findIndex((pkg) => pkg.registryType === 'npm');
@@ -37,7 +51,12 @@ export function defaultSelector(server: RegistryServer): string {
   return '';
 }
 
-/** One value per declared env var, in declaration order, prefilled from the registry's value or default. */
+/**
+ * Prefills the env-var fields of an install option.
+ *
+ * @param envVars - The env vars the option declares.
+ * @returns One value per env var, in declaration order: the registry's value, else its default, else `''`.
+ */
 export function defaultEnvValues(envVars: RegistryKeyValueInput[]): string[] {
   return envVars.map((envVar) => envVar.value ?? envVar.default ?? '');
 }

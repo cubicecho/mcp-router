@@ -12,6 +12,7 @@ import { TooltipProvider } from '@/components/ui/tooltip';
 import { clearToken, requireAuth, setToken, useNeedsAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
 
+/** The root route: the app frame, or the token screen, around every page. */
 export const Route = createRootRoute({
   component: RootComponent,
 });
@@ -27,6 +28,11 @@ const NAV_ITEMS = [
 const SidebarLink = createLink(SidebarNavItem);
 const BarLink = createLink(BarNavItem);
 
+/**
+ * The root of every screen: the token screen while the router wants a token, else the app frame.
+ *
+ * @returns The screen, with the tooltip provider and the toaster around it.
+ */
 function RootComponent() {
   // Applies the stored theme on every screen and keeps System in step with the device.
   useThemePreference();
@@ -48,6 +54,14 @@ function RootComponent() {
   );
 }
 
+/**
+ * The signed-in app: the layout with its navigation, the running-servers status, the lock button and the page.
+ *
+ * @returns The frame around the matched route.
+ *
+ * @remarks
+ * The lock button is offered only when the router reports auth as enabled.
+ */
 function AppFrame() {
   const pathname = useLocation({ select: (location) => location.pathname });
   const { data } = useRouterStatus();

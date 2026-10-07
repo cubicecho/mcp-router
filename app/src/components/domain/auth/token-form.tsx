@@ -7,7 +7,8 @@ import { KeyRound } from '@/components/ui/icons';
 /**
  * The token-entry screen shown when the router asks for its bearer token.
  *
- * @param onUnlock - Called with the trimmed token when the form is submitted with one.
+ * @param props.onUnlock - Called with the trimmed token when the form is submitted with one.
+ * @returns The screen.
  */
 export function TokenForm({ onUnlock }: { onUnlock: (token: string) => void }) {
   const form = useAppForm({

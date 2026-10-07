@@ -11,16 +11,28 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { useCreateRegistry, useDeleteRegistry, useRegistries } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
+/** The `/registries` route. */
 export const Route = createFileRoute('/registries')({
   component: RegistriesPage,
 });
 
-/** First issue message for one field of the create-registry schema, checked against the trimmed value. */
+/**
+ * Validates one field of the add-registry form against the create-registry schema.
+ *
+ * @param field - Which schema field to check.
+ * @param value - The typed text; checked trimmed.
+ * @returns The first issue's message, or undefined when valid.
+ */
 function registryFieldError(field: 'name' | 'url', value: string): string | undefined {
   const result = createRegistryRequestSchema.shape[field].safeParse(value.trim());
   return result.success ? undefined : result.error.issues[0]?.message;
 }
 
+/**
+ * Card with the name and URL form that adds a registry.
+ *
+ * @returns The card.
+ */
 function AddRegistryForm() {
   const create = useCreateRegistry();
   const form = useAppForm({
@@ -75,6 +87,11 @@ function AddRegistryForm() {
   );
 }
 
+/**
+ * The Registries page: the configured registries, each deletable, and the add form.
+ *
+ * @returns The page.
+ */
 function RegistriesPage() {
   const registries = useRegistries();
   const { data } = registries;

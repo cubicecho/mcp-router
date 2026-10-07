@@ -19,7 +19,19 @@ interface KeyValueRowsProps {
   hideLegendWhenEmpty?: boolean;
 }
 
-/** Editable list of key/value pairs (env vars, headers), held by the caller — typically one form field. */
+/**
+ * Editable list of key/value pairs (env vars, headers), held by the caller — typically one form field.
+ *
+ * @param props.legend - Label above the rows.
+ * @param props.value - The rows, in display order.
+ * @param props.onValueChange - Called with a new array on every edit, add and remove.
+ * @param [props.keyPlaceholder] - Placeholder of each key input.
+ * @param props.keyLabel - Accessible name of each key input.
+ * @param props.unnamed - What an unnamed row is called in its value/remove labels, e.g. "new variable".
+ * @param props.addLabel - Text of the add-row button.
+ * @param [props.hideLegendWhenEmpty] - Hides the legend while there are no rows.
+ * @returns The rows and the add button.
+ */
 export function KeyValueRows({
   legend,
   value,

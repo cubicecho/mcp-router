@@ -4,14 +4,20 @@ import type { RequestHandler } from 'express';
 import { authDisabledByEnv, envToken } from '../config/env.ts';
 import { forbidden, sendError, unauthenticated } from '../core/errors.ts';
 
+/** The auth in force for a request. */
 export interface AuthConfig {
+  /** False lets every request through. */
   enabled: boolean;
+  /** The bearer token to match; null means none is configured, so every request is refused while enabled. */
   token: string | null;
 }
 
 /**
- * The auth actually in force: settings.json, as overridden by the environment.
- * `SECURE_LOCAL_NET` turns it off, and `MCP_ROUTER_TOKEN` replaces the stored token.
+ * Resolves the auth actually in force: settings.json, as overridden by the environment.
+ *
+ * @param settings - The stored auth settings.
+ * @param [env] - Read for `SECURE_LOCAL_NET`, which turns auth off, and `MCP_ROUTER_TOKEN`, which replaces the token.
+ * @returns Whether auth is on, and the token to match.
  */
 export function effectiveAuth(
   settings: Pick<SettingsFile, 'authEnabled' | 'authToken'>,
@@ -23,14 +29,25 @@ export function effectiveAuth(
   };
 }
 
-/** Constant-time comparison that does not leak token length (compares sha256 digests). */
+/**
+ * Compares two tokens in constant time, without leaking their length (it compares sha256 digests).
+ *
+ * @param a - One token.
+ * @param b - The other token.
+ * @returns True when the tokens are identical.
+ */
 export function tokensEqual(a: string, b: string): boolean {
   const digestA = createHash('sha256').update(a).digest();
   const digestB = createHash('sha256').update(b).digest();
   return timingSafeEqual(digestA, digestB);
 }
 
-/** True for loopback origins (localhost / 127.0.0.1 / ::1, any port), which a remote attacker cannot forge. */
+/**
+ * Tells whether an origin is a loopback one, which a remote attacker cannot forge.
+ *
+ * @param origin - An `Origin` header value.
+ * @returns True for localhost, 127.0.0.1 or ::1 on any port; false for anything else, an unparsable value included.
+ */
 export function isLoopbackOrigin(origin: string): boolean {
   try {
     const { hostname } = new URL(origin);
@@ -41,10 +58,14 @@ export function isLoopbackOrigin(origin: string): boolean {
 }
 
 /**
- * DNS-rebinding guard for /mcp: browsers attach an `Origin` header a page cannot
- * spoof, so a rebound request from a malicious site carries that site's origin.
- * Native MCP clients send no Origin at all. Allow no-Origin and loopback requests
- * plus any operator-configured origin; reject the rest with 403.
+ * Builds the DNS-rebinding guard for /mcp, which rejects a disallowed `Origin` with 403.
+ *
+ * @param getAllowedOrigins - The operator-configured origins, read on every request.
+ * @returns Middleware that passes requests with no Origin, a loopback one or an allowed one.
+ *
+ * @remarks
+ * Browsers attach an `Origin` header a page cannot spoof, so a rebound request from a malicious site carries that
+ * site's origin. Native MCP clients send no Origin at all.
  */
 export function createOriginMiddleware(getAllowedOrigins: () => string[]): RequestHandler {
   return (req, res, next) => {
@@ -59,8 +80,11 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
 }
 
 /**
- * Bearer-token middleware for /api and /mcp. Skipped entirely when auth is
- * disabled; otherwise rejects with a 401 JSON envelope.
+ * Builds the bearer-token middleware for /api and /mcp.
+ *
+ * @param getAuth - The auth in force, read on every request.
+ * @returns Middleware that passes everything when auth is disabled, and otherwise answers a missing or wrong token
+ * with a 401 JSON envelope.
  */
 export function createAuthMiddleware(getAuth: () => AuthConfig): RequestHandler {
   return (req, res, next) => {

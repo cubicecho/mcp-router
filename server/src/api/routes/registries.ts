@@ -3,7 +3,13 @@ import { Router } from 'express';
 import { notFound } from '../../core/errors.ts';
 import type { ApiDeps } from '../deps.ts';
 
-/** Registry management and browsing, mounted at /api/registries. */
+/**
+ * Builds the registry management and browsing routes, mounted at /api/registries.
+ *
+ * @param deps.store - Holds the configured registries.
+ * @param deps.registryClient - Fetches a registry's server listings and entries.
+ * @returns The router, with paths relative to /api/registries.
+ */
 export function createRegistryRoutes({ store, registryClient }: ApiDeps): Router {
   const router = Router();
 

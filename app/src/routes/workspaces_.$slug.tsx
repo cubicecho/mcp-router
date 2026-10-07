@@ -21,10 +21,16 @@ import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
+/** The `/workspaces/$slug` route. */
 export const Route = createFileRoute('/workspaces_/$slug')({
   component: WorkspaceDetailPage,
 });
 
+/**
+ * The page of one workspace: overview and actions, its member servers, and the capability tabs.
+ *
+ * @returns The page.
+ */
 function WorkspaceDetailPage() {
   const { slug } = Route.useParams();
   const navigate = useNavigate();

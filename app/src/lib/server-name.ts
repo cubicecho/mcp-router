@@ -1,10 +1,13 @@
 import { serverNameSchema } from '@mcp-router/shared';
 
 /**
- * Why a value cannot be a server name, or undefined when it can.
+ * Says why a value cannot be a server name.
  *
- * @param allowEmpty - Treat an empty value as "nothing typed yet" rather than an error, for a field
- *   whose form blocks submitting some other way.
+ * @param value - The name as typed.
+ * @param [options] - How to treat special values.
+ * @param [options.allowEmpty] - Treat an empty value as "nothing typed yet" rather than an error, for a field whose
+ * form blocks submitting some other way.
+ * @returns The first validation message, or undefined when the name is valid.
  */
 export function serverNameError(value: string, { allowEmpty = false } = {}): string | undefined {
   if (allowEmpty && !value) {

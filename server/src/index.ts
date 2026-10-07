@@ -14,6 +14,7 @@ import { createApp } from './http/app.ts';
 import { stopOnSignals } from './http/shutdown.ts';
 import { tuneInbound } from './http/tuning.ts';
 
+/** Loads the config, starts the gateway and the HTTP server, and arranges a graceful stop on SIGTERM or SIGINT. */
 async function main(): Promise<void> {
   refusePlaceholderToken();
   const dataDir = envDataDir();

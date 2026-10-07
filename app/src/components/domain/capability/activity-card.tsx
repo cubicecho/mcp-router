@@ -19,6 +19,12 @@ import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { DataBlock } from './json-view.tsx';
 
+/**
+ * Collapsible row for one recorded MCP call.
+ *
+ * @param props.entry - The call; its params, result and error are what the row expands to.
+ * @returns The row.
+ */
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const [open, setOpen] = useState(false);
   const hasDetail = entry.params !== undefined || entry.result !== undefined || entry.error !== undefined;
@@ -52,6 +58,12 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   );
 }
 
+/**
+ * Card listing the recent MCP calls of a server or workspace, filterable by outcome and method.
+ *
+ * @param props.scope - The server or workspace whose activity log is shown and cleared.
+ * @returns The card.
+ */
 export function ActivityCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch, isRefetching } = useCapabilityActivity(scope);
   const clear = useClearActivity(scope);

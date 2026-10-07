@@ -35,7 +35,12 @@ import type { ApiRoutes } from './mock-api.ts';
 // Every fixture is read through the shared schema for its shape, so a story's server
 // cannot answer with something the real one would not.
 
-/** A running stdio server installed from npm. Pass any part of the status to change it. */
+/**
+ * Builds a running stdio server installed from npm.
+ *
+ * @param [overrides] - Any part of the status to replace; `name` sets the config's name.
+ * @returns The status, parsed through the shared schema.
+ */
 export function stdioServer(overrides: Partial<ServerStatus> & { name?: string } = {}): ServerStatus {
   const { name = 'filesystem', ...status } = overrides;
   return serverStatusSchema.parse({
@@ -57,7 +62,12 @@ export function stdioServer(overrides: Partial<ServerStatus> & { name?: string }
   });
 }
 
-/** A stopped remote server reached over streamable HTTP. */
+/**
+ * Builds a stopped remote server reached over streamable HTTP.
+ *
+ * @param [overrides] - Any part of the status to replace; `name` sets the config's name.
+ * @returns The status, parsed through the shared schema.
+ */
 export function remoteServer(overrides: Partial<ServerStatus> & { name?: string } = {}): ServerStatus {
   const { name = 'docs', ...status } = overrides;
   return serverStatusSchema.parse({
@@ -74,7 +84,12 @@ export function remoteServer(overrides: Partial<ServerStatus> & { name?: string 
   });
 }
 
-/** The router's own status, with auth off. */
+/**
+ * Builds the router's own status, with auth off.
+ *
+ * @param [overrides] - Any part of the status to replace; the result must still pass the shared schema.
+ * @returns The status of a router with two servers, one running.
+ */
 export function routerStatus(overrides: Partial<RouterStatus> = {}): RouterStatus {
   return routerStatusSchema.parse({
     version: '2.7.1',
@@ -87,7 +102,12 @@ export function routerStatus(overrides: Partial<RouterStatus> = {}): RouterStatu
   });
 }
 
-/** A workspace of the two fixture servers, the second switched off. */
+/**
+ * Builds a workspace of the two fixture servers, the second switched off.
+ *
+ * @param [overrides] - Any part of the workspace to replace; the result must still pass the shared schema.
+ * @returns The `research` workspace.
+ */
 export function workspace(overrides: Partial<WorkspaceStatus> = {}): WorkspaceStatus {
   return workspaceStatusSchema.parse({
     name: 'Research',
@@ -100,7 +120,12 @@ export function workspace(overrides: Partial<WorkspaceStatus> = {}): WorkspaceSt
   });
 }
 
-/** The official registry. */
+/**
+ * Builds the official registry.
+ *
+ * @param [overrides] - Any part of the registry to replace; the result must still pass the shared schema.
+ * @returns The registry.
+ */
 export function registry(overrides: Partial<Registry> = {}): Registry {
   return registrySchema.parse({
     name: 'official',
@@ -109,7 +134,11 @@ export function registry(overrides: Partial<Registry> = {}): Registry {
   });
 }
 
-/** One page of a registry search: an npm package with an env var to fill in, and a remote. */
+/**
+ * Builds one page of a registry search.
+ *
+ * @returns Two entries, an npm package with an env var to fill in and a remote, and no next cursor.
+ */
 export function registryPage(): RegistryListResponse {
   return registryListResponseSchema.parse({
     servers: [
@@ -147,7 +176,12 @@ export function registryPage(): RegistryListResponse {
   });
 }
 
-/** One recorded call. Pass any part of the entry to change it. */
+/**
+ * Builds one recorded call.
+ *
+ * @param [overrides] - Any part of the entry to replace; the result must still pass the shared schema.
+ * @returns A successful direct `tools/call` of `read_file`.
+ */
 export function activityEntry(overrides: Partial<ActivityEntry> = {}): ActivityEntry {
   return activityEntrySchema.parse({
     id: 1,
@@ -195,8 +229,12 @@ export const capabilities = {
 };
 
 /**
- * The routes of a router with the two fixture servers, one workspace and one registry: enough
- * for any page to load. Spread it into a story's `parameters.api` and override what the story is about.
+ * Builds the routes of a router with the two fixture servers, one workspace and one registry.
+ *
+ * @returns A fresh route map, enough for any page to load.
+ *
+ * @remarks
+ * Spread it into a story's `parameters.api` and override what the story is about.
  */
 export function appRoutes(): ApiRoutes {
   const servers = [stdioServer(), remoteServer()];
@@ -220,12 +258,22 @@ export function appRoutes(): ApiRoutes {
   return routes;
 }
 
-/** The answer to a tools listing: `read_file`, which takes a path, and `list_files`, which takes nothing. */
+/**
+ * Builds the answer to a tools listing.
+ *
+ * @param [overrides] - Any part of the listing to replace; the result must still pass the shared schema.
+ * @returns `read_file`, which takes a path, and `list_files`, which takes nothing.
+ */
 export function toolsResponse(overrides: Partial<ServerToolsResponse> = {}): ServerToolsResponse {
   return serverToolsResponseSchema.parse({ ...capabilities.tools, ...overrides });
 }
 
-/** The answer to a resources listing: one text file and one template with a placeholder to fill in. */
+/**
+ * Builds the answer to a resources listing.
+ *
+ * @param [overrides] - Any part of the listing to replace; the result must still pass the shared schema.
+ * @returns One text file and one template with a placeholder to fill in.
+ */
 export function resourcesResponse(overrides: Partial<ServerResourcesResponse> = {}): ServerResourcesResponse {
   return serverResourcesResponseSchema.parse({
     ...capabilities.resources,
@@ -234,17 +282,32 @@ export function resourcesResponse(overrides: Partial<ServerResourcesResponse> = 
   });
 }
 
-/** The answer to a prompts listing: `summarise`, which requires a path. */
+/**
+ * Builds the answer to a prompts listing.
+ *
+ * @param [overrides] - Any part of the listing to replace; the result must still pass the shared schema.
+ * @returns `summarise`, which requires a path.
+ */
 export function promptsResponse(overrides: Partial<ServerPromptsResponse> = {}): ServerPromptsResponse {
   return serverPromptsResponseSchema.parse({ ...capabilities.prompts, ...overrides });
 }
 
-/** What a tool call returned: one line of text. Pass `isError` for a tool that reported a failure. */
+/**
+ * Builds what a tool call returned.
+ *
+ * @param [overrides] - Any part of the result to replace; pass `isError` for a tool that reported a failure.
+ * @returns One line of text.
+ */
 export function toolCallResult(overrides: Partial<ToolCallResponse> = {}): ToolCallResponse {
   return toolCallResponseSchema.parse({ content: [{ type: 'text', text: 'hello from notes.txt' }], ...overrides });
 }
 
-/** What reading a resource returned: the text of the fixture file. */
+/**
+ * Builds what reading a resource returned.
+ *
+ * @param [overrides] - Any part of the result to replace; the result must still pass the shared schema.
+ * @returns The text of the fixture file.
+ */
 export function resourceReadResult(overrides: Partial<ResourceReadResponse> = {}): ResourceReadResponse {
   return resourceReadResponseSchema.parse({
     contents: [{ uri: 'file:///tmp/notes.txt', mimeType: 'text/plain', text: 'hello from notes.txt' }],
@@ -252,7 +315,12 @@ export function resourceReadResult(overrides: Partial<ResourceReadResponse> = {}
   });
 }
 
-/** What getting a prompt returned: one user message. */
+/**
+ * Builds what getting a prompt returned.
+ *
+ * @param [overrides] - Any part of the result to replace; the result must still pass the shared schema.
+ * @returns One user message.
+ */
 export function promptGetResult(overrides: Partial<PromptGetResponse> = {}): PromptGetResponse {
   return promptGetResponseSchema.parse({
     description: 'Summarise a file.',
@@ -261,22 +329,41 @@ export function promptGetResult(overrides: Partial<PromptGetResponse> = {}): Pro
   });
 }
 
-/** What `PATCH /api/settings` answers once the idle timeout is saved. */
+/**
+ * Builds what `PATCH /api/settings` answers once the idle timeout is saved.
+ *
+ * @param [overrides] - Any part of the answer to replace; the result must still pass the shared schema.
+ * @returns The saved settings.
+ */
 export function settingsResult(overrides: Partial<UpdateSettingsResponse> = {}): UpdateSettingsResponse {
   return updateSettingsResponseSchema.parse({ idleTimeoutMs: 300_000, ...overrides });
 }
 
-/** What `POST /api/reload` answers: the config was re-read and the two fixture servers reconciled. */
+/**
+ * Builds what `POST /api/reload` answers.
+ *
+ * @param [overrides] - Any part of the answer to replace; the result must still pass the shared schema.
+ * @returns A successful reload that left the two fixture servers.
+ */
 export function reloadResult(overrides: Partial<ReloadResponse> = {}): ReloadResponse {
   return reloadResponseSchema.parse({ reloaded: true, serverCount: 2, ...overrides });
 }
 
-/** A registry search that matched nothing. */
+/**
+ * Builds a registry search that matched nothing.
+ *
+ * @returns A page with no entries and no next cursor.
+ */
 export function emptyRegistryPage(): RegistryListResponse {
   return registryListResponseSchema.parse({ servers: [], metadata: { count: 0 } });
 }
 
-/** One registry entry: the npm package of `registryPage`, with an env var to fill in. Pass any part to change it. */
+/**
+ * Builds one registry entry.
+ *
+ * @param [overrides] - Any part of the entry to replace; the result must still pass the shared schema.
+ * @returns The npm package of `registryPage`, with an env var to fill in.
+ */
 export function registryServer(overrides: Partial<RegistryServer> = {}): RegistryServer {
   return registryServerSchema.parse({
     name: 'io.github.example/weather',

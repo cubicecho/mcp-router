@@ -9,7 +9,12 @@ import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCap
 
 type ToolArguments = Record<string, unknown>;
 
-/** The typed text as an arguments object, or why it is not one. */
+/**
+ * Parses typed text as a tool's arguments object.
+ *
+ * @param text - JSON text; blank counts as `{}`.
+ * @returns `args` when the text is a JSON object, else `error` saying why it is not one.
+ */
 function parseArguments(text: string): { args: ToolArguments } | { error: string } {
   let parsed: unknown;
   try {
@@ -23,6 +28,13 @@ function parseArguments(text: string): { args: ToolArguments } | { error: string
   return { args: parsed as ToolArguments };
 }
 
+/**
+ * JSON arguments editor and Run button for one tool.
+ *
+ * @param props.tool - The tool; its input schema seeds the editor.
+ * @param props.onRun - Called with the parsed arguments; never called when the text is not a JSON object.
+ * @returns The form.
+ */
 function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArguments) => Promise<void> }) {
   const form = useAppForm({
     defaultValues: { argsText: argsTemplate(tool.inputSchema) },
@@ -66,6 +78,13 @@ function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArg
   );
 }
 
+/**
+ * Collapsible row for one tool, with its arguments form and the last call's result.
+ *
+ * @param props.scope - The server or workspace the tool is called through.
+ * @param props.tool - The tool to show and call.
+ * @returns The row.
+ */
 function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) {
   const call = useCallTool(scope);
   const { result, run } = useCapabilityRun(call);
@@ -96,6 +115,12 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
   );
 }
 
+/**
+ * Card listing the tools of a server or workspace.
+ *
+ * @param props.scope - The server or workspace whose tools are listed.
+ * @returns The card.
+ */
 export function ToolsCard({ scope }: { scope: CapabilityScope }) {
   const query = useCapabilityTools(scope);
   const { data } = query;

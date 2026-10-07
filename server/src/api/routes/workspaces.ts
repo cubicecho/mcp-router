@@ -23,7 +23,13 @@ import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../.
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
-/** Workspace CRUD plus the aggregate's capability listings and test calls, mounted at /api/workspaces. */
+/**
+ * Builds workspace CRUD plus the aggregate's capability listings and test calls, mounted at /api/workspaces.
+ *
+ * @param deps.store - Holds the workspace and server configs.
+ * @param deps.manager - Reaches each member's workspace-scoped instance.
+ * @returns The router, with paths relative to /api/workspaces.
+ */
 export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   const router = Router();
 
