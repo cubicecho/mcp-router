@@ -29,7 +29,8 @@ export function effectiveAuth(
 ): AuthConfig {
   return {
     enabled: settings.authEnabled && !authDisabledByEnv(env),
-    token: env.MCP_ROUTER_TOKEN ?? settings.authToken,
+    // `||`, not `??`: compose passes an unset variable through as an empty string.
+    token: env.MCP_ROUTER_TOKEN || settings.authToken,
   };
 }
 
