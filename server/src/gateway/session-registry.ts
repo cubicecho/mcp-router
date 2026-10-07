@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { SettingsFile } from '@mcp-router/shared';
+import { HttpStatus, type SettingsFile } from '@mcp-router/shared';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
@@ -98,7 +98,7 @@ export class SessionRegistry {
     }
     const session = this.sessions.get(id);
     if (!session) {
-      res.status(404).json({ error: `Unknown or expired MCP session "${id}"` });
+      res.status(HttpStatus.NotFound).json({ error: `Unknown or expired MCP session "${id}"` });
       return true;
     }
     session.lastActivity = Date.now();
@@ -131,7 +131,7 @@ export class SessionRegistry {
     wire: WireRelay,
   ): Promise<void> {
     if (isInitializeRequest(req.body) === false) {
-      res.status(400).json({ error: 'Missing or expired mcp-session-id' });
+      res.status(HttpStatus.BadRequest).json({ error: 'Missing or expired mcp-session-id' });
       return;
     }
     this.enforceCap();

@@ -1,3 +1,4 @@
+import { MS_PER_MINUTE } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
@@ -30,10 +31,10 @@ const CONFIG_TREE = `config/
 function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
   const update = useUpdateSettings();
   const form = useAppForm({
-    defaultValues: { minutes: String(currentMs / 60_000) },
+    defaultValues: { minutes: String(currentMs / MS_PER_MINUTE) },
     onSubmit: async ({ value }) => {
       try {
-        await update.mutateAsync({ idleTimeoutMs: Math.round(Number(value.minutes) * 60_000) });
+        await update.mutateAsync({ idleTimeoutMs: Math.round(Number(value.minutes) * MS_PER_MINUTE) });
         toast.success('Idle timeout saved', { description: 'Applies from each server’s next use.' });
       } catch (error) {
         toastApiError(error);
@@ -42,7 +43,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
   });
   const minutes = Number(useStore(form.store, (state) => state.values.minutes));
   const valid = Number.isFinite(minutes) && minutes > 0;
-  const changed = valid && Math.round(minutes * 60_000) !== currentMs;
+  const changed = valid && Math.round(minutes * MS_PER_MINUTE) !== currentMs;
 
   return (
     <form

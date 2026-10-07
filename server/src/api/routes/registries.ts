@@ -1,4 +1,4 @@
-import { createRegistryRequestSchema } from '@mcp-router/shared';
+import { createRegistryRequestSchema, HttpStatus } from '@mcp-router/shared';
 import { Router } from 'express';
 import { HttpError } from '../../errors.ts';
 import type { ApiDeps } from '../deps.ts';
@@ -10,7 +10,7 @@ export function createRegistryRoutes({ store, registryClient }: ApiDeps): Router
   const requireRegistry = (name: string) => {
     const registry = store.getRegistry(name);
     if (!registry) {
-      throw new HttpError(404, `Unknown registry "${name}"`);
+      throw new HttpError(HttpStatus.NotFound, `Unknown registry "${name}"`);
     }
     return registry;
   };
@@ -22,12 +22,12 @@ export function createRegistryRoutes({ store, registryClient }: ApiDeps): Router
   router.post('/', async (req, res) => {
     const registry = createRegistryRequestSchema.parse(req.body);
     await store.addRegistry(registry);
-    res.status(201).json(registry);
+    res.status(HttpStatus.Created).json(registry);
   });
 
   router.delete('/:name', async (req, res) => {
     await store.removeRegistry(req.params.name);
-    res.status(204).end();
+    res.status(HttpStatus.NoContent).end();
   });
 
   router.get('/:name/servers', async (req, res) => {

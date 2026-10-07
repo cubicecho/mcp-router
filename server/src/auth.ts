@@ -1,5 +1,5 @@
 import { createHash, timingSafeEqual } from 'node:crypto';
-import type { SettingsFile } from '@mcp-router/shared';
+import { HttpStatus, type SettingsFile } from '@mcp-router/shared';
 import type { RequestHandler } from 'express';
 
 export interface AuthConfig {
@@ -65,7 +65,7 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
       next();
       return;
     }
-    res.status(403).json({ error: `Origin "${origin}" is not allowed` });
+    res.status(HttpStatus.Forbidden).json({ error: `Origin "${origin}" is not allowed` });
   };
 }
 
@@ -81,13 +81,13 @@ export function createAuthMiddleware(getAuth: () => AuthConfig): RequestHandler 
       return;
     }
     if (!token) {
-      res.status(401).json({ error: 'Auth is enabled but no token is configured' });
+      res.status(HttpStatus.Unauthorized).json({ error: 'Auth is enabled but no token is configured' });
       return;
     }
     const header = req.headers.authorization;
     const provided = header?.match(/^Bearer\s+(.+)$/i)?.[1];
     if (!provided || !tokensEqual(provided, token)) {
-      res.status(401).json({ error: 'Unauthorized' });
+      res.status(HttpStatus.Unauthorized).json({ error: 'Unauthorized' });
       return;
     }
     next();

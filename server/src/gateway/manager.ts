@@ -10,6 +10,7 @@ import {
 } from '@cubicecho/agent-mcp-pool';
 import {
   type ActivityEntry,
+  HttpStatus,
   type ServerConfig,
   ServerRuntimeState,
   type ServerStatus,
@@ -349,13 +350,18 @@ export class GatewayManager {
     const name = this.meta.get(key)?.config.name ?? key;
     switch (cause.code) {
       case 'unknown-server':
-        throw new HttpError(404, `Unknown server "${name}"`, undefined, { cause });
+        throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`, undefined, { cause });
       case 'disabled':
-        throw new HttpError(404, `Server "${name}" is disabled`, undefined, { cause });
+        throw new HttpError(HttpStatus.NotFound, `Server "${name}" is disabled`, undefined, { cause });
       case 'backoff':
-        throw new HttpError(503, `Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
+        throw new HttpError(
+          HttpStatus.ServiceUnavailable,
+          `Server "${name}" crashed recently; retrying is backed off`,
+          cause.detail,
+          { cause },
+        );
       default:
-        throw new HttpError(502, `Failed to connect to server "${name}"`, cause.detail, { cause });
+        throw new HttpError(HttpStatus.BadGateway, `Failed to connect to server "${name}"`, cause.detail, { cause });
     }
   }
 

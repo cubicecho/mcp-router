@@ -1,6 +1,12 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
-import type { ServerConfig, ServerStatus } from '@mcp-router/shared';
-import { activityResponseSchema, installRequestSchema, updateServerRequestSchema } from '@mcp-router/shared';
+import {
+  activityResponseSchema,
+  HttpStatus,
+  installRequestSchema,
+  type ServerConfig,
+  type ServerStatus,
+  updateServerRequestSchema,
+} from '@mcp-router/shared';
 import { Router } from 'express';
 import { errorMessage, HttpError } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
@@ -22,7 +28,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   const requireServer = (name: string): ServerConfig => {
     const config = store.getServer(name);
     if (!config) {
-      throw new HttpError(404, `Unknown server "${name}"`);
+      throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`);
     }
     return config;
   };
@@ -30,7 +36,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   const requireStatus = (name: string): ServerStatus => {
     const status = manager.status(requireServer(name).name);
     if (!status) {
-      throw new HttpError(404, `Unknown server "${name}"`);
+      throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`);
     }
     return status;
   };
@@ -43,12 +49,12 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     const request = installRequestSchema.parse(req.body);
     const name = resolveServerName(request);
     if (store.getServer(name)) {
-      throw new HttpError(409, `Server "${name}" already exists`);
+      throw new HttpError(HttpStatus.Conflict, `Server "${name}" already exists`);
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
     await applyConfig({ store, manager });
-    res.status(201).json(requireStatus(config.name));
+    res.status(HttpStatus.Created).json(requireStatus(config.name));
   });
 
   router.get('/:name', (req, res) => {
@@ -82,7 +88,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     // half-deleted server with a file still open happens.
     await applyConfig({ store, manager });
     await uninstall(dataDir, name);
-    res.status(204).end();
+    res.status(HttpStatus.NoContent).end();
   });
 
   router.post('/:name/restart', async (req, res) => {
@@ -148,7 +154,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     const name = req.params.name;
     requireStatus(name);
     manager.clearActivity(name);
-    res.status(204).end();
+    res.status(HttpStatus.NoContent).end();
   });
 
   return router;

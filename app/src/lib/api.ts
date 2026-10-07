@@ -1,26 +1,27 @@
-import type {
-  ActivityResponse,
-  ApiError,
-  CreateRegistryRequest,
-  CreateWorkspaceRequest,
-  InstallRequest,
-  PromptGetRequest,
-  PromptGetResponse,
-  Registry,
-  RegistryListResponse,
-  ResourceReadRequest,
-  ResourceReadResponse,
-  RouterStatus,
-  ServerPromptsResponse,
-  ServerResourcesResponse,
-  ServerStatus,
-  ServerToolsResponse,
-  ToolCallRequest,
-  ToolCallResponse,
-  UpdateServerRequest,
-  UpdateSettingsRequest,
-  UpdateWorkspaceRequest,
-  WorkspaceStatus,
+import {
+  type ActivityResponse,
+  type ApiError,
+  type CreateRegistryRequest,
+  type CreateWorkspaceRequest,
+  HttpStatus,
+  type InstallRequest,
+  type PromptGetRequest,
+  type PromptGetResponse,
+  type Registry,
+  type RegistryListResponse,
+  type ResourceReadRequest,
+  type ResourceReadResponse,
+  type RouterStatus,
+  type ServerPromptsResponse,
+  type ServerResourcesResponse,
+  type ServerStatus,
+  type ServerToolsResponse,
+  type ToolCallRequest,
+  type ToolCallResponse,
+  type UpdateServerRequest,
+  type UpdateSettingsRequest,
+  type UpdateWorkspaceRequest,
+  type WorkspaceStatus,
 } from '@mcp-router/shared';
 import { getToken, requireAuth } from './auth';
 
@@ -58,7 +59,7 @@ async function request<T>(path: string, options: RequestOptions = {}): Promise<T
     body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
   });
 
-  if (response.status === 401) {
+  if (response.status === HttpStatus.Unauthorized) {
     requireAuth();
   }
 

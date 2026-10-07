@@ -2,6 +2,10 @@ import type { ActivityEntry } from '@mcp-router/shared';
 import { ACTIVITY_DEFAULTS } from '../defaults.ts';
 import type { InstanceKey } from './instance-key.ts';
 
+/** The UTF-16 code units that open a surrogate pair. */
+const HIGH_SURROGATE_FIRST = 0xd800;
+const HIGH_SURROGATE_LAST = 0xdbff;
+
 /** Cap a string at `max` chars (never splitting a surrogate pair), appending a truncation marker. */
 function truncateString(value: string, max: number): string {
   if (value.length <= max) {
@@ -9,7 +13,8 @@ function truncateString(value: string, max: number): string {
   }
   // A high surrogate at the cut point would leave an unpaired half; cut before it.
   const last = value.charCodeAt(max - 1);
-  const end = last >= 0xd800 && last <= 0xdbff ? max - 1 : max;
+  const isHighSurrogate = last >= HIGH_SURROGATE_FIRST && last <= HIGH_SURROGATE_LAST;
+  const end = isHighSurrogate ? max - 1 : max;
   return `${value.slice(0, end)}… [truncated, ${value.length} chars]`;
 }
 

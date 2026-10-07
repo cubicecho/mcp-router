@@ -57,7 +57,8 @@
             "filenameCases": ["kebab-case"]
           }
         },
-        "noUnusedTemplateLiteral": "off"
+        "noUnusedTemplateLiteral": "off",
+        "noMagicNumbers": "warn"
       },
       "suspicious": {
         "noExplicitAny": "warn"
@@ -86,6 +87,16 @@
     ]
   },
   "overrides": [
+    {
+      "includes": ["**/__tests__/**", "**/*.test.ts", "**/*.test.tsx"],
+      "linter": {
+        "rules": {
+          "style": {
+            "noMagicNumbers": "off"
+          }
+        }
+      }
+    },
     {
       "includes": ["**/*.css"],
       "linter": {

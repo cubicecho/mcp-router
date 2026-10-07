@@ -2,6 +2,9 @@ import type { EventId, EventStore, StreamId } from '@modelcontextprotocol/sdk/se
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
 import { GATEWAY_DEFAULTS } from '../defaults.ts';
 
+/** Width the counter in an event id is padded to. Sixteen digits holds every safe integer. */
+const SEQUENCE_DIGITS = 16;
+
 /**
  * Bounded in-memory {@link EventStore} that gives MCP sessions SSE resumability:
  * a client whose GET stream drops can reconnect with `Last-Event-ID` and receive
@@ -23,7 +26,7 @@ export class BoundedEventStore implements EventStore {
   /** streamId is the leading segment; a zero-padded monotonic counter keeps ids sortable in store order. */
   private nextEventId(streamId: StreamId): EventId {
     this.sequence += 1;
-    return `${streamId}_${this.sequence.toString().padStart(16, '0')}`;
+    return `${streamId}_${this.sequence.toString().padStart(SEQUENCE_DIGITS, '0')}`;
   }
 
   private streamIdOf(eventId: EventId): StreamId {

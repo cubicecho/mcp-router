@@ -1,3 +1,4 @@
+import { HttpStatus } from '@mcp-router/shared';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
@@ -78,7 +79,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const slug = req.params.slug;
     const workspace = store.getWorkspace(slug);
     if (!workspace || workspace.enabled === false) {
-      res.status(404).json({ error: `Unknown workspace "${slug}"` });
+      res.status(HttpStatus.NotFound).json({ error: `Unknown workspace "${slug}"` });
       return;
     }
     // Re-read the workspace on every call rather than closing over the snapshot
@@ -99,7 +100,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const name = req.params.name;
     const config = store.getServer(name);
     if (!config || config.enabled === false) {
-      res.status(404).json({ error: `Unknown server "${name}"` });
+      res.status(HttpStatus.NotFound).json({ error: `Unknown server "${name}"` });
       return;
     }
     await start(

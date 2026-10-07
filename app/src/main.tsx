@@ -5,13 +5,18 @@ import { createRoot } from 'react-dom/client';
 import { ApiRequestError } from '@/lib/api';
 import { routeTree } from './routeTree.gen';
 import './index.css';
+import { HttpStatus } from '@mcp-router/shared';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
       retry: (failureCount, error) => {
-        if (error instanceof ApiRequestError && error.status >= 400 && error.status < 500) {
+        if (
+          error instanceof ApiRequestError &&
+          error.status >= HttpStatus.BadRequest &&
+          error.status < HttpStatus.InternalServerError
+        ) {
           return false;
         }
         return failureCount < 2;

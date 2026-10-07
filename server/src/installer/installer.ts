@@ -4,6 +4,7 @@ import path from 'node:path';
 import { promisify } from 'node:util';
 import {
   type EnvVarMeta,
+  HttpStatus,
   type InstallRequest,
   NAME_DEFAULTS,
   type Registry,
@@ -60,7 +61,10 @@ export function deriveServerName(raw: string): string {
     .slice(0, NAME_DEFAULTS.serverNameMaxLength);
   const result = serverNameSchema.safeParse(sanitized);
   if (result.success === false) {
-    throw new HttpError(400, `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`);
+    throw new HttpError(
+      HttpStatus.BadRequest,
+      `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`,
+    );
   }
   return result.data;
 }
@@ -79,7 +83,7 @@ export function resolveServerName({ name, source }: Pick<InstallRequest, 'name' 
   if (source.type === SourceType.Npm || source.type === SourceType.Pypi) {
     return deriveServerName(source.package);
   }
-  throw new HttpError(400, 'A "name" is required when installing a remote server');
+  throw new HttpError(HttpStatus.BadRequest, 'A "name" is required when installing a remote server');
 }
 
 /**
@@ -99,7 +103,10 @@ export function resolveBinEntry(packageName: string, bin: unknown): string {
       return match[1];
     }
   }
-  throw new HttpError(500, `Package "${packageName}" has no "bin" entry; cannot derive a stdio command`);
+  throw new HttpError(
+    HttpStatus.InternalServerError,
+    `Package "${packageName}" has no "bin" entry; cannot derive a stdio command`,
+  );
 }
 
 /** Collect the fixed (value-carrying) registry packageArguments as CLI args. */
@@ -161,17 +168,20 @@ export function selectFromEntry(
     if (remoteMatch) {
       const remote = remotes[Number(remoteMatch[1])];
       if (!remote) {
-        throw new HttpError(400, `packageSelector "${selector}" does not match any remote`);
+        throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any remote`);
       }
       return { remote };
     }
     const isIndex = /^\d+$/.test(selector);
     if (isIndex === false) {
-      throw new HttpError(400, `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`);
+      throw new HttpError(
+        HttpStatus.BadRequest,
+        `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`,
+      );
     }
     const pkg = packages[Number(selector)];
     if (!pkg) {
-      throw new HttpError(400, `packageSelector "${selector}" does not match any package`);
+      throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any package`);
     }
     return { package: pkg };
   }
@@ -184,7 +194,7 @@ export function selectFromEntry(
   if (remote) {
     return { remote };
   }
-  throw new HttpError(400, 'Registry entry has no npm package and no remote to install');
+  throw new HttpError(HttpStatus.BadRequest, 'Registry entry has no npm package and no remote to install');
 }
 
 /** npm-install a package into the server's install dir and derive its stdio transport from the bin field. */
@@ -208,7 +218,7 @@ async function installNpmPackage(
     const timedOut = isRecord(cause) && cause.killed === true;
     if (timedOut) {
       throw new HttpError(
-        504,
+        HttpStatus.GatewayTimeout,
         `npm install of "${spec}" did not finish within ${INSTALL_DEFAULTS.npmTimeoutMs} ms`,
         undefined,
         {
@@ -218,7 +228,7 @@ async function installNpmPackage(
     }
     const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
     throw new HttpError(
-      500,
+      HttpStatus.InternalServerError,
       `npm install of "${spec}" failed`,
       stderr?.slice(-INSTALL_DEFAULTS.stderrTailChars) ?? errorMessage(cause),
       { cause },
@@ -229,9 +239,14 @@ async function installNpmPackage(
   try {
     packageJson = JSON.parse(await readFile(path.join(packageDir, 'package.json'), 'utf8'));
   } catch (cause) {
-    throw new HttpError(500, `Installed package "${packageName}" has no readable package.json`, errorMessage(cause), {
-      cause,
-    });
+    throw new HttpError(
+      HttpStatus.InternalServerError,
+      `Installed package "${packageName}" has no readable package.json`,
+      errorMessage(cause),
+      {
+        cause,
+      },
+    );
   }
   const binPath = path.resolve(
     packageDir,
@@ -283,7 +298,7 @@ async function registryParts(
 ): Promise<SourceParts> {
   const registry = deps.getRegistry(source.registry);
   if (!registry) {
-    throw new HttpError(404, `Unknown registry "${source.registry}"`);
+    throw new HttpError(HttpStatus.NotFound, `Unknown registry "${source.registry}"`);
   }
   const entry = await deps.registryClient.getServer(registry, source.serverName);
   const selection = selectFromEntry(entry, request.packageSelector);
@@ -291,7 +306,10 @@ async function registryParts(
   if ('remote' in selection) {
     const remote = selection.remote;
     if (remote.type !== TRANSPORT_STREAMABLE_HTTP) {
-      throw new HttpError(400, `Remote transport "${remote.type}" is not supported (only streamable-http)`);
+      throw new HttpError(
+        HttpStatus.BadRequest,
+        `Remote transport "${remote.type}" is not supported (only streamable-http)`,
+      );
     }
     return {
       ...described,
@@ -308,7 +326,7 @@ async function registryParts(
     transport = buildPypiTransport(pkg.identifier, version, args);
   } else {
     throw new HttpError(
-      400,
+      HttpStatus.BadRequest,
       `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
     );
   }
@@ -328,7 +346,7 @@ async function sourceParts(request: InstallRequest, name: string, deps: Installe
       return { transport: buildPypiTransport(source.package, source.version) };
     default:
       if (!request.transport) {
-        throw new HttpError(400, 'A "transport" is required when installing a remote server');
+        throw new HttpError(HttpStatus.BadRequest, 'A "transport" is required when installing a remote server');
       }
       return { transport: request.transport };
   }
