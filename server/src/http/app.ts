@@ -21,7 +21,7 @@ export interface AppDeps {
 }
 
 /** Build the Express app (separate from listen() so tests can drive it with supertest). */
-export function buildApp(deps: AppDeps): express.Express {
+export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
   const registryClient = deps.registryClient ?? new RegistryClient();
   const app = express();

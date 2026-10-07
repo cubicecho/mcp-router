@@ -17,6 +17,21 @@ config-file/API contracts, and the itemized work list.
 Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 `server/` (Express 5 + MCP TS SDK), `app/` (React + Vite + shadcn/ui).
 
+`server/src/` holds only `index.ts` (the entry) at its root; everything else is in a folder:
+
+| Folder | Holds |
+| --- | --- |
+| `core/` | what every other folder reads: defaults, errors and error codes, version |
+| `config/` | env flags and the config store (the JSON files under `DATA_DIR/config`) |
+| `http/` | the Express app (`createApp`), server timeouts, graceful shutdown |
+| `auth/` | bearer-token and origin guards |
+| `api/` | the REST routes under `/api` and the error middleware |
+| `gateway/` | downstream MCP connections, the `/mcp*` endpoints, sessions, activity log |
+| `installer/` | turns an install request into a server config (npm, PyPI, remote) |
+| `registry/` | client for MCP registries |
+
+Tests live in the `__tests__/` folder of the module they cover, named after it.
+
 ## Commands
 
 All from the workspace root.

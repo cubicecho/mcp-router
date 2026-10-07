@@ -10,7 +10,7 @@ import {
 import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './core/errors.ts';
 import { GatewayManager } from './gateway/manager.ts';
-import { buildApp } from './http/app.ts';
+import { createApp } from './http/app.ts';
 import { stopOnSignals } from './http/shutdown.ts';
 import { tuneInbound } from './http/tuning.ts';
 
@@ -30,7 +30,7 @@ async function main(): Promise<void> {
   });
   store.startWatching();
 
-  const app = buildApp({ store, manager });
+  const app = createApp({ store, manager });
   const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
   const host = listenHost(store.getSettings().host);

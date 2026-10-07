@@ -14,7 +14,7 @@ import { SERVER_VERSION } from '../../core/version.ts';
 import { ECHO_INSTRUCTIONS } from '../../gateway/__tests__/fixtures/echo-instructions.ts';
 import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
-import { buildApp } from '../app.ts';
+import { createApp } from '../app.ts';
 
 /** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */
 function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Client, unknown>>) {
@@ -26,7 +26,7 @@ describe('REST API', () => {
   let store: ConfigStore;
   let manager: GatewayManager;
   let token: string;
-  let app: ReturnType<typeof buildApp>;
+  let app: ReturnType<typeof createApp>;
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
@@ -37,7 +37,7 @@ describe('REST API', () => {
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = buildApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
@@ -479,7 +479,7 @@ describe('MCP session lifecycle', () => {
   let store: ConfigStore;
   let manager: GatewayManager;
   let token: string;
-  let app: ReturnType<typeof buildApp>;
+  let app: ReturnType<typeof createApp>;
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
@@ -490,7 +490,7 @@ describe('MCP session lifecycle', () => {
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = buildApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
