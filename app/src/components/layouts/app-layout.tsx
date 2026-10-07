@@ -29,6 +29,8 @@ interface AppLayoutProps {
 export function AppLayout({ sidebarNavSlot, barNavSlot, status, actionSlot, contentSlot }: AppLayoutProps) {
   return (
     <SidebarLayout
+      // The frame is as tall as the screen, so a long page scrolls inside `main` and the navigation stays put.
+      className="h-dvh"
       sidebarPosition="start"
       sidebarWidth="auto"
       divider="none"

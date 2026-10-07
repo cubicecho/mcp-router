@@ -37,6 +37,7 @@ interface CapabilityListProps {
 export function CapabilityList({ title, description, query, what, emptySlot, contentSlot }: CapabilityListProps) {
   return (
     <CardLayout
+      level={2}
       title={title}
       description={description}
       loading={query.isPending}

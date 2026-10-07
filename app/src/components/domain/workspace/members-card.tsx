@@ -52,6 +52,7 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
 
   return (
     <CardLayout
+      level={2}
       title="Servers"
       description="The servers this workspace exposes. Disable one to drop it from the aggregate without removing its overrides. Edit the workspace to change membership or per-workspace parameters."
       emptySlot={<EmptyState compact title="This workspace has no servers yet. Edit it to add some." />}

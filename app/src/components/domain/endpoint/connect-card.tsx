@@ -31,10 +31,13 @@ export function ConnectCard({
   endpoint,
   label,
   description,
+  level = 2,
 }: {
   endpoint: string;
   label: string;
   description: string;
+  /** Heading rank of the card title: `2` under a page title, `3` inside a dialog. */
+  level?: 2 | 3;
 }) {
   const { data: status } = useRouterStatus();
   const [revealed, setRevealed] = useState(false);
@@ -55,6 +58,7 @@ export function ConnectCard({
 
   return (
     <CardLayout
+      level={level}
       title="Connect a client"
       description={description}
       actionSlot={

@@ -74,6 +74,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
 
   return (
     <CardLayout
+      level={2}
       title="Activity"
       actionSlot={
         <span className="flex items-center gap-2">

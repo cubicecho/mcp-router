@@ -93,6 +93,7 @@ function ServerDetailPage() {
           {server && (
             <>
               <CardLayout
+                level={2}
                 title="Overview"
                 actionSlot={
                   <span className="flex items-center gap-2">
@@ -205,6 +206,7 @@ function ServerDetailPage() {
 
               {server.config.transport.type === TRANSPORT_STDIO && (
                 <CardLayout
+                  level={2}
                   title="Environment variables"
                   description="Passed to the server process. Secret values are masked; changes take effect after a restart."
                   contentSlot={

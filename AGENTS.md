@@ -46,8 +46,11 @@ npm run dev:app          # Vite dev server only (port 3000, proxies /api + /mcp)
 npm run check            # biome check (writes safe fixes) + tsc --noEmit for all packages; CI runs `biome ci`
 npm run check:fix        # biome with auto-fix
 npm run lint / lint:fix  # biome lint only
-npm test                 # vitest run
+npm test                 # vitest run: server (node), app (jsdom), then the stories in Chromium
 npm run test:watch       # vitest watch
+npm run storybook        # Storybook dev server (port 6006)
+npm run build-storybook  # static Storybook into app/storybook-static
+npx playwright install chromium   # once per machine — the stories project needs it
 
 # Build / deploy
 npm run build            # shared typecheck → server tsc → app vite build
@@ -120,6 +123,13 @@ components. Invalidate the relevant query keys after every mutation.
 - `unknown` over `any` (`noExplicitAny` is an error)
 - Tests in `__tests__/` next to source or `*.test.ts(x)`; Vitest
   `describe`/`it`/`expect`
+- **Stories are tests.** Every app-owned component and route has an
+  `x.stories.tsx` beside it (none for `components/ui/` or the vendored shells in
+  `components/*.tsx`). Each story is one state, has a `play` that asserts it by
+  role and name, and must pass axe (`a11y.test: 'error'`). The API is mocked per
+  story through `parameters.api` (`app/src/storybook/mock-api.ts`) with data
+  from the schema-parsed builders in `app/src/storybook/fixtures.ts`; a route
+  story sets `parameters.route` and renders the real route tree
 
 ## Git
 

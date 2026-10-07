@@ -37,6 +37,7 @@ export function RegistryServerCard({
 
   return (
     <CardLayout
+      level={2}
       className="flex flex-col"
       contentClassName="flex-1"
       title={<span className="break-all text-base">{server.title ?? server.name}</span>}

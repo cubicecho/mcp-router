@@ -344,6 +344,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace }: WorkspaceDial
             <ConnectCard
               endpoint={endpoint}
               label={workspace.slug}
+              level={3}
               description="Point an MCP client at this workspace's aggregate endpoint."
             />
           )}

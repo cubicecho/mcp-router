@@ -42,7 +42,8 @@ function RootComponent() {
   return (
     <TooltipProvider>
       {needsAuth ? <TokenForm onUnlock={unlock} /> : <AppFrame />}
-      <Toaster />
+      {/* The vendored toaster is fixed to sonner's dark theme, whose near-white description is unreadable on a light popover. */}
+      <Toaster toastOptions={{ classNames: { description: 'text-popover-foreground/70!' } }} />
     </TooltipProvider>
   );
 }
