@@ -3,6 +3,7 @@ import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
+import { ConfirmButton } from '@/components/confirm-button';
 import { DisclosureRow } from '@/components/disclosure-row';
 import { OptionSelect } from '@/components/option-select';
 import { EmptyState } from '@/components/page';
@@ -84,11 +85,19 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             iconSlot={<RotateCwIcon />}
             content="Refresh"
           />
-          <Button
+          <ConfirmButton
             variant="outline"
             size="sm"
             disabled={clear.isPending || entries.length === 0}
-            onClick={handleClear}
+            label="Clear activity"
+            title="Clear the activity log?"
+            description={
+              scope.kind === 'server'
+                ? 'Every recorded call to this server is removed, including the failed ones you have not looked at.'
+                : "Every recorded call through this workspace's members is removed, including the failed ones you have not looked at."
+            }
+            confirmLabel="Clear"
+            onConfirm={handleClear}
             iconSlot={<Trash2 />}
             content="Clear"
           />
