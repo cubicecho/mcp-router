@@ -38,8 +38,8 @@ function Key({ name }: { name?: string }) {
   }
   return (
     <>
-      <span className="text-sky-700 dark:text-sky-300">"{name}"</span>
-      <span className="text-muted-foreground">: </span>
+      <span className="text-foreground">"{name}"</span>
+      <span className="text-foreground/60">: </span>
     </>
   );
 }
@@ -47,15 +47,15 @@ function Key({ name }: { name?: string }) {
 function Leaf({ value, name, comma }: { value: unknown; name?: string; comma: boolean }) {
   let body: ReactNode;
   if (value === null) {
-    body = <span className="text-purple-600 dark:text-purple-400">null</span>;
+    body = <span className="text-info">null</span>;
   } else if (value === undefined) {
-    body = <span className="text-muted-foreground">undefined</span>;
+    body = <span className="text-foreground/60">undefined</span>;
   } else if (typeof value === 'string') {
-    body = <span className="break-all text-emerald-700 dark:text-emerald-400">"{value}"</span>;
+    body = <span className="break-all text-positive">"{value}"</span>;
   } else if (typeof value === 'number') {
-    body = <span className="text-amber-700 dark:text-amber-500">{String(value)}</span>;
+    body = <span className="text-warning">{String(value)}</span>;
   } else if (typeof value === 'boolean') {
-    body = <span className="text-purple-600 dark:text-purple-400">{String(value)}</span>;
+    body = <span className="text-info">{String(value)}</span>;
   } else {
     body = <span className="break-all">{String(value)}</span>;
   }
@@ -63,7 +63,7 @@ function Leaf({ value, name, comma }: { value: unknown; name?: string; comma: bo
     <div>
       <Key name={name} />
       {body}
-      {comma && <span className="text-muted-foreground">,</span>}
+      {comma && <span className="text-foreground/60">,</span>}
     </div>
   );
 }
@@ -107,11 +107,11 @@ function Node({
     return (
       <div>
         <Key name={name} />
-        <span className="text-muted-foreground">
+        <span className="text-foreground/60">
           {openBracket}
           {closeBracket}
         </span>
-        {comma && <span className="text-muted-foreground">,</span>}
+        {comma && <span className="text-foreground/60">,</span>}
       </div>
     );
   }
@@ -124,19 +124,16 @@ function Node({
         className="flex w-full items-start gap-1 text-left hover:opacity-80"
       >
         <ChevronRightIcon
-          className={cn(
-            'mt-[0.15rem] size-3.5 shrink-0 text-muted-foreground transition-transform',
-            open && 'rotate-90',
-          )}
+          className={cn('mt-[0.15rem] size-3.5 shrink-0 text-foreground/60 transition-transform', open && 'rotate-90')}
         />
         <span className="min-w-0">
           <Key name={name} />
           {embedded && (
-            <span className="mr-1 rounded bg-muted-foreground/15 px-1 text-[0.65rem] text-muted-foreground">json</span>
+            <span className="mr-1 rounded bg-foreground/10 px-1 text-[0.65rem] text-foreground/60">json</span>
           )}
-          <span className="text-muted-foreground">{openBracket}</span>
+          <span className="text-foreground/60">{openBracket}</span>
           {open === false && (
-            <span className="text-muted-foreground">
+            <span className="text-foreground/60">
               … {closeBracket}
               <span className="ml-1 text-[0.7rem]">
                 {entries.length}{' '}
@@ -148,7 +145,7 @@ function Node({
       </button>
       {open && (
         <>
-          <div className="ml-[0.4rem] border-l border-border pl-3">
+          <div className="ml-[0.4rem] border-l border-foreground/10 pl-3">
             {entries.map(([key, child], i) => (
               <Node
                 key={key}
@@ -159,7 +156,7 @@ function Node({
               />
             ))}
           </div>
-          <div className="pl-[1.15rem] text-muted-foreground">
+          <div className="pl-[1.15rem] text-foreground/60">
             {closeBracket}
             {comma && ','}
           </div>
@@ -187,7 +184,7 @@ export function DataBlock({ value, label, isError }: { value: unknown; label: st
   return (
     <div>
       <div className="flex items-center justify-between gap-2">
-        <p className={cn('text-xs font-medium', isError ? 'text-destructive' : 'text-muted-foreground')}>{label}</p>
+        <p className={cn('text-xs font-medium', isError ? 'text-negative' : 'text-foreground/60')}>{label}</p>
         <div className="inline-flex overflow-hidden rounded border text-xs">
           {(['text', 'json'] as const).map((option) => (
             <button
@@ -197,7 +194,7 @@ export function DataBlock({ value, label, isError }: { value: unknown; label: st
               onClick={() => setView(option)}
               className={cn(
                 'px-2 py-0.5 font-medium capitalize transition-colors',
-                view === option ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+                view === option ? 'bg-foreground/10 text-foreground' : 'text-foreground/60 hover:text-foreground',
               )}
             >
               {option}
@@ -206,7 +203,10 @@ export function DataBlock({ value, label, isError }: { value: unknown; label: st
         </div>
       </div>
       <div
-        className={cn('mt-1 max-h-96 overflow-auto rounded bg-muted p-2', isError && 'border border-destructive/50')}
+        className={cn(
+          'mt-1 max-h-96 overflow-auto rounded bg-foreground/10 p-2',
+          isError && 'border border-negative/40',
+        )}
       >
         {view === 'text' ? (
           <pre className="whitespace-pre-wrap text-xs">{toText(value)}</pre>

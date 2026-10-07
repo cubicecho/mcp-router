@@ -33,8 +33,8 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         <>
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
           {entry.via !== CallVia.Direct && <Badge variant="outline">{entry.via}</Badge>}
-          <span className="text-muted-foreground text-xs tabular-nums">{entry.durationMs}ms</span>
-          <span className="text-muted-foreground text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
+          <span className="text-foreground/60 text-xs tabular-nums">{entry.durationMs}ms</span>
+          <span className="text-foreground/60 text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
           </span>
         </>

@@ -367,7 +367,7 @@ function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overr
         <Switch checked={included} onCheckedChange={onToggle} aria-label={`Include ${name}`} />
         <div className="min-w-0 flex-1">
           <span className="font-medium">{server.config.displayName || name}</span>
-          {server.config.displayName && <span className="ml-2 text-xs text-muted-foreground">{name}</span>}
+          {server.config.displayName && <span className="ml-2 text-xs text-foreground/60">{name}</span>}
         </div>
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>
         {included && (

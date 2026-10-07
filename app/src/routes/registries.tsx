@@ -99,7 +99,7 @@ function RegistriesPage() {
               <TableBody>
                 {data.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={3} className="text-center text-muted-foreground">
+                    <TableCell colSpan={3} className="text-center text-foreground/60">
                       No registries configured.
                     </TableCell>
                   </TableRow>
@@ -107,7 +107,7 @@ function RegistriesPage() {
                 {data.map((registry) => (
                   <TableRow key={registry.name}>
                     <TableCell className="font-medium">{registry.name}</TableCell>
-                    <TableCell className="text-muted-foreground">{registry.url}</TableCell>
+                    <TableCell className="text-foreground/60">{registry.url}</TableCell>
                     <TableCell className="text-right">
                       <ConfirmButton
                         variant="ghost"
@@ -127,7 +127,7 @@ function RegistriesPage() {
                             onError: toastApiError,
                           })
                         }
-                        iconSlot={<Trash2Icon className="text-destructive" />}
+                        iconSlot={<Trash2Icon className="text-negative" />}
                       />
                     </TableCell>
                   </TableRow>

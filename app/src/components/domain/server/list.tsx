@@ -53,9 +53,9 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       <TableCell>
         <ServerStateBadge state={server.state} lastError={server.lastError} />
       </TableCell>
-      <TableCell className="hidden text-muted-foreground md:table-cell">{config.transport.type}</TableCell>
+      <TableCell className="hidden text-foreground/60 md:table-cell">{config.transport.type}</TableCell>
       <TableCell
-        className="hidden max-w-64 truncate text-muted-foreground lg:table-cell"
+        className="hidden max-w-64 truncate text-foreground/60 lg:table-cell"
         title={formatSource(config.source)}
       >
         {formatSource(config.source)}
@@ -64,7 +64,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
         {server.toolCount ?? (
           <Tooltip>
             <TooltipTrigger asChild>
-              <span className="text-muted-foreground">—</span>
+              <span className="text-foreground/60">—</span>
             </TooltipTrigger>
             <TooltipContent>Known after the first connection — try Test connection.</TooltipContent>
           </Tooltip>
@@ -81,10 +81,10 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             </TooltipContent>
           </Tooltip>
         ) : (
-          <span className="text-muted-foreground">—</span>
+          <span className="text-foreground/60">—</span>
         )}
       </TableCell>
-      <TableCell className="hidden text-muted-foreground xl:table-cell">
+      <TableCell className="hidden text-foreground/60 xl:table-cell">
         {server.lastCalledAt ? formatRelativeTime(server.lastCalledAt) : '—'}
       </TableCell>
       <TableCell>
@@ -149,7 +149,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
                 onError: toastApiError,
               })
             }
-            iconSlot={<Trash2 className="text-destructive" />}
+            iconSlot={<Trash2 className="text-negative" />}
           />
         </div>
       </TableCell>

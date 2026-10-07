@@ -187,7 +187,7 @@ export function AddServerDialog({
         >
           {isEdit === false && (
             <FormField
-              className="rounded-lg border border-dashed bg-muted/40 p-3"
+              className="rounded-lg border border-dashed bg-foreground/10 p-3"
               label="Paste a config"
               actionSlot={
                 <Button

@@ -66,7 +66,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
           />
         )}
       </form.Field>
-      <span className="text-muted-foreground">minutes</span>
+      <span className="text-foreground/60">minutes</span>
       <form.AppForm>
         <form.SubmitButton size="sm" variant="outline" disabled={changed === false} content="Save" />
       </form.AppForm>
@@ -152,7 +152,7 @@ function SettingsPage() {
             contentSlot={
               <>
                 <CodeBlock content={CONFIG_TREE} />
-                <p className="text-sm text-muted-foreground">
+                <p className="text-sm text-foreground/60">
                   Files are watched for changes automatically. After hand-editing you can also trigger an explicit
                   reload — it re-reads everything from disk and reconciles running servers.
                 </p>

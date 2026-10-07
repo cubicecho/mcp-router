@@ -48,9 +48,9 @@ export function RegistryServerCard({
       }
       contentSlot={
         <>
-          {server.description && <p className="line-clamp-3 text-sm text-muted-foreground">{server.description}</p>}
+          {server.description && <p className="line-clamp-3 text-sm text-foreground/60">{server.description}</p>}
           {distribution.length > 0 && (
-            <p className="mt-2 break-all font-mono text-xs text-muted-foreground">{distribution.join(' · ')}</p>
+            <p className="mt-2 break-all font-mono text-xs text-foreground/60">{distribution.join(' · ')}</p>
           )}
           {installOpen && (
             <InstallDialog

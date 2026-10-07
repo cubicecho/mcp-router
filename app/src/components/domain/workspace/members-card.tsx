@@ -51,9 +51,7 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
     <CardLayout
       title="Servers"
       description="The servers this workspace exposes. Disable one to drop it from the aggregate without removing its overrides. Edit the workspace to change membership or per-workspace parameters."
-      emptySlot={
-        <p className="text-sm text-muted-foreground">This workspace has no servers yet. Edit it to add some.</p>
-      }
+      emptySlot={<p className="text-sm text-foreground/60">This workspace has no servers yet. Edit it to add some.</p>}
       contentSlot={
         memberEntries.length > 0 ? (
           <ul className="flex flex-col divide-y">
@@ -73,9 +71,9 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
                   <div className="min-w-0 flex-1">
                     <span className="font-medium">{server?.config.displayName || name}</span>
                     {server?.config.displayName && (
-                      <span className="ml-2 font-mono text-xs text-muted-foreground">{name}</span>
+                      <span className="ml-2 font-mono text-xs text-foreground/60">{name}</span>
                     )}
-                    {!server && <span className="ml-2 text-xs text-destructive">not installed</span>}
+                    {!server && <span className="ml-2 text-xs text-negative">not installed</span>}
                     {overrides.length > 0 && (
                       <span className="mt-1 flex flex-wrap gap-1">
                         {overrides.map((label) => (

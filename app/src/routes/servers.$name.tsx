@@ -119,7 +119,7 @@ function ServerDetailPage() {
                       title={`Delete ${name}?`}
                       description="This stops the server, deletes its config file, and removes its install directory. This cannot be undone."
                       onConfirm={handleDelete}
-                      iconSlot={<Trash2 className="text-destructive" />}
+                      iconSlot={<Trash2 className="text-negative" />}
                       content="Delete"
                     />
                   </span>

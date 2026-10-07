@@ -87,7 +87,7 @@ function WorkspaceDetailPage() {
                       title={`Delete workspace ${workspace.name}?`}
                       description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                       onConfirm={handleDelete}
-                      iconSlot={<Trash2 className="text-destructive" />}
+                      iconSlot={<Trash2 className="text-negative" />}
                       content="Delete"
                     />
                   </span>
