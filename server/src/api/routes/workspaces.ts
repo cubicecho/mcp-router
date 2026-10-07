@@ -1,11 +1,13 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
-import type { WorkspaceConfig, WorkspaceStatus } from '@mcp-router/shared';
 import {
   activityResponseSchema,
   createWorkspaceRequestSchema,
+  HttpStatus,
   serverNameSchema,
   slugify,
   updateWorkspaceRequestSchema,
+  type WorkspaceConfig,
+  type WorkspaceStatus,
   workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
@@ -14,6 +16,7 @@ import { emptyOnMissing } from '../../gateway/capability.ts';
 import type { DownstreamClient } from '../../gateway/downstream.ts';
 import { type EndpointScope, scopedDeps, workspaceScope } from '../../gateway/endpoint-scope.ts';
 import { collectFrom } from '../../gateway/fan-out.ts';
+import { McpMethod } from '../../gateway/mcp-method.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
@@ -33,7 +36,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   const requireWorkspace = (slug: string): WorkspaceConfig => {
     const workspace = store.getWorkspace(slug);
     if (!workspace) {
-      throw new HttpError(404, `Unknown workspace "${slug}"`);
+      throw new HttpError(HttpStatus.NotFound, `Unknown workspace "${slug}"`);
     }
     return workspace;
   };
@@ -42,7 +45,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   const assertMembersExist = (members: Record<string, unknown> | undefined): void => {
     for (const name of Object.keys(members ?? {})) {
       if (!store.getServer(name)) {
-        throw new HttpError(400, `Unknown server "${name}" in workspace members`);
+        throw new HttpError(HttpStatus.BadRequest, `Unknown server "${name}" in workspace members`);
       }
     }
   };
@@ -50,7 +53,11 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   const requireValidSlug = (slug: string): string => {
     const parsed = serverNameSchema.safeParse(slug);
     if (parsed.success === false) {
-      throw new HttpError(400, `Invalid workspace slug "${slug}"`, 'derive a name that yields a valid URL slug');
+      throw new HttpError(
+        HttpStatus.BadRequest,
+        `Invalid workspace slug "${slug}"`,
+        'derive a name that yields a valid URL slug',
+      );
     }
     return parsed.data;
   };
@@ -63,7 +70,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     const request = createWorkspaceRequestSchema.parse(req.body);
     const slug = requireValidSlug(request.slug ?? slugify(request.name));
     if (store.getWorkspace(slug)) {
-      throw new HttpError(409, `Workspace "${slug}" already exists`);
+      throw new HttpError(HttpStatus.Conflict, `Workspace "${slug}" already exists`);
     }
     assertMembersExist(request.members);
     const config = workspaceConfigSchema.parse({
@@ -75,7 +82,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     });
     await store.saveWorkspace(config);
     await applyConfig({ store, manager });
-    res.status(201).json(toWorkspaceStatus(config));
+    res.status(HttpStatus.Created).json(toWorkspaceStatus(config));
   });
 
   router.get('/:slug', (req, res) => {
@@ -91,7 +98,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     const name = update.name ?? existing.name;
     const slug = update.name !== undefined ? requireValidSlug(slugify(name)) : existing.slug;
     if (slug !== existing.slug && store.getWorkspace(slug)) {
-      throw new HttpError(409, `Workspace "${slug}" already exists`);
+      throw new HttpError(HttpStatus.Conflict, `Workspace "${slug}" already exists`);
     }
     const next = workspaceConfigSchema.parse({
       ...existing,
@@ -113,7 +120,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     requireWorkspace(req.params.slug);
     await store.deleteWorkspace(req.params.slug);
     await applyConfig({ store, manager });
-    res.status(204).end();
+    res.status(HttpStatus.NoContent).end();
   });
 
   // --- workspace capabilities (tools/resources/prompts + activity) ---
@@ -148,7 +155,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
 
   router.get('/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const tools = await workspaceCollect(workspace, 'tools/list', async (client, name) => {
+    const tools = await workspaceCollect(workspace, McpMethod.ToolsList, async (client, name) => {
       const all = await listAllTools(client);
       manager.recordToolCount(scopeOf(workspace).keyFor(name), all.length);
       return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
@@ -159,7 +166,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
   router.get('/:slug/resources', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
     const [resources, resourceTemplates] = await Promise.all([
-      workspaceCollect(workspace, 'resources/list', async (client, name) => {
+      workspaceCollect(workspace, McpMethod.ResourcesList, async (client, name) => {
         const all = await emptyOnMissing(() => listAllResources(client));
         return (all ?? []).map((resource) => ({
           ...resource,
@@ -167,7 +174,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
           name: resource.name === undefined ? undefined : namespaceName(name, resource.name),
         }));
       }),
-      workspaceCollect(workspace, 'resources/templates/list', async (client, name) => {
+      workspaceCollect(workspace, McpMethod.ResourceTemplatesList, async (client, name) => {
         const all = await emptyOnMissing(() => listAllResourceTemplates(client));
         return (all ?? []).map((template) => ({
           ...template,
@@ -181,7 +188,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
 
   router.get('/:slug/prompts', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const prompts = await workspaceCollect(workspace, 'prompts/list', async (client, name) => {
+    const prompts = await workspaceCollect(workspace, McpMethod.PromptsList, async (client, name) => {
       const all = await emptyOnMissing(() => listAllPrompts(client));
       return (all ?? []).map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
@@ -194,7 +201,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     return (kind, requested) => {
       const split = splitNamespacedName(requested, scope.names());
       if (!split) {
-        throw new HttpError(400, `Unknown ${kind} "${requested}" (expected <server>__<name>)`);
+        throw new HttpError(HttpStatus.BadRequest, `Unknown ${kind} "${requested}" (expected <server>__<name>)`);
       }
       return { key: scope.keyFor(split.serverName), target: split.name };
     };
@@ -217,7 +224,7 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     for (const name of existingMembers(workspace, store)) {
       manager.clearActivity(scope.keyFor(name));
     }
-    res.status(204).end();
+    res.status(HttpStatus.NoContent).end();
   });
 
   return router;

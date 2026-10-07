@@ -1,4 +1,4 @@
-import type { RegistryServer } from '@mcp-router/shared';
+import { type RegistryServer, SourceType } from '@mcp-router/shared';
 import { Link } from '@tanstack/react-router';
 import { DownloadIcon, ExternalLinkIcon } from 'lucide-react';
 import { useState } from 'react';
@@ -29,7 +29,7 @@ export function RegistryServerCard({
   // An install of this registry entry, if one exists locally.
   const { data: installedServers } = useServers();
   const installed = installedServers?.find(
-    (s) => s.config.source.type === 'registry' && s.config.source.serverName === server.name,
+    (s) => s.config.source.type === SourceType.Registry && s.config.source.serverName === server.name,
   );
 
   const linkUrl = server.websiteUrl ?? server.repository?.url;

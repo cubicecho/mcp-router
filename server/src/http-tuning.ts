@@ -1,7 +1,7 @@
 import type { Server } from 'node:http';
 import { keepAliveFetch } from '@cubicecho/agent-mcp-pool';
 import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
-import { DEFAULT_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS } from './defaults.ts';
+import { HTTP_DEFAULTS } from './defaults.ts';
 
 /**
  * Reads a millisecond duration from an env value.
@@ -22,7 +22,7 @@ function envMs(value: string | undefined, fallback: number, min: number): number
  * @returns The timeout applied, in ms.
  */
 export function tuneInbound(server: Server, env: NodeJS.ProcessEnv = process.env): number {
-  const timeoutMs = envMs(env.HTTP_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_KEEP_ALIVE_TIMEOUT_MS, 0);
+  const timeoutMs = envMs(env.HTTP_KEEP_ALIVE_TIMEOUT_MS, HTTP_DEFAULTS.keepAliveTimeoutMs, 0);
   server.keepAliveTimeout = timeoutMs;
   return timeoutMs;
 }
@@ -33,5 +33,5 @@ export function tuneInbound(server: Server, env: NodeJS.ProcessEnv = process.env
  * @returns A `fetch` for `McpPool`. A remote's own `Keep-Alive: timeout` still wins over its timeout.
  */
 export function outboundFetch(env: NodeJS.ProcessEnv = process.env): FetchLike {
-  return keepAliveFetch(envMs(env.HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, DEFAULT_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, 1));
+  return keepAliveFetch(envMs(env.HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, HTTP_DEFAULTS.outboundKeepAliveTimeoutMs, 1));
 }

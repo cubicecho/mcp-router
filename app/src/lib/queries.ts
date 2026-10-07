@@ -7,19 +7,13 @@ import type {
   UpdateWorkspaceRequest,
 } from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { CapabilityScope } from './api';
 import * as api from './api';
-import {
-  ACTIVITY_POLL_MS,
-  CAPABILITY_STALE_MS,
-  DETAIL_POLL_MS,
-  SERVER_LIST_POLL_MS,
-  STATUS_POLL_MS,
-} from './intervals';
+import { type CapabilityScope, SCOPE_SERVER } from './api';
+import { POLLING_DEFAULTS } from './defaults';
 
 /** Root query key for a capability scope; capability keys hang off it. */
 function scopeKey(scope: CapabilityScope): readonly [string, string] {
-  return scope.kind === 'server' ? ['servers', scope.name] : ['workspaces', scope.slug];
+  return scope.kind === SCOPE_SERVER ? ['servers', scope.name] : ['workspaces', scope.slug];
 }
 
 export const queryKeys = {
@@ -42,7 +36,7 @@ export function useRouterStatus() {
   return useQuery({
     queryKey: queryKeys.status,
     queryFn: api.getStatus,
-    refetchInterval: STATUS_POLL_MS,
+    refetchInterval: POLLING_DEFAULTS.statusMs,
   });
 }
 
@@ -51,7 +45,7 @@ export function useServers() {
     queryKey: queryKeys.servers,
     queryFn: api.listServers,
     // Poll so the live call counts / last-called times stay current.
-    refetchInterval: SERVER_LIST_POLL_MS,
+    refetchInterval: POLLING_DEFAULTS.serverListMs,
   });
 }
 
@@ -60,12 +54,12 @@ export function useServer(name: string) {
     queryKey: queryKeys.server(name),
     queryFn: () => api.getServer(name),
     // Keep the detail page's state/pid live (crashes, idle shutdowns).
-    refetchInterval: DETAIL_POLL_MS,
+    refetchInterval: POLLING_DEFAULTS.detailMs,
   });
 }
 
 /** A capability listing may spawn the downstream server(s) — allow it to be slow, never auto-retry. */
-const CAPABILITY_LISTING = { retry: false, staleTime: CAPABILITY_STALE_MS } as const;
+const CAPABILITY_LISTING = { retry: false, staleTime: POLLING_DEFAULTS.capabilityStaleMs } as const;
 
 export function useCapabilityTools(scope: CapabilityScope) {
   return useQuery({
@@ -96,7 +90,7 @@ export function useCapabilityActivity(scope: CapabilityScope) {
   return useQuery({
     queryKey: queryKeys.capabilityActivity(scope),
     queryFn: () => api.getActivity(scope),
-    refetchInterval: ACTIVITY_POLL_MS,
+    refetchInterval: POLLING_DEFAULTS.activityMs,
   });
 }
 
@@ -105,7 +99,7 @@ export function useWorkspace(slug: string) {
   return useQuery({
     queryKey: queryKeys.workspace(slug),
     queryFn: () => api.getWorkspace(slug),
-    refetchInterval: DETAIL_POLL_MS,
+    refetchInterval: POLLING_DEFAULTS.detailMs,
   });
 }
 
@@ -187,7 +181,7 @@ export function useRestartServer() {
 export function useTestServerConnection() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (name: string) => api.getTools({ kind: 'server', name }),
+    mutationFn: (name: string) => api.getTools({ kind: SCOPE_SERVER, name }),
     onSuccess: () => invalidate(queryKeys.servers, queryKeys.status),
   });
 }

@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { FormField } from '@/components/form-field';
 import { EmptyState } from '@/components/page';
 import { Input } from '@/components/ui/input';
-import type { CapabilityScope } from '@/lib/api';
+import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
@@ -55,7 +55,7 @@ export function PromptsCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch } = useCapabilityPrompts(scope);
   const prompts = data?.prompts ?? [];
   const description =
-    scope.kind === 'workspace'
+    scope.kind === SCOPE_WORKSPACE
       ? 'Prompt templates exposed by the workspace aggregate, `<server>__`-namespaced. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.'
       : 'Prompt templates exposed by the downstream server. Expand one to fill its arguments and fetch the messages — gets show up in the Activity tab.';
 

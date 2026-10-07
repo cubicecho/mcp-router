@@ -2,20 +2,26 @@ import { execFile } from 'node:child_process';
 import { mkdir, readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import type {
-  EnvVarMeta,
-  InstallRequest,
-  Registry,
-  RegistryArgument,
-  RegistryKeyValueInput,
-  RegistryPackage,
-  RegistryRemote,
-  RegistryServerEntry,
-  ServerConfig,
-  ServerTransport,
+import {
+  type EnvVarMeta,
+  HttpStatus,
+  type InstallRequest,
+  NAME_DEFAULTS,
+  type Registry,
+  type RegistryArgument,
+  type RegistryKeyValueInput,
+  type RegistryPackage,
+  type RegistryRemote,
+  type RegistryServerEntry,
+  type ServerConfig,
+  type ServerTransport,
+  SourceType,
+  serverConfigSchema,
+  serverNameSchema,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
 } from '@mcp-router/shared';
-import { serverConfigSchema, serverNameSchema } from '@mcp-router/shared';
-import { NPM_INSTALL_TIMEOUT_MS } from '../defaults.ts';
+import { INSTALL_DEFAULTS } from '../defaults.ts';
 import { errorMessage, HttpError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 import type { RegistryClient } from '../registry/client.ts';
@@ -52,10 +58,13 @@ export function deriveServerName(raw: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 64);
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
   const result = serverNameSchema.safeParse(sanitized);
   if (result.success === false) {
-    throw new HttpError(400, `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`);
+    throw new HttpError(
+      HttpStatus.BadRequest,
+      `Cannot derive a valid server name from "${raw}"; provide "name" explicitly`,
+    );
   }
   return result.data;
 }
@@ -68,13 +77,13 @@ export function resolveServerName({ name, source }: Pick<InstallRequest, 'name' 
   if (name !== undefined) {
     return name;
   }
-  if (source.type === 'registry') {
+  if (source.type === SourceType.Registry) {
     return deriveServerName(source.serverName);
   }
-  if (source.type === 'npm' || source.type === 'pypi') {
+  if (source.type === SourceType.Npm || source.type === SourceType.Pypi) {
     return deriveServerName(source.package);
   }
-  throw new HttpError(400, 'A "name" is required when installing a remote server');
+  throw new HttpError(HttpStatus.BadRequest, 'A "name" is required when installing a remote server');
 }
 
 /**
@@ -94,7 +103,10 @@ export function resolveBinEntry(packageName: string, bin: unknown): string {
       return match[1];
     }
   }
-  throw new HttpError(500, `Package "${packageName}" has no "bin" entry; cannot derive a stdio command`);
+  throw new HttpError(
+    HttpStatus.InternalServerError,
+    `Package "${packageName}" has no "bin" entry; cannot derive a stdio command`,
+  );
 }
 
 /** Collect the fixed (value-carrying) registry packageArguments as CLI args. */
@@ -156,17 +168,20 @@ export function selectFromEntry(
     if (remoteMatch) {
       const remote = remotes[Number(remoteMatch[1])];
       if (!remote) {
-        throw new HttpError(400, `packageSelector "${selector}" does not match any remote`);
+        throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any remote`);
       }
       return { remote };
     }
     const isIndex = /^\d+$/.test(selector);
     if (isIndex === false) {
-      throw new HttpError(400, `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`);
+      throw new HttpError(
+        HttpStatus.BadRequest,
+        `Invalid packageSelector "${selector}" (use "<index>" or "remote:<index>")`,
+      );
     }
     const pkg = packages[Number(selector)];
     if (!pkg) {
-      throw new HttpError(400, `packageSelector "${selector}" does not match any package`);
+      throw new HttpError(HttpStatus.BadRequest, `packageSelector "${selector}" does not match any package`);
     }
     return { package: pkg };
   }
@@ -179,7 +194,7 @@ export function selectFromEntry(
   if (remote) {
     return { remote };
   }
-  throw new HttpError(400, 'Registry entry has no npm package and no remote to install');
+  throw new HttpError(HttpStatus.BadRequest, 'Registry entry has no npm package and no remote to install');
 }
 
 /** npm-install a package into the server's install dir and derive its stdio transport from the bin field. */
@@ -196,15 +211,15 @@ async function installNpmPackage(
   const spec = `${packageName}@${version ?? 'latest'}`;
   try {
     await exec('npm', ['install', '--prefix', dir, spec, '--no-audit', '--no-fund'], {
-      timeout: NPM_INSTALL_TIMEOUT_MS,
+      timeout: INSTALL_DEFAULTS.npmTimeoutMs,
     });
   } catch (cause) {
     // execFile kills the child when its timeout passes, and says so with `killed`.
     const timedOut = isRecord(cause) && cause.killed === true;
     if (timedOut) {
       throw new HttpError(
-        504,
-        `npm install of "${spec}" did not finish within ${NPM_INSTALL_TIMEOUT_MS} ms`,
+        HttpStatus.GatewayTimeout,
+        `npm install of "${spec}" did not finish within ${INSTALL_DEFAULTS.npmTimeoutMs} ms`,
         undefined,
         {
           cause,
@@ -212,22 +227,32 @@ async function installNpmPackage(
       );
     }
     const stderr = isRecord(cause) && typeof cause.stderr === 'string' ? cause.stderr : undefined;
-    throw new HttpError(500, `npm install of "${spec}" failed`, stderr?.slice(-1000) ?? errorMessage(cause), { cause });
+    throw new HttpError(
+      HttpStatus.InternalServerError,
+      `npm install of "${spec}" failed`,
+      stderr?.slice(-INSTALL_DEFAULTS.stderrTailChars) ?? errorMessage(cause),
+      { cause },
+    );
   }
   const packageDir = path.join(dir, 'node_modules', ...packageName.split('/'));
   let packageJson: unknown;
   try {
     packageJson = JSON.parse(await readFile(path.join(packageDir, 'package.json'), 'utf8'));
   } catch (cause) {
-    throw new HttpError(500, `Installed package "${packageName}" has no readable package.json`, errorMessage(cause), {
-      cause,
-    });
+    throw new HttpError(
+      HttpStatus.InternalServerError,
+      `Installed package "${packageName}" has no readable package.json`,
+      errorMessage(cause),
+      {
+        cause,
+      },
+    );
   }
   const binPath = path.resolve(
     packageDir,
     resolveBinEntry(packageName, isRecord(packageJson) ? packageJson.bin : undefined),
   );
-  return { type: 'stdio', command: 'node', args: [binPath, ...extraArgs] };
+  return { type: TRANSPORT_STDIO, command: 'node', args: [binPath, ...extraArgs] };
 }
 
 /**
@@ -243,7 +268,7 @@ export function buildPypiTransport(
   extraArgs: string[] = [],
 ): ServerTransport {
   const spec = version ? `${packageName}@${version}` : packageName;
-  return { type: 'stdio', command: 'uvx', args: [spec, ...extraArgs] };
+  return { type: TRANSPORT_STDIO, command: 'uvx', args: [spec, ...extraArgs] };
 }
 
 /** Fixed headers from a registry remote's header inputs (only value-carrying entries). */
@@ -262,7 +287,7 @@ function headersFromRegistry(headers: RegistryKeyValueInput[] | undefined): Reco
 type SourceParts = Pick<ServerConfig, 'transport'> &
   Partial<Pick<ServerConfig, 'displayName' | 'description' | 'env' | 'envMeta'>>;
 
-type RegistrySource = Extract<InstallRequest['source'], { type: 'registry' }>;
+type RegistrySource = Extract<InstallRequest['source'], { type: typeof SourceType.Registry }>;
 
 /** A registry entry's chosen package or remote, with the env prefills and hints the entry declares. */
 async function registryParts(
@@ -273,19 +298,22 @@ async function registryParts(
 ): Promise<SourceParts> {
   const registry = deps.getRegistry(source.registry);
   if (!registry) {
-    throw new HttpError(404, `Unknown registry "${source.registry}"`);
+    throw new HttpError(HttpStatus.NotFound, `Unknown registry "${source.registry}"`);
   }
   const entry = await deps.registryClient.getServer(registry, source.serverName);
   const selection = selectFromEntry(entry, request.packageSelector);
   const described = { displayName: entry.server.title, description: entry.server.description };
   if ('remote' in selection) {
     const remote = selection.remote;
-    if (remote.type !== 'streamable-http') {
-      throw new HttpError(400, `Remote transport "${remote.type}" is not supported (only streamable-http)`);
+    if (remote.type !== TRANSPORT_STREAMABLE_HTTP) {
+      throw new HttpError(
+        HttpStatus.BadRequest,
+        `Remote transport "${remote.type}" is not supported (only streamable-http)`,
+      );
     }
     return {
       ...described,
-      transport: { type: 'streamable-http', url: remote.url, headers: headersFromRegistry(remote.headers) },
+      transport: { type: TRANSPORT_STREAMABLE_HTTP, url: remote.url, headers: headersFromRegistry(remote.headers) },
     };
   }
   const pkg = selection.package;
@@ -298,7 +326,7 @@ async function registryParts(
     transport = buildPypiTransport(pkg.identifier, version, args);
   } else {
     throw new HttpError(
-      400,
+      HttpStatus.BadRequest,
       `Only npm and pypi packages are supported; "${source.serverName}" offers ${pkg.registryType}`,
     );
   }
@@ -310,15 +338,15 @@ async function registryParts(
 async function sourceParts(request: InstallRequest, name: string, deps: InstallerDeps): Promise<SourceParts> {
   const { source } = request;
   switch (source.type) {
-    case 'registry':
+    case SourceType.Registry:
       return registryParts(request, source, name, deps);
-    case 'npm':
+    case SourceType.Npm:
       return { transport: await installNpmPackage(deps, name, source.package, source.version) };
-    case 'pypi':
+    case SourceType.Pypi:
       return { transport: buildPypiTransport(source.package, source.version) };
     default:
       if (!request.transport) {
-        throw new HttpError(400, 'A "transport" is required when installing a remote server');
+        throw new HttpError(HttpStatus.BadRequest, 'A "transport" is required when installing a remote server');
       }
       return { transport: request.transport };
   }

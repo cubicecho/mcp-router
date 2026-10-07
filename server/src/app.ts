@@ -5,6 +5,7 @@ import { errorMiddleware } from './api/error-middleware.ts';
 import { createApiRouter } from './api/router.ts';
 import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from './auth.ts';
 import type { ConfigStore } from './config/store.ts';
+import { HTTP_DEFAULTS } from './defaults.ts';
 import type { GatewayManager } from './gateway/manager.ts';
 import { createMcpRouter } from './gateway/routes.ts';
 import { RegistryClient } from './registry/client.ts';
@@ -23,7 +24,7 @@ export function buildApp(deps: AppDeps): express.Express {
   const registryClient = deps.registryClient ?? new RegistryClient();
   const app = express();
   app.disable('x-powered-by');
-  app.use(express.json({ limit: '4mb' }));
+  app.use(express.json({ limit: HTTP_DEFAULTS.bodyLimit }));
 
   const auth = createAuthMiddleware(() => effectiveAuth(store.getSettings()));
 

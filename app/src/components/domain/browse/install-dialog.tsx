@@ -1,4 +1,4 @@
-import { type InstallRequest, type RegistryServer, serverNameSchema } from '@mcp-router/shared';
+import { type InstallRequest, type RegistryServer, SourceType, serverNameSchema } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
@@ -49,7 +49,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
       Object.assign(env, rowsToRecord(value.customRows, { skipEmptyValues: true }));
       const body: InstallRequest = {
         name: serverNameSchema.parse(value.name),
-        source: { type: 'registry', registry, serverName: server.name, version: server.version },
+        source: { type: SourceType.Registry, registry, serverName: server.name, version: server.version },
         packageSelector: value.selector || undefined,
         env,
         enabled: true,

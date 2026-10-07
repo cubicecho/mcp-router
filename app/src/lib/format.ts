@@ -1,15 +1,26 @@
-import type { ServerSource } from '@mcp-router/shared';
+import {
+  MS_PER_SECOND,
+  NAME_DEFAULTS,
+  SECONDS_PER_HOUR,
+  SECONDS_PER_MINUTE,
+  type ServerSource,
+  SourceType,
+} from '@mcp-router/shared';
+import { DISPLAY_DEFAULTS } from './defaults';
+
+const MINUTES_PER_HOUR = 60;
+const HOURS_PER_DAY = 24;
 
 /** Human-readable one-liner for a server's install source. */
 export function formatSource(source: ServerSource): string {
   switch (source.type) {
-    case 'registry':
+    case SourceType.Registry:
       return `${source.registry}: ${source.serverName}${source.version ? `@${source.version}` : ''}`;
-    case 'npm':
+    case SourceType.Npm:
       return `npm: ${source.package}@${source.version ?? 'latest'}`;
-    case 'pypi':
+    case SourceType.Pypi:
       return `pypi: ${source.package}@${source.version ?? 'latest'}`;
-    case 'remote':
+    case SourceType.Remote:
       return 'manual';
   }
 }
@@ -20,19 +31,19 @@ export function formatRelativeTime(iso: string, now = Date.now()): string {
   if (Number.isNaN(then)) {
     return iso;
   }
-  const seconds = Math.max(0, Math.floor((now - then) / 1000));
-  if (seconds < 45) {
+  const seconds = Math.max(0, Math.floor((now - then) / MS_PER_SECOND));
+  if (seconds < DISPLAY_DEFAULTS.justNowSeconds) {
     return 'just now';
   }
-  const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) {
+  const minutes = Math.floor(seconds / SECONDS_PER_MINUTE);
+  if (minutes < MINUTES_PER_HOUR) {
     return `${minutes}m ago`;
   }
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) {
+  const hours = Math.floor(minutes / MINUTES_PER_HOUR);
+  if (hours < HOURS_PER_DAY) {
     return `${hours}h ago`;
   }
-  return `${Math.floor(hours / 24)}d ago`;
+  return `${Math.floor(hours / HOURS_PER_DAY)}d ago`;
 }
 
 /** Derive a local server name suggestion from a registry/npm name like "io.github.owner/repo". */
@@ -42,7 +53,7 @@ export function suggestLocalName(name: string): string {
     .toLowerCase()
     .replace(/[^a-z0-9._-]+/g, '-')
     .replace(/^[^a-z0-9]+/, '')
-    .slice(0, 64);
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
 }
 
 /** A timestamp in the viewer's locale, or the raw text when it does not parse. */
@@ -53,10 +64,10 @@ export function formatAbsoluteTime(iso: string): string {
 
 /** Compact uptime, e.g. "3h 12m" or "4m 7s". */
 export function formatUptime(seconds: number): string {
-  const hours = Math.floor(seconds / 3600);
-  const minutes = Math.floor((seconds % 3600) / 60);
+  const hours = Math.floor(seconds / SECONDS_PER_HOUR);
+  const minutes = Math.floor((seconds % SECONDS_PER_HOUR) / SECONDS_PER_MINUTE);
   if (hours > 0) {
     return `${hours}h ${minutes}m`;
   }
-  return `${minutes}m ${Math.floor(seconds % 60)}s`;
+  return `${minutes}m ${Math.floor(seconds % SECONDS_PER_MINUTE)}s`;
 }

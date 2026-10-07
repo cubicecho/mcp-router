@@ -1,4 +1,11 @@
-import { type InstallRequest, type ServerStatus, serverNameSchema } from '@mcp-router/shared';
+import {
+  type InstallRequest,
+  type ServerStatus,
+  SourceType,
+  serverNameSchema,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
+} from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -50,27 +57,27 @@ export function AddServerDialog({
 
   const form = useAppForm({
     defaultValues: {
-      mode: (transport?.type === 'streamable-http' ? 'http' : 'stdio') as Mode,
+      mode: (transport?.type === TRANSPORT_STREAMABLE_HTTP ? 'http' : 'stdio') as Mode,
       name: server?.config.name ?? '',
       // stdio fields
-      command: transport?.type === 'stdio' ? transport.command : '',
-      argsText: transport?.type === 'stdio' ? transport.args.join('\n') : '',
-      cwd: transport?.type === 'stdio' ? (transport.cwd ?? '') : '',
+      command: transport?.type === TRANSPORT_STDIO ? transport.command : '',
+      argsText: transport?.type === TRANSPORT_STDIO ? transport.args.join('\n') : '',
+      cwd: transport?.type === TRANSPORT_STDIO ? (transport.cwd ?? '') : '',
       envRows: recordToRows(server?.config.env ?? {}),
       // http fields
-      url: transport?.type === 'streamable-http' ? transport.url : '',
-      headerRows: recordToRows(transport?.type === 'streamable-http' ? transport.headers : {}),
+      url: transport?.type === TRANSPORT_STREAMABLE_HTTP ? transport.url : '',
+      headerRows: recordToRows(transport?.type === TRANSPORT_STREAMABLE_HTTP ? transport.headers : {}),
     },
     onSubmit: async ({ value }) => {
       const built =
         value.mode === 'stdio'
           ? {
-              type: 'stdio' as const,
+              type: TRANSPORT_STDIO,
               command: value.command.trim(),
               args: argsFromLines(value.argsText),
               cwd: value.cwd.trim() || undefined,
             }
-          : { type: 'streamable-http' as const, url: value.url.trim(), headers: rowsToRecord(value.headerRows) };
+          : { type: TRANSPORT_STREAMABLE_HTTP, url: value.url.trim(), headers: rowsToRecord(value.headerRows) };
       // A streamable-http server has no child env.
       const env = value.mode === 'stdio' ? rowsToRecord(value.envRows) : {};
 
@@ -88,7 +95,7 @@ export function AddServerDialog({
         }
         const body: InstallRequest = {
           name: serverNameSchema.parse(value.name),
-          source: { type: 'remote' },
+          source: { type: SourceType.Remote },
           transport: built,
           env,
           enabled: true,

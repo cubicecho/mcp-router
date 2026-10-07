@@ -3,7 +3,7 @@ import { useState } from 'react';
 import { FormField } from '@/components/form-field';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
-import type { CapabilityScope } from '@/lib/api';
+import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
@@ -84,7 +84,7 @@ export function ResourcesCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch } = useCapabilityResources(scope);
   const rows = [...(data?.resources ?? []).map(toRow), ...(data?.resourceTemplates ?? []).map(templateToRow)];
   const description =
-    scope.kind === 'workspace'
+    scope.kind === SCOPE_WORKSPACE
       ? 'Resources and resource templates exposed by the workspace aggregate, `<server>__`-namespaced. Expand one to read it — reads show up in the Activity tab.'
       : 'Resources and resource templates exposed by the downstream server. Expand one to read it — reads show up in the Activity tab.';
 

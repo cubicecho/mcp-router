@@ -1,5 +1,6 @@
 import { ChevronRightIcon } from 'lucide-react';
 import { type ReactNode, useState } from 'react';
+import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { cn } from '@/lib/utils';
 
 /** Plain-text rendering of a value: strings as-is, everything else pretty JSON. */
@@ -80,7 +81,7 @@ function Node({
   comma: boolean;
   embedded?: boolean;
 }) {
-  const [open, setOpen] = useState(depth < 3);
+  const [open, setOpen] = useState(depth < DISPLAY_DEFAULTS.jsonOpenDepth);
 
   // A string that is itself JSON renders as a drillable tree, tagged "json".
   if (typeof value === 'string') {

@@ -1,3 +1,4 @@
+import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { errorDetailMessage } from '../errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
@@ -36,7 +37,7 @@ export async function collectFrom<T>(
       try {
         const listed = await recordedCall(
           (entry) => deps.recordActivity(name, entry),
-          { via: 'aggregate', method, failuresOnly: true },
+          { via: CallVia.Aggregate, method, failuresOnly: true },
           () => emptyOnMissing(() => deps.withClient(name, (client) => fn(client, name))),
         );
         return listed ?? [];

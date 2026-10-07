@@ -1,6 +1,9 @@
 import type { EventId, EventStore, StreamId } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import type { JSONRPCMessage } from '@modelcontextprotocol/sdk/types.js';
-import { DEFAULT_MAX_EVENTS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
+
+/** Width the counter in an event id is padded to. Sixteen digits holds every safe integer. */
+const SEQUENCE_DIGITS = 16;
 
 /**
  * Bounded in-memory {@link EventStore} that gives MCP sessions SSE resumability:
@@ -16,14 +19,14 @@ export class BoundedEventStore implements EventStore {
   private readonly maxEvents: number;
   private sequence = 0;
 
-  constructor(maxEvents: number = DEFAULT_MAX_EVENTS) {
+  constructor(maxEvents: number = GATEWAY_DEFAULTS.maxBufferedEvents) {
     this.maxEvents = maxEvents;
   }
 
   /** streamId is the leading segment; a zero-padded monotonic counter keeps ids sortable in store order. */
   private nextEventId(streamId: StreamId): EventId {
     this.sequence += 1;
-    return `${streamId}_${this.sequence.toString().padStart(16, '0')}`;
+    return `${streamId}_${this.sequence.toString().padStart(SEQUENCE_DIGITS, '0')}`;
   }
 
   private streamIdOf(eventId: EventId): StreamId {

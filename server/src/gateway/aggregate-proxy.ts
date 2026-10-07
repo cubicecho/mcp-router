@@ -1,4 +1,5 @@
 import { listAllTools } from '@cubicecho/agent-mcp-pool';
+import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import {
@@ -19,6 +20,7 @@ import {
 import { SERVER_VERSION } from '../version.ts';
 import { emptyOnMissing, PROXY_CAPABILITIES } from './capability.ts';
 import { collectFrom } from './fan-out.ts';
+import { McpMethod } from './mcp-method.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
 import { EMPTY_COMPLETION, type ProxyDeps, track } from './track.ts';
@@ -79,13 +81,13 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   ): Promise<R> => {
     const { serverName, name } = route(full, kind);
     const params = strip(name);
-    return track(deps, serverName, { via: 'aggregate', method, target: name, params }, () =>
+    return track(deps, serverName, { via: CallVia.Aggregate, method, target: name, params }, () =>
       deps.withClient(serverName, (client) => run(client, params)),
     );
   };
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
-    const tools = await collect('tools/list', async (client, name) => {
+    const tools = await collect(McpMethod.ToolsList, async (client, name) => {
       // A missing capability is a definitive "has no tools" — clear any count
       // from a previous incarnation; any other failure lets collect() skip the
       // server and record why.
@@ -98,7 +100,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
 
   server.setRequestHandler(CallToolRequestSchema, async (req) =>
     routedCall(
-      'tools/call',
+      McpMethod.ToolsCall,
       'tool',
       req.params.name,
       (name) => ({ ...req.params, name }),
@@ -107,7 +109,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   );
 
   server.setRequestHandler(ListResourcesRequestSchema, async () => {
-    const resources = await collect('resources/list', async (client, name) => {
+    const resources = await collect(McpMethod.ResourcesList, async (client, name) => {
       const all = await listAllResources(client);
       return all.map((resource) => ({
         ...resource,
@@ -119,7 +121,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   });
 
   server.setRequestHandler(ListResourceTemplatesRequestSchema, async () => {
-    const resourceTemplates = await collect('resources/templates/list', async (client, name) => {
+    const resourceTemplates = await collect(McpMethod.ResourceTemplatesList, async (client, name) => {
       const all = await listAllResourceTemplates(client);
       // Namespace the URI template so a read of an expanded URI routes back to
       // this server, mirroring how plain resources namespace their `uri`.
@@ -134,7 +136,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
 
   server.setRequestHandler(ReadResourceRequestSchema, async (req) =>
     routedCall(
-      'resources/read',
+      McpMethod.ResourcesRead,
       'resource',
       req.params.uri,
       (uri) => ({ ...req.params, uri }),
@@ -143,7 +145,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   );
 
   server.setRequestHandler(ListPromptsRequestSchema, async () => {
-    const prompts = await collect('prompts/list', async (client, name) => {
+    const prompts = await collect(McpMethod.PromptsList, async (client, name) => {
       const all = await listAllPrompts(client);
       return all.map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
     });
@@ -152,7 +154,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
 
   server.setRequestHandler(GetPromptRequestSchema, async (req) =>
     routedCall(
-      'prompts/get',
+      McpMethod.PromptsGet,
       'prompt',
       req.params.name,
       (name) => ({ ...req.params, name }),
@@ -172,7 +174,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return track(
       deps,
       serverName,
-      { via: 'aggregate', method: 'completion/complete', target: full, params, failuresOnly: true },
+      { via: CallVia.Aggregate, method: McpMethod.CompletionComplete, target: full, params, failuresOnly: true },
       async () => {
         return (
           (await emptyOnMissing(() => deps.withClient(serverName, (client) => client.complete(params)))) ??
@@ -184,7 +186,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
 
   server.setRequestHandler(SubscribeRequestSchema, async (req) =>
     routedCall(
-      'resources/subscribe',
+      McpMethod.ResourcesSubscribe,
       'resource',
       req.params.uri,
       (uri) => ({ ...req.params, uri }),
@@ -194,7 +196,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
 
   server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
     routedCall(
-      'resources/unsubscribe',
+      McpMethod.ResourcesUnsubscribe,
       'resource',
       req.params.uri,
       (uri) => ({ ...req.params, uri }),
@@ -205,7 +207,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   // setLevel has no ref, so it applies to the whole connection: fan the level
   // out to every member (best-effort — capability-less members are skipped).
   server.setRequestHandler(SetLevelRequestSchema, async (req) => {
-    await collect('logging/setLevel', async (client) => {
+    await collect(McpMethod.LoggingSetLevel, async (client) => {
       await client.setLoggingLevel(req.params.level);
       return [];
     });

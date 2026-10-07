@@ -1,5 +1,5 @@
 import type { RouterStatus } from '@mcp-router/shared';
-import { updateSettingsRequestSchema } from '@mcp-router/shared';
+import { MS_PER_SECOND, updateSettingsRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
 import { effectiveAuth } from '../../auth.ts';
 import { SERVER_VERSION } from '../../version.ts';
@@ -13,7 +13,7 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
   router.get('/status', (_req, res) => {
     const status: RouterStatus = {
       version: SERVER_VERSION,
-      uptimeSeconds: Math.floor((Date.now() - startedAt) / 1000),
+      uptimeSeconds: Math.floor((Date.now() - startedAt) / MS_PER_SECOND),
       serverCount: store.getServers().length,
       runningCount: manager.runningCount(),
       authEnabled: effectiveAuth(store.getSettings()).enabled,

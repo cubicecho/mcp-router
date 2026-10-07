@@ -2,8 +2,9 @@ import type { ServerTool } from '@mcp-router/shared';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { Textarea } from '@/components/ui/textarea';
-import type { CapabilityScope } from '@/lib/api';
+import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
+import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
 
@@ -44,7 +45,10 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
         <>
           <Textarea
             value={argsText}
-            rows={Math.min(10, Math.max(3, argsText.split('\n').length))}
+            rows={Math.min(
+              DISPLAY_DEFAULTS.argsMaxRows,
+              Math.max(DISPLAY_DEFAULTS.argsMinRows, argsText.split('\n').length),
+            )}
             className="font-mono text-xs"
             aria-label={`Arguments for ${tool.name}`}
             onChange={(event) => setArgsText(event.target.value)}
@@ -67,7 +71,7 @@ export function ToolsCard({ scope }: { scope: CapabilityScope }) {
   const { data, isPending, error, refetch } = useCapabilityTools(scope);
   const tools = data?.tools ?? [];
   const description =
-    scope.kind === 'workspace'
+    scope.kind === SCOPE_WORKSPACE
       ? 'Tools exposed by the workspace aggregate, `<server>__`-namespaced, with per-workspace overrides applied. Expand one to run it with JSON arguments — runs show up in the Activity tab.'
       : 'Tools reported by the downstream server. Expand one to run it with JSON arguments — runs show up in the Activity tab.';
 

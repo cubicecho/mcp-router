@@ -4,7 +4,7 @@ import { PromptsCard } from '@/components/domain/server/prompts-card';
 import { ResourcesCard } from '@/components/domain/server/resources-card';
 import { ToolsCard } from '@/components/domain/server/tools-card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import type { CapabilityScope } from '@/lib/api';
+import { type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 
 /** What the Connect tab says about the endpoint, per kind of scope. */
@@ -15,7 +15,7 @@ const CONNECT_DESCRIPTION: Record<CapabilityScope['kind'], (label: string) => st
 
 /** The tools, resources, prompts, activity and connect tabs of one server or workspace. */
 export function CapabilityTabs({ scope }: { scope: CapabilityScope }) {
-  const label = scope.kind === 'server' ? scope.name : scope.slug;
+  const label = scope.kind === SCOPE_SERVER ? scope.name : scope.slug;
   return (
     <Tabs defaultValue="tools">
       <TabsList>

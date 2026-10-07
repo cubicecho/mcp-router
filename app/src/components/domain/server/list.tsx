@@ -13,6 +13,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
@@ -172,7 +173,7 @@ export function ServerList({ servers }: { servers: ServerStatus[] }) {
 
   return (
     <div className="flex flex-col gap-3">
-      {servers.length > 5 && (
+      {servers.length > DISPLAY_DEFAULTS.filterAboveServers && (
         <SearchInput
           value={filter}
           label="Filter servers"

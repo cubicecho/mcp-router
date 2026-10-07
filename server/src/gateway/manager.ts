@@ -8,18 +8,21 @@ import {
   MINIMAL_CHILD_ENV,
   sameConnection,
 } from '@cubicecho/agent-mcp-pool';
-import type {
-  ActivityEntry,
-  ServerConfig,
+import {
+  type ActivityEntry,
+  HttpStatus,
+  type ServerConfig,
   ServerRuntimeState,
-  ServerStatus,
-  SettingsFile,
-  WorkspaceConfig,
-  WorkspaceMember,
+  type ServerStatus,
+  type SettingsFile,
+  TRANSPORT_STDIO,
+  TRANSPORT_STREAMABLE_HTTP,
+  type WorkspaceConfig,
+  type WorkspaceMember,
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
-import { CRASH_BACKOFF_MS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 import { HttpError } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
@@ -64,9 +67,9 @@ interface ServerMeta {
  */
 function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, workspace: WorkspaceConfig): ServerConfig {
   let transport = base.transport;
-  if (transport.type === 'stdio' && member.args) {
+  if (transport.type === TRANSPORT_STDIO && member.args) {
     transport = { ...transport, args: member.args };
-  } else if (transport.type === 'streamable-http' && (member.headers || member.url)) {
+  } else if (transport.type === TRANSPORT_STREAMABLE_HTTP && (member.headers || member.url)) {
     transport = {
       ...transport,
       url: member.url ?? transport.url,
@@ -90,7 +93,7 @@ function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, worksp
  */
 function toConnection(config: ServerConfig): McpConnection {
   const { transport } = config;
-  if (transport.type === 'stdio') {
+  if (transport.type === TRANSPORT_STDIO) {
     return {
       transport: 'stdio',
       command: transport.command,
@@ -111,7 +114,7 @@ function toConnection(config: ServerConfig): McpConnection {
  * tools here (see `indexTools` below) and `gateway/naming.ts` owns namespacing.
  */
 function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
-  const stdio = config.transport.type === 'stdio';
+  const stdio = config.transport.type === TRANSPORT_STDIO;
   return {
     id: key,
     label: config.displayName ?? config.name,
@@ -152,11 +155,11 @@ function connectionRow(config: ServerConfig): McpServerConfig {
 
 /** How the pool's connection status reads on this API. `disabled` and `idle` are both "no child, nothing wrong". */
 const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
-  disabled: 'stopped',
-  idle: 'stopped',
-  connecting: 'starting',
-  ready: 'running',
-  error: 'error',
+  disabled: ServerRuntimeState.Stopped,
+  idle: ServerRuntimeState.Stopped,
+  connecting: ServerRuntimeState.Starting,
+  ready: ServerRuntimeState.Running,
+  error: ServerRuntimeState.Error,
 };
 
 /**
@@ -193,7 +196,7 @@ export class GatewayManager {
       // A stdio child gets this allowlist plus the server's own env, never the
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
-      crashBackoffMs: CRASH_BACKOFF_MS,
+      crashBackoffMs: GATEWAY_DEFAULTS.crashBackoffMs,
       // The pool's own keep-alive, at the idle time HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS names.
       fetch: outboundFetch(),
     });
@@ -347,13 +350,18 @@ export class GatewayManager {
     const name = this.meta.get(key)?.config.name ?? key;
     switch (cause.code) {
       case 'unknown-server':
-        throw new HttpError(404, `Unknown server "${name}"`, undefined, { cause });
+        throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`, undefined, { cause });
       case 'disabled':
-        throw new HttpError(404, `Server "${name}" is disabled`, undefined, { cause });
+        throw new HttpError(HttpStatus.NotFound, `Server "${name}" is disabled`, undefined, { cause });
       case 'backoff':
-        throw new HttpError(503, `Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
+        throw new HttpError(
+          HttpStatus.ServiceUnavailable,
+          `Server "${name}" crashed recently; retrying is backed off`,
+          cause.detail,
+          { cause },
+        );
       default:
-        throw new HttpError(502, `Failed to connect to server "${name}"`, cause.detail, { cause });
+        throw new HttpError(HttpStatus.BadGateway, `Failed to connect to server "${name}"`, cause.detail, { cause });
     }
   }
 
@@ -441,7 +449,7 @@ export class GatewayManager {
 function toStatus(meta: ServerMeta, state: McpServerState | undefined): ServerStatus {
   return {
     config: meta.config,
-    state: state ? RUNTIME_STATE[state.status] : 'stopped',
+    state: state ? RUNTIME_STATE[state.status] : ServerRuntimeState.Stopped,
     pid: state?.pid,
     startedAt: state?.startedAt,
     // The pool reports "no error" as an empty string; this API reports it as absent.

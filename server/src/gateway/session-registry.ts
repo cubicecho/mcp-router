@@ -1,10 +1,10 @@
 import { randomUUID } from 'node:crypto';
-import type { SettingsFile } from '@mcp-router/shared';
+import { HttpStatus, type SettingsFile } from '@mcp-router/shared';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js';
 import type { Request, Response } from 'express';
-import { STREAM_KEEPALIVE_MS } from '../defaults.ts';
+import { GATEWAY_DEFAULTS } from '../defaults.ts';
 import { BoundedEventStore } from './event-store.ts';
 
 /** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
@@ -98,7 +98,7 @@ export class SessionRegistry {
     }
     const session = this.sessions.get(id);
     if (!session) {
-      res.status(404).json({ error: `Unknown or expired MCP session "${id}"` });
+      res.status(HttpStatus.NotFound).json({ error: `Unknown or expired MCP session "${id}"` });
       return true;
     }
     session.lastActivity = Date.now();
@@ -106,7 +106,7 @@ export class SessionRegistry {
       session.openStreams += 1;
       // A client whose machine slept or dropped off the network never sends a FIN, and a quiet
       // stream never writes to find out — keepalive is what eventually closes it.
-      req.socket.setKeepAlive(true, STREAM_KEEPALIVE_MS);
+      req.socket.setKeepAlive(true, GATEWAY_DEFAULTS.streamKeepAliveMs);
       res.on('close', () => {
         session.openStreams -= 1;
         // Idleness starts when the client stopped listening, not when it last spoke.
@@ -131,7 +131,7 @@ export class SessionRegistry {
     wire: WireRelay,
   ): Promise<void> {
     if (isInitializeRequest(req.body) === false) {
-      res.status(400).json({ error: 'Missing or expired mcp-session-id' });
+      res.status(HttpStatus.BadRequest).json({ error: 'Missing or expired mcp-session-id' });
       return;
     }
     this.enforceCap();
