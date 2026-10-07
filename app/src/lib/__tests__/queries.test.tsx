@@ -2,8 +2,8 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { renderHook, waitFor } from '@testing-library/react';
 import type { ReactNode } from 'react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import * as api from '../api';
-import { queryKeys, useDeleteServer } from '../queries';
+import * as api from '../api.ts';
+import { queryKeys, useDeleteServer } from '../queries.ts';
 
 afterEach(() => {
   vi.restoreAllMocks();

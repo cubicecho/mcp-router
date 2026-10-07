@@ -1,5 +1,5 @@
 import { toast } from 'sonner';
-import { ApiRequestError } from './api';
+import { ApiRequestError } from './api.ts';
 
 /** Standard error toast for failed mutations — includes the API detail when present. */
 export function toastApiError(error: unknown): void {

@@ -123,7 +123,6 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     res.status(HttpStatus.NoContent).end();
   });
 
-  // --- workspace capabilities (tools/resources/prompts + activity) ---
   //
   // These mirror the per-server capability endpoints but run against each
   // member's workspace-scoped downstream instance (so per-workspace param overrides

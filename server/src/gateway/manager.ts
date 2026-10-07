@@ -120,19 +120,12 @@ function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: Settings
     label: config.displayName ?? config.name,
     enabled: config.enabled,
     ...toConnection(config),
-    // After the spread, not before: `connectTimeoutMs` is a field of `McpConnection`
-    // as of pool 2.4.0, so a `toConnection` that ever fills it in would otherwise win
-    // over the setting resolved here without anything failing to compile.
-    //
-    // Only a stdio child is worth reaping — it is a process holding memory. A
-    // remote connection costs nothing to keep, and 0 is the pool's "never reap".
-    // Resolved per row rather than passed to the pool once, because the global
-    // default is a setting an operator can edit while the router is running.
+    // After the spread, so a `toConnection` that sets either timeout cannot win.
+    // Only a stdio child is reaped (0 is the pool's "never"). Resolved per row
+    // because the default is a setting that changes while the router runs.
     idleTimeoutMs: stdio ? (config.idleTimeoutMs ?? settings.idleTimeoutMs) : 0,
-    // Same reason, and the pool re-reads it on every reconcile: bounds spawn plus the
-    // MCP initialize handshake, so a server that starts and then never speaks fails the
-    // request that woke it instead of holding it open forever. (The SDK's own 60s applies
-    // to the initialize *request*, which such a server never gets far enough to answer.)
+    // Bounds spawn plus the initialize handshake, so a server that starts and
+    // never speaks fails the request that woke it.
     connectTimeoutMs: settings.connectTimeoutMs,
   };
 }
@@ -181,10 +174,7 @@ export class GatewayManager {
     this.getSettings = getSettings;
     this.pool = new McpPool({
       clientName: 'mcp-router',
-      // The other half of `clientInfo`, which is the whole of what a dialled server
-      // learns about its caller. The pool used to fill this in with a constant
-      // `0.1.0` (upstream agent-mcp-pool#60, fixed in 2.3.0), so downstream logs
-      // named a version of nothing beside a name that was ours.
+      // With `clientName`, all a dialled server learns about its caller.
       clientVersion: SERVER_VERSION,
       // Spawn on the first request that needs a server rather than at boot: the
       // router carries dozens of installed servers, most idle most of the time.
@@ -409,11 +399,8 @@ export class GatewayManager {
 
   /** Count a call against its instance and append it to the activity log. */
   recordActivity(key: InstanceKey, entry: ActivityRecord): void {
-    // Only log for a currently-managed server: an in-flight call that completes
-    // after the server was removed (reconcile drops it from both maps) must not
-    // resurrect a stray activity entry that then leaks forever. A call that
-    // completes right after a Clear legitimately re-populates the log — the
-    // server still exists, so that is new activity, not a leak.
+    // A call that finishes after its server was removed must not bring the log
+    // back. One that finishes after a Clear is new activity and is kept.
     const meta = this.meta.get(key);
     if (!meta) {
       return;

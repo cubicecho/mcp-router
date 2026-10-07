@@ -22,8 +22,6 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
     res.json(status);
   });
 
-  // --- settings ---
-
   router.patch('/settings', async (req, res) => {
     const patch = updateSettingsRequestSchema.parse(req.body);
     const next = await store.updateSettings(patch);

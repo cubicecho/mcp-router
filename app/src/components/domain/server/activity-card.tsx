@@ -17,7 +17,7 @@ import { endpointPath } from '@/lib/endpoint';
 import { formatAbsoluteTime, formatRelativeTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
-import { DataBlock } from './json-view';
+import { DataBlock } from './json-view.tsx';
 
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const [open, setOpen] = useState(false);

@@ -1,4 +1,10 @@
-import { type InstallRequest, type RegistryServer, SourceType, serverNameSchema } from '@mcp-router/shared';
+import {
+  type InstallRequest,
+  type RegistryServer,
+  SourceType,
+  serverNameSchema,
+  suggestServerName,
+} from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
@@ -8,7 +14,6 @@ import { KeyValueRows } from '@/components/domain/key-value-rows';
 import { FormField } from '@/components/form-field';
 import { OptionSelect } from '@/components/option-select';
 import { Button } from '@/components/ui/button';
-import { suggestLocalName } from '@/lib/format';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { buildOptions, defaultEnvValues, defaultSelector } from '@/lib/registry-options';
@@ -32,7 +37,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
 
   const form = useAppForm({
     defaultValues: {
-      name: suggestLocalName(server.name),
+      name: suggestServerName(server.name),
       selector: initialSelector,
       envValues: defaultEnvValues(options.find((option) => option.selector === initialSelector)?.envVars ?? []),
       customRows: [] as KeyValueRow[],

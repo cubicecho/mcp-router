@@ -14,8 +14,6 @@ import { NAME_DEFAULTS } from './defaults.ts';
  * All endpoints require `Authorization: Bearer <token>` unless auth is disabled.
  */
 
-// --- runtime status ---
-
 /** What a server's downstream connection is doing. */
 export const ServerRuntimeState = {
   Stopped: 'stopped',
@@ -42,8 +40,6 @@ export const serverStatusSchema = z.object({
 });
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 
-// --- POST /api/servers (install) ---
-
 export const installRequestSchema = z.object({
   /** Local name; also the route segment. Derived from the package/server name when omitted. */
   name: serverNameSchema.optional(),
@@ -58,8 +54,6 @@ export const installRequestSchema = z.object({
 });
 export type InstallRequest = z.infer<typeof installRequestSchema>;
 
-// --- PATCH /api/servers/:name ---
-
 export const updateServerRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
@@ -69,8 +63,6 @@ export const updateServerRequestSchema = z.object({
   transport: serverTransportSchema.optional(),
 });
 export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
-
-// --- GET /api/servers/:name/activity ---
 
 /** Which door a recorded call came in by. */
 export const CallVia = {
@@ -112,8 +104,6 @@ export const activityResponseSchema = z.object({
   entries: z.array(activityEntrySchema),
 });
 export type ActivityResponse = z.infer<typeof activityResponseSchema>;
-
-// --- GET /api/servers/:name/{tools,resources,prompts} (and the same under /api/workspaces/:slug) ---
 
 /** One tool of a downstream server, as reported by MCP tools/list. */
 export const serverToolSchema = z
@@ -171,8 +161,6 @@ export type ServerPrompt = z.infer<typeof serverPromptSchema>;
 export const serverPromptsResponseSchema = z.object({ prompts: z.array(serverPromptSchema) });
 export type ServerPromptsResponse = z.infer<typeof serverPromptsResponseSchema>;
 
-// --- POST /api/servers/:name/tools/call ---
-
 /** Run one tool of a downstream server from the UI. */
 export const toolCallRequestSchema = z.object({
   name: z.string().min(1),
@@ -190,8 +178,6 @@ export const toolCallResponseSchema = z
   .passthrough();
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
-// --- POST /api/servers/:name/resources/read ---
-
 /** Read one resource of a downstream server from the UI. The URI is either a
  *  static resource's URI or a concrete URI expanded from a resource template. */
 export const resourceReadRequestSchema = z.object({
@@ -206,8 +192,6 @@ export const resourceReadResponseSchema = z
   })
   .passthrough();
 export type ResourceReadResponse = z.infer<typeof resourceReadResponseSchema>;
-
-// --- POST /api/servers/:name/prompts/get ---
 
 /** Get one prompt of a downstream server from the UI. MCP prompt argument
  *  values are strings. */
@@ -226,15 +210,11 @@ export const promptGetResponseSchema = z
   .passthrough();
 export type PromptGetResponse = z.infer<typeof promptGetResponseSchema>;
 
-// --- POST /api/registries ---
-
 export const createRegistryRequestSchema = z.object({
   name: serverNameSchema,
   url: z.string().url(),
 });
 export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
-
-// --- /api/workspaces ---
 
 /** A workspace as returned by the API: its stored config plus the derived endpoint path. */
 export const workspaceStatusSchema = workspaceConfigSchema.extend({
@@ -263,16 +243,12 @@ export const updateWorkspaceRequestSchema = z.object({
 });
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
-// --- GET /healthz ---
-
 /** What `GET /healthz` answers. No auth, so it says nothing but that the process is serving. */
 export interface Health {
   ok: boolean;
   /** The released version. */
   version: string;
 }
-
-// --- GET /api/status ---
 
 export interface RouterStatus {
   version: string;
@@ -284,13 +260,18 @@ export interface RouterStatus {
   idleTimeoutMs: number;
 }
 
-// --- PATCH /api/settings ---
-
 /** The subset of settings.json editable from the UI. */
 export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
 });
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
+
+/** Query of GET /api/registries/:name/servers, passed through to the registry. */
+export interface RegistrySearchParams {
+  search?: string;
+  cursor?: string;
+  limit?: number;
+}
 
 /** Standard error envelope for non-2xx responses. */
 export interface ApiError {

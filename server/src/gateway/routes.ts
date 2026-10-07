@@ -82,10 +82,8 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
       res.status(HttpStatus.NotFound).json({ error: `Unknown workspace "${slug}"` });
       return;
     }
-    // Re-read the workspace on every call rather than closing over the snapshot
-    // taken at initialize: a session outlives config edits, so a member added,
-    // removed or disabled afterwards must be reflected on the next tools/list.
-    // A workspace deleted or disabled mid-session simply exposes nothing.
+    // Read on every call: a session outlives config edits, and a workspace
+    // deleted or disabled mid-session exposes nothing.
     const memberNames = (): string[] => {
       const current = store.getWorkspace(slug);
       return current?.enabled ? enabledMembers(current, store) : [];

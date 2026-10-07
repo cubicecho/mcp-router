@@ -6,7 +6,7 @@ import { QueryError } from '@/components/query-state';
 import { Play } from '@/components/ui/icons';
 import { toastApiError } from '@/lib/toast';
 import type { SlotNode } from '@/lib/utils';
-import { DataBlock } from './json-view';
+import { DataBlock } from './json-view.tsx';
 
 /** The part of a query the card reads, taken structurally. */
 interface ListQuery {

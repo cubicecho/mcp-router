@@ -5,7 +5,14 @@ import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
-import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './capability-list';
+import {
+  CapabilityList,
+  CapabilityRow,
+  ResultBlock,
+  RUN_SUBMIT,
+  RunForm,
+  useCapabilityRun,
+} from './capability-list.tsx';
 
 type ToolArguments = Record<string, unknown>;
 

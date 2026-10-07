@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatAbsoluteTime, formatRelativeTime, formatSource, formatUptime, suggestLocalName } from '@/lib/format';
+import { formatAbsoluteTime, formatRelativeTime, formatSource, formatUptime } from '@/lib/format';
 
 describe('formatUptime', () => {
   it('shows minutes and seconds under an hour', () => {
@@ -48,12 +48,5 @@ describe('formatSource', () => {
     expect(formatSource({ type: 'npm', package: 'pkg' })).toBe('npm: pkg@latest');
     expect(formatSource({ type: 'pypi', package: 'pkg', version: '2.0' })).toBe('pypi: pkg@2.0');
     expect(formatSource({ type: 'remote' })).toBe('manual');
-  });
-});
-
-describe('suggestLocalName', () => {
-  it('uses the last path segment, lower-cased and made URL-safe', () => {
-    expect(suggestLocalName('io.github.Owner/My Repo')).toBe('my-repo');
-    expect(suggestLocalName('@scope/server-everything')).toBe('server-everything');
   });
 });

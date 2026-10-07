@@ -4,7 +4,7 @@ import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import * as api from '@/lib/api';
-import { WorkspaceDialog } from '../workspace-dialog';
+import { WorkspaceDialog } from '../workspace-dialog.tsx';
 
 // Dotted names on purpose: they are legal server names, and a form path would split on them.
 const SERVERS = [
