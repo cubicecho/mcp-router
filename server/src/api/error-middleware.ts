@@ -1,7 +1,7 @@
-import { HttpStatus } from '@mcp-router/shared';
+import { type ApiError, ErrorCode } from '@mcp-router/shared';
 import type { NextFunction, Request, Response } from 'express';
 import { ZodError } from 'zod';
-import { HttpError } from '../errors.ts';
+import { badInput, HttpError, internal, sendError } from '../errors.ts';
 import { isRecord } from '../is-record.ts';
 
 /** What a 500 says. The cause goes to the log, never to the caller: it can name files on the host. */
@@ -21,24 +21,23 @@ function exposedClientError(err: unknown): { status: number; message: string } |
   return undefined;
 }
 
-/** Renders every thrown error as the JSON envelope { error, detail? }. */
+/** Renders every thrown error as the JSON envelope { error, code, detail? }. */
 export function errorMiddleware(err: unknown, _req: Request, res: Response, _next: NextFunction): void {
   if (err instanceof ZodError) {
-    res.status(HttpStatus.BadRequest).json({
-      error: 'Validation failed',
-      detail: err.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; '),
-    });
+    const detail = err.issues.map((issue) => `${issue.path.join('.') || '(root)'}: ${issue.message}`).join('; ');
+    sendError(res, badInput('Validation failed', detail));
     return;
   }
   if (err instanceof HttpError) {
-    res.status(err.status).json({ error: err.message, ...(err.detail ? { detail: err.detail } : {}) });
+    sendError(res, err);
     return;
   }
   const clientError = exposedClientError(err);
   if (clientError) {
-    res.status(clientError.status).json({ error: clientError.message });
+    const body: ApiError = { error: clientError.message, code: ErrorCode.BadUserInput };
+    res.status(clientError.status).json(body);
     return;
   }
   console.error('[api] unhandled error:', err);
-  res.status(HttpStatus.InternalServerError).json({ error: INTERNAL_ERROR_MESSAGE });
+  sendError(res, internal(INTERNAL_ERROR_MESSAGE));
 }

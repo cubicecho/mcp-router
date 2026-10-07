@@ -1,7 +1,8 @@
+import { ErrorCode } from '@mcp-router/shared';
 import express from 'express';
 import request from 'supertest';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { HttpError } from '../../errors.ts';
+import { conflict } from '../../errors.ts';
 import { errorMiddleware } from '../error-middleware.ts';
 
 function appThrowing(err: unknown) {
@@ -26,17 +27,21 @@ describe('errorMiddleware', () => {
     const res = await request(appThrowing(cause)).post('/').send({});
 
     expect(res.status).toBe(500);
-    expect(res.body).toEqual({ error: 'Internal server error' });
+    expect(res.body).toEqual({ error: 'Internal server error', code: ErrorCode.Internal });
     expect(logged).toHaveBeenCalledWith('[api] unhandled error:', cause);
   });
 
-  it('sends the status, message and detail of an HttpError', async () => {
-    const res = await request(appThrowing(new HttpError(409, 'Server "a" already exists', 'pick another name')))
+  it('sends the status, message, code and detail of an HttpError', async () => {
+    const res = await request(appThrowing(conflict('Server "a" already exists', 'pick another name')))
       .post('/')
       .send({});
 
     expect(res.status).toBe(409);
-    expect(res.body).toEqual({ error: 'Server "a" already exists', detail: 'pick another name' });
+    expect(res.body).toEqual({
+      error: 'Server "a" already exists',
+      code: ErrorCode.Conflict,
+      detail: 'pick another name',
+    });
   });
 
   it('answers a malformed JSON body with a 400', async () => {
@@ -47,6 +52,7 @@ describe('errorMiddleware', () => {
 
     expect(res.status).toBe(400);
     expect(res.body.error).toMatch(/JSON/);
+    expect(res.body.code).toBe(ErrorCode.BadUserInput);
   });
 
   it('answers a body over the size limit with a 413', async () => {

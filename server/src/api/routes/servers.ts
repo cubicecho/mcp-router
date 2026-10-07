@@ -8,7 +8,7 @@ import {
   updateServerRequestSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
-import { errorMessage, HttpError } from '../../errors.ts';
+import { conflict, errorMessage, notFound } from '../../errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
@@ -28,7 +28,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   const requireServer = (name: string): ServerConfig => {
     const config = store.getServer(name);
     if (!config) {
-      throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`);
+      throw notFound(`Unknown server "${name}"`);
     }
     return config;
   };
@@ -36,7 +36,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
   const requireStatus = (name: string): ServerStatus => {
     const status = manager.status(requireServer(name).name);
     if (!status) {
-      throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`);
+      throw notFound(`Unknown server "${name}"`);
     }
     return status;
   };
@@ -49,7 +49,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     const request = installRequestSchema.parse(req.body);
     const name = resolveServerName(request);
     if (store.getServer(name)) {
-      throw new HttpError(HttpStatus.Conflict, `Server "${name}" already exists`);
+      throw conflict(`Server "${name}" already exists`);
     }
     const config = await buildServerConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);

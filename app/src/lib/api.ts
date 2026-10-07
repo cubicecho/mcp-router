@@ -4,6 +4,7 @@ import {
   apiErrorSchema,
   type CreateRegistryRequest,
   type CreateWorkspaceRequest,
+  type ErrorCode,
   HttpStatus,
   type InstallRequest,
   type PromptGetRequest,
@@ -43,16 +44,21 @@ import {
 import { z } from 'zod';
 import { getToken, requireAuth } from './auth.ts';
 
-/** Non-2xx responses throw this; carries the HTTP status and the server's { error, detail? } envelope. */
+/**
+ * Non-2xx responses throw this; carries the HTTP status and the server's { error, code, detail? }
+ * envelope. `code` is undefined when the answer was not an envelope (a proxy's own error page).
+ */
 export class ApiRequestError extends Error {
   readonly status: number;
+  readonly code?: ErrorCode;
   readonly detail?: string;
 
-  constructor(status: number, message: string, detail?: string) {
+  constructor(status: number, message: string, envelope: { code?: ErrorCode; detail?: string } = {}) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
-    this.detail = detail;
+    this.code = envelope.code;
+    this.detail = envelope.detail;
   }
 }
 
@@ -86,7 +92,10 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
   if (requestFailed) {
     const envelope = apiErrorSchema.safeParse(await response.json().catch(() => undefined));
     const statusMessage = response.statusText || `Request failed (${response.status})`;
-    throw new ApiRequestError(response.status, envelope.data?.error || statusMessage, envelope.data?.detail);
+    throw new ApiRequestError(response.status, envelope.data?.error || statusMessage, {
+      code: envelope.data?.code,
+      detail: envelope.data?.detail,
+    });
   }
   return response;
 }

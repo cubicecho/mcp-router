@@ -1,7 +1,7 @@
-import { HttpStatus } from '@mcp-router/shared';
 import type { Request, Response } from 'express';
 import { Router } from 'express';
 import type { ConfigStore } from '../config/store.ts';
+import { notFound, sendError } from '../errors.ts';
 import { createAggregateServer } from './aggregate-proxy.ts';
 import { createProxyServer } from './direct-proxy.ts';
 import {
@@ -79,7 +79,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const slug = req.params.slug;
     const workspace = store.getWorkspace(slug);
     if (!workspace || workspace.enabled === false) {
-      res.status(HttpStatus.NotFound).json({ error: `Unknown workspace "${slug}"` });
+      sendError(res, notFound(`Unknown workspace "${slug}"`));
       return;
     }
     // Read on every call: a session outlives config edits, and a workspace
@@ -98,7 +98,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
     const name = req.params.name;
     const config = store.getServer(name);
     if (!config || config.enabled === false) {
-      res.status(HttpStatus.NotFound).json({ error: `Unknown server "${name}"` });
+      sendError(res, notFound(`Unknown server "${name}"`));
       return;
     }
     await start(

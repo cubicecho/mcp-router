@@ -10,7 +10,6 @@ import {
 } from '@cubicecho/agent-mcp-pool';
 import {
   type ActivityEntry,
-  HttpStatus,
   type ServerConfig,
   ServerRuntimeState,
   type ServerStatus,
@@ -23,7 +22,7 @@ import {
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { GATEWAY_DEFAULTS } from '../defaults.ts';
-import { HttpError } from '../errors.ts';
+import { notFound, unavailable, upstreamFailed } from '../errors.ts';
 import { outboundFetch } from '../http-tuning.ts';
 import { SERVER_VERSION } from '../version.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
@@ -340,18 +339,13 @@ export class GatewayManager {
     const name = this.meta.get(key)?.config.name ?? key;
     switch (cause.code) {
       case 'unknown-server':
-        throw new HttpError(HttpStatus.NotFound, `Unknown server "${name}"`, undefined, { cause });
+        throw notFound(`Unknown server "${name}"`, undefined, { cause });
       case 'disabled':
-        throw new HttpError(HttpStatus.NotFound, `Server "${name}" is disabled`, undefined, { cause });
+        throw notFound(`Server "${name}" is disabled`, undefined, { cause });
       case 'backoff':
-        throw new HttpError(
-          HttpStatus.ServiceUnavailable,
-          `Server "${name}" crashed recently; retrying is backed off`,
-          cause.detail,
-          { cause },
-        );
+        throw unavailable(`Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
       default:
-        throw new HttpError(HttpStatus.BadGateway, `Failed to connect to server "${name}"`, cause.detail, { cause });
+        throw upstreamFailed(`Failed to connect to server "${name}"`, cause.detail, { cause });
     }
   }
 

@@ -1,3 +1,4 @@
+import { ErrorCode } from '@mcp-router/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ApiRequestError, deleteServer, getStatus, listServers, updateServer } from '@/lib/api';
 import { getNeedsAuth, setToken, TOKEN_STORAGE_KEY } from '@/lib/auth';
@@ -68,7 +69,7 @@ describe('api client', () => {
   });
 
   it('flags needsAuth and throws an ApiRequestError on 401', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(401, { error: 'unauthorized' }));
+    fetchMock.mockResolvedValue(jsonResponse(401, { error: 'unauthorized', code: ErrorCode.Unauthenticated }));
 
     await expect(getStatus()).rejects.toMatchObject({ status: 401, message: 'unauthorized' });
     expect(getNeedsAuth()).toBe(true);
@@ -79,14 +80,17 @@ describe('api client', () => {
     expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('new-token');
   });
 
-  it('parses the { error, detail } envelope into a typed error', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(400, { error: 'invalid name', detail: 'must be lowercase' }));
+  it('parses the { error, code, detail } envelope into a typed error', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(400, { error: 'invalid name', code: ErrorCode.BadUserInput, detail: 'must be lowercase' }),
+    );
 
     const promise = updateServer('bad name', { enabled: true });
     await expect(promise).rejects.toBeInstanceOf(ApiRequestError);
     await promise.catch((error: ApiRequestError) => {
       expect(error.status).toBe(400);
       expect(error.message).toBe('invalid name');
+      expect(error.code).toBe(ErrorCode.BadUserInput);
       expect(error.detail).toBe('must be lowercase');
     });
   });
