@@ -104,7 +104,7 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
  * Send a request and read its JSON answer through the shared schema for that route, so a
  * server and an app that disagree about a shape fail here and not somewhere in a component.
  */
-async function request<Schema extends z.ZodTypeAny>(
+async function request<Schema extends z.ZodType>(
   path: string,
   schema: Schema,
   options: RequestOptions = {},

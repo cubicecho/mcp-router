@@ -24,7 +24,7 @@ export const ServerRuntimeState = {
 } as const;
 export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof ServerRuntimeState];
 
-export const serverRuntimeStateSchema = z.nativeEnum(ServerRuntimeState);
+export const serverRuntimeStateSchema = z.enum(ServerRuntimeState);
 
 export const serverStatusSchema = z.object({
   config: serverConfigSchema,
@@ -50,7 +50,7 @@ export const installRequestSchema = z.object({
   packageSelector: z.string().optional(),
   /** For source.type === 'remote': the URL to proxy to. */
   transport: serverTransportSchema.optional(),
-  env: z.record(z.string()).default({}),
+  env: z.record(z.string(), z.string()).default({}),
   enabled: z.boolean().default(true),
 });
 export type InstallRequest = z.infer<typeof installRequestSchema>;
@@ -59,7 +59,7 @@ export const updateServerRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
   enabled: z.boolean().optional(),
-  env: z.record(z.string()).optional(),
+  env: z.record(z.string(), z.string()).optional(),
   idleTimeoutMs: z.number().int().positive().nullable().optional(),
   transport: serverTransportSchema.optional(),
 });
@@ -83,7 +83,7 @@ export const activityEntrySchema = z.object({
   /** ISO timestamp of when the call completed. */
   at: z.string(),
   /** Which endpoint the call arrived on ('ui' = run from the web UI's tool runner). */
-  via: z.nativeEnum(CallVia),
+  via: z.enum(CallVia),
   /** JSON-RPC method, e.g. 'tools/call', 'tools/list', 'resources/read'. */
   method: z.string(),
   /** Human-friendly target of the call (tool name, resource uri, prompt name) when applicable. */
@@ -113,7 +113,7 @@ export const serverToolSchema = z
     description: z.string().optional(),
     inputSchema: z.unknown().optional(),
   })
-  .passthrough();
+  .loose();
 export type ServerTool = z.infer<typeof serverToolSchema>;
 
 export const serverToolsResponseSchema = z.object({ tools: z.array(serverToolSchema) });
@@ -127,7 +127,7 @@ export const serverResourceSchema = z
     description: z.string().optional(),
     mimeType: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 export type ServerResource = z.infer<typeof serverResourceSchema>;
 
 /** One resource template of a downstream server, as reported by MCP resources/templates/list. */
@@ -138,7 +138,7 @@ export const serverResourceTemplateSchema = z
     description: z.string().optional(),
     mimeType: z.string().optional(),
   })
-  .passthrough();
+  .loose();
 export type ServerResourceTemplate = z.infer<typeof serverResourceTemplateSchema>;
 
 export const serverResourcesResponseSchema = z.object({
@@ -156,7 +156,7 @@ export const serverPromptSchema = z
       .array(z.object({ name: z.string(), description: z.string().optional(), required: z.boolean().optional() }))
       .optional(),
   })
-  .passthrough();
+  .loose();
 export type ServerPrompt = z.infer<typeof serverPromptSchema>;
 
 export const serverPromptsResponseSchema = z.object({ prompts: z.array(serverPromptSchema) });
@@ -165,7 +165,7 @@ export type ServerPromptsResponse = z.infer<typeof serverPromptsResponseSchema>;
 /** Run one tool of a downstream server from the UI. */
 export const toolCallRequestSchema = z.object({
   name: z.string().min(1),
-  arguments: z.record(z.unknown()).default({}),
+  arguments: z.record(z.string(), z.unknown()).default({}),
 });
 export type ToolCallRequest = z.infer<typeof toolCallRequestSchema>;
 
@@ -176,7 +176,7 @@ export const toolCallResponseSchema = z
     structuredContent: z.unknown().optional(),
     isError: z.boolean().optional(),
   })
-  .passthrough();
+  .loose();
 export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
 
 /** Read one resource of a downstream server from the UI. The URI is either a
@@ -191,14 +191,14 @@ export const resourceReadResponseSchema = z
   .object({
     contents: z.array(z.unknown()).optional(),
   })
-  .passthrough();
+  .loose();
 export type ResourceReadResponse = z.infer<typeof resourceReadResponseSchema>;
 
 /** Get one prompt of a downstream server from the UI. MCP prompt argument
  *  values are strings. */
 export const promptGetRequestSchema = z.object({
   name: z.string().min(1),
-  arguments: z.record(z.string()).default({}),
+  arguments: z.record(z.string(), z.string()).default({}),
 });
 export type PromptGetRequest = z.infer<typeof promptGetRequestSchema>;
 
@@ -208,12 +208,12 @@ export const promptGetResponseSchema = z
     description: z.string().optional(),
     messages: z.array(z.unknown()).optional(),
   })
-  .passthrough();
+  .loose();
 export type PromptGetResponse = z.infer<typeof promptGetResponseSchema>;
 
 export const createRegistryRequestSchema = z.object({
   name: serverNameSchema,
-  url: z.string().url(),
+  url: z.url(),
 });
 export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
 
@@ -231,7 +231,7 @@ export const createWorkspaceRequestSchema = z.object({
   enabled: z.boolean().optional(),
   description: z.string().optional(),
   /** Members keyed by base server name; only listed servers are in the workspace. */
-  members: z.record(workspaceMemberSchema).optional(),
+  members: z.record(z.string(), workspaceMemberSchema).optional(),
 });
 export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
 
@@ -240,7 +240,7 @@ export const updateWorkspaceRequestSchema = z.object({
   enabled: z.boolean().optional(),
   description: z.string().optional(),
   /** Full replacement of the members map when provided. */
-  members: z.record(workspaceMemberSchema).optional(),
+  members: z.record(z.string(), workspaceMemberSchema).optional(),
 });
 export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
@@ -291,7 +291,7 @@ export interface RegistrySearchParams {
 /** Standard error envelope for non-2xx responses. */
 export const apiErrorSchema = z.object({
   error: z.string(),
-  code: z.nativeEnum(ErrorCode),
+  code: z.enum(ErrorCode),
   detail: z.string().optional(),
 });
 export type ApiError = z.infer<typeof apiErrorSchema>;

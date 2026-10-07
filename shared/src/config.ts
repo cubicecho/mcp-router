@@ -19,15 +19,15 @@ export const registrySchema = z
     /** Unique short name, e.g. "official" */
     name: serverNameSchema,
     /** Base URL of an MCP-registry-API-compatible service, e.g. https://registry.modelcontextprotocol.io */
-    url: z.string().url(),
+    url: z.url(),
   })
-  .passthrough();
+  .loose();
 
 export const registriesFileSchema = z
   .object({
     registries: z.array(registrySchema).default([]),
   })
-  .passthrough();
+  .loose();
 
 export type Registry = z.infer<typeof registrySchema>;
 export type RegistriesFile = z.infer<typeof registriesFileSchema>;
@@ -72,7 +72,7 @@ export const settingsFileSchema = z
      *  reason to bounce a running child. */
     connectTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.connectTimeoutMs),
   })
-  .passthrough();
+  .loose();
 
 export type SettingsFile = z.infer<typeof settingsFileSchema>;
 
@@ -132,8 +132,8 @@ export const serverTransportSchema = z.discriminatedUnion('type', [
   }),
   z.object({
     type: z.literal(TRANSPORT_STREAMABLE_HTTP),
-    url: z.string().url(),
-    headers: z.record(z.string()).default({}),
+    url: z.url(),
+    headers: z.record(z.string(), z.string()).default({}),
   }),
 ]);
 
@@ -147,7 +147,7 @@ export const envVarMetaSchema = z
     placeholder: z.string().optional(),
     choices: z.array(z.string()).optional(),
   })
-  .passthrough();
+  .loose();
 
 export const serverConfigSchema = z
   .object({
@@ -159,13 +159,13 @@ export const serverConfigSchema = z
     transport: serverTransportSchema,
     /** Env vars passed to the child process (stdio) or sent as headers is NOT done here —
      *  headers for remote servers live on the transport. Values are plaintext. */
-    env: z.record(z.string()).default({}),
+    env: z.record(z.string(), z.string()).default({}),
     /** Describes known env vars for UI rendering; keys are env var names. */
-    envMeta: z.record(envVarMetaSchema).default({}),
+    envMeta: z.record(z.string(), envVarMetaSchema).default({}),
     /** Override the global stdio idle shutdown. */
     idleTimeoutMs: z.number().int().positive().optional(),
   })
-  .passthrough();
+  .loose();
 
 export type ServerSource = z.infer<typeof serverSourceSchema>;
 export type ServerTransport = z.infer<typeof serverTransportSchema>;
@@ -185,16 +185,16 @@ export const workspaceMemberSchema = z
     /** Include this server in the workspace aggregate. Absent members are not in the workspace. */
     enabled: z.boolean().default(true),
     /** Env vars merged over the base server's env (stdio children). */
-    env: z.record(z.string()).optional(),
+    env: z.record(z.string(), z.string()).optional(),
     /** Replaces the base server's stdio args entirely when set. */
     args: z.array(z.string()).optional(),
     /** Headers merged over the base server's headers (remote streamable-http). */
-    headers: z.record(z.string()).optional(),
+    headers: z.record(z.string(), z.string()).optional(),
     /** Replaces the base server's streamable-http URL entirely when set (remote members) —
      *  e.g. to scope a shared upstream to a workspace-specific path. */
-    url: z.string().url().optional(),
+    url: z.url().optional(),
   })
-  .passthrough();
+  .loose();
 
 /** A named custom aggregate exposing a chosen subset of servers at /mcp/w/<slug>. */
 export const workspaceConfigSchema = z
@@ -207,9 +207,9 @@ export const workspaceConfigSchema = z
     enabled: z.boolean().default(true),
     description: z.string().optional(),
     /** Members keyed by base server name. Only listed servers are in the workspace. */
-    members: z.record(workspaceMemberSchema).default({}),
+    members: z.record(z.string(), workspaceMemberSchema).default({}),
   })
-  .passthrough();
+  .loose();
 
 export type WorkspaceMember = z.infer<typeof workspaceMemberSchema>;
 export type WorkspaceConfig = z.infer<typeof workspaceConfigSchema>;
