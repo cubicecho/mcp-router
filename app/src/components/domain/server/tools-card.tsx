@@ -1,42 +1,74 @@
 import type { ServerTool } from '@mcp-router/shared';
-import { useState } from 'react';
-import { toast } from 'sonner';
+import { TextareaField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/page';
-import { Textarea } from '@/components/ui/textarea';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './capability-list';
+
+type ToolArguments = Record<string, unknown>;
+
+/** The typed text as an arguments object, or why it is not one. */
+function parseArguments(text: string): { args: ToolArguments } | { error: string } {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text.trim() || '{}');
+  } catch (error) {
+    return { error: `Not valid JSON: ${error instanceof Error ? error.message : String(error)}` };
+  }
+  if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    return { error: 'Arguments must be a JSON object' };
+  }
+  return { args: parsed as ToolArguments };
+}
+
+function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArguments) => Promise<void> }) {
+  const form = useAppForm({
+    defaultValues: { argsText: argsTemplate(tool.inputSchema) },
+    onSubmit: async ({ value }) => {
+      const parsed = parseArguments(value.argsText);
+      if ('args' in parsed) {
+        await onRun(parsed.args);
+      }
+    },
+  });
+
+  return (
+    <RunForm
+      onSubmit={form.handleSubmit}
+      contentSlot={
+        <>
+          <form.Subscribe selector={(state) => state.values.argsText.split('\n').length}>
+            {(lines) => (
+              <TextareaField
+                form={form}
+                name="argsText"
+                label="Arguments"
+                description="A JSON object."
+                rows={Math.min(DISPLAY_DEFAULTS.argsMaxRows, Math.max(DISPLAY_DEFAULTS.argsMinRows, lines))}
+                className="[&_textarea]:font-mono [&_textarea]:text-xs"
+                validators={{
+                  onSubmit: ({ value }) => {
+                    const parsed = parseArguments(value);
+                    return 'error' in parsed ? parsed.error : undefined;
+                  },
+                }}
+              />
+            )}
+          </form.Subscribe>
+          <form.AppForm>
+            <form.SubmitButton {...RUN_SUBMIT} content="Run" pendingLabel="Running…" />
+          </form.AppForm>
+        </>
+      }
+    />
+  );
+}
 
 function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) {
-  const schemaSig = JSON.stringify(tool.inputSchema);
-  const [seededSig, setSeededSig] = useState(schemaSig);
-  const [argsText, setArgsText] = useState(() => argsTemplate(tool.inputSchema));
   const call = useCallTool(scope);
-  const { result, run, loading } = useCapabilityRun(call);
-
-  // A refetch that genuinely changes this tool's schema re-seeds the args editor
-  // in place (rather than remounting the row), so the last result stays visible.
-  if (schemaSig !== seededSig) {
-    setSeededSig(schemaSig);
-    setArgsText(argsTemplate(tool.inputSchema));
-  }
-
-  const submit = () => {
-    let args: Record<string, unknown>;
-    try {
-      const parsed: unknown = JSON.parse(argsText.trim() || '{}');
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('arguments must be a JSON object');
-      }
-      args = parsed as Record<string, unknown>;
-    } catch (error) {
-      toast.error(`Invalid arguments: ${error instanceof Error ? error.message : 'not valid JSON'}`);
-      return;
-    }
-    run({ name: tool.name, arguments: args });
-  };
+  const { result, run } = useCapabilityRun(call);
 
   return (
     <CapabilityRow
@@ -44,17 +76,13 @@ function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) 
       description={tool.description}
       contentSlot={
         <>
-          <Textarea
-            value={argsText}
-            rows={Math.min(
-              DISPLAY_DEFAULTS.argsMaxRows,
-              Math.max(DISPLAY_DEFAULTS.argsMinRows, argsText.split('\n').length),
-            )}
-            className="font-mono text-xs"
-            aria-label={`Arguments for ${tool.name}`}
-            onChange={(event) => setArgsText(event.target.value)}
+          {/* Keyed by the schema: a refetch that changes it remounts only the form, which
+              re-seeds the arguments while the last result stays visible. */}
+          <ToolArgsForm
+            key={JSON.stringify(tool.inputSchema)}
+            tool={tool}
+            onRun={(args) => run({ name: tool.name, arguments: args })}
           />
-          <RunButton label="Run" loading={loading} onClick={submit} />
           {result && (
             <ResultBlock
               result={result}

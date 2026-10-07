@@ -73,6 +73,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
     <DialogLayout
       open={open}
       onOpenChange={onOpenChange}
+      hasUnsavedChanges={() => form.state.isDefaultValue === false}
       size="md"
       title={`Install ${server.title ?? server.name}`}
       description={server.description}

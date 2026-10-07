@@ -3,7 +3,6 @@ import { type ReactElement, type ReactNode, useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
 import { DisclosureRow } from '@/components/disclosure-row';
 import { QueryError } from '@/components/query-state';
-import { Button } from '@/components/ui/button';
 import { Play } from '@/components/ui/icons';
 import { toastApiError } from '@/lib/toast';
 import type { SlotNode } from '@/lib/utils';
@@ -58,7 +57,7 @@ interface CapabilityRowProps {
   /** Short facts beside the name, e.g. a resource's MIME type. */
   meta?: ReactNode;
   description?: ReactNode;
-  /** Revealed when expanded: inputs, a {@link RunButton}, and a {@link ResultBlock}. */
+  /** Revealed when expanded: inputs, a {@link RunForm}, and a {@link ResultBlock}. */
   contentSlot: SlotNode;
 }
 
@@ -78,44 +77,41 @@ export function CapabilityRow({ title, meta, description, contentSlot }: Capabil
   );
 }
 
-/** Shared run/read/get action button: shows a spinner while loading, a play icon otherwise. */
-export function RunButton({
-  label,
-  loading,
-  disabled,
-  onClick,
-}: {
-  label: string;
-  loading: boolean;
-  disabled?: boolean;
-  onClick: () => void;
-}) {
+/** What every run/read/get form's submit button looks like; the label is the row's own. */
+export const RUN_SUBMIT = { size: 'sm', variant: 'outline', className: 'self-start', iconSlot: <Play /> } as const;
+
+/** The `<form>` of a capability row: its fields in a column, submitted by Enter or the button. */
+export function RunForm({ onSubmit, contentSlot }: { onSubmit: () => void; contentSlot: SlotNode }) {
   return (
-    <Button
-      size="sm"
-      variant="outline"
-      className="self-start"
-      loading={loading}
-      disabled={disabled}
-      onClick={onClick}
-      iconSlot={<Play />}
-      content={label}
-    />
+    <form
+      className="flex flex-col gap-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSubmit();
+      }}
+    >
+      {contentSlot}
+    </form>
   );
 }
 
 /**
  * Shared run/read/get state for a capability row: holds the last result, clears
  * it before each invocation, and toasts errors. Callers supply the mutation
- * (call/read/get) and pass their built variables to `run`.
+ * (call/read/get) and pass their built variables to `run`, whose promise settles
+ * when the call does, so a form awaiting it shows progress on its submit.
  */
 export function useCapabilityRun<TData, TVariables>(mutation: UseMutationResult<TData, Error, TVariables>) {
   const [result, setResult] = useState<TData | null>(null);
-  const run = (variables: TVariables) => {
+  const run = async (variables: TVariables): Promise<void> => {
     setResult(null);
-    mutation.mutate(variables, { onSuccess: setResult, onError: toastApiError });
+    try {
+      setResult(await mutation.mutateAsync(variables));
+    } catch (error) {
+      toastApiError(error);
+    }
   };
-  return { result, run, loading: mutation.isPending };
+  return { result, run };
 }
 
 /** Shared JSON result panel for a run/read/get invocation, with a Text/JSON toggle. */

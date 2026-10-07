@@ -1,12 +1,10 @@
 import type { ServerResource, ServerResourceTemplate } from '@mcp-router/shared';
-import { useState } from 'react';
-import { FormField } from '@/components/form-field';
+import { InputField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/page';
 import { Badge } from '@/components/ui/badge';
-import { Input } from '@/components/ui/input';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
-import { CapabilityList, CapabilityRow, ResultBlock, RunButton, useCapabilityRun } from './capability-list';
+import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './capability-list';
 
 /** A resource (concrete URI) or a template (an RFC 6570 URI to fill in). */
 interface ResourceRowData {
@@ -20,9 +18,12 @@ interface ResourceRowData {
 }
 
 function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRowData }) {
-  const [uri, setUri] = useState(data.uri);
   const read = useReadResource(scope);
-  const { result, run, loading } = useCapabilityRun(read);
+  const { result, run } = useCapabilityRun(read);
+  const form = useAppForm({
+    defaultValues: { uri: data.uri },
+    onSubmit: ({ value }) => run({ uri: value.uri.trim() }),
+  });
 
   return (
     <CapabilityRow
@@ -43,16 +44,25 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
       }
       contentSlot={
         <>
-          <FormField
-            label="URI"
-            description={data.isTemplate ? 'Replace the {placeholders} with concrete values.' : undefined}
-            controlSlot={<Input value={uri} className="font-mono" onChange={(event) => setUri(event.target.value)} />}
-          />
-          <RunButton
-            label="Read"
-            loading={loading}
-            disabled={uri.trim().length === 0}
-            onClick={() => run({ uri: uri.trim() })}
+          <RunForm
+            onSubmit={form.handleSubmit}
+            contentSlot={
+              <>
+                <InputField
+                  form={form}
+                  name="uri"
+                  label="URI"
+                  description={data.isTemplate ? 'Replace the {placeholders} with concrete values.' : undefined}
+                  className="[&_input]:font-mono"
+                  validators={{
+                    onChange: ({ value }) => (value.trim().length === 0 ? 'A URI is required' : undefined),
+                  }}
+                />
+                <form.AppForm>
+                  <form.SubmitButton {...RUN_SUBMIT} content="Read" pendingLabel="Reading…" />
+                </form.AppForm>
+              </>
+            }
           />
           {result && <ResultBlock result={result} />}
         </>
