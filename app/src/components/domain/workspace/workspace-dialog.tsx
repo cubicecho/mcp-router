@@ -14,6 +14,7 @@ import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 /**
@@ -364,7 +365,7 @@ function MemberRow({ server, included, expanded, onToggle, onExpandToggle, overr
       <div className="flex items-center gap-3">
         <Switch checked={included} onCheckedChange={onToggle} aria-label={`Include ${name}`} />
         <div className="min-w-0 flex-1">
-          <span className="font-medium">{server.config.displayName || name}</span>
+          <span className="font-medium">{serverLabel(name, server.config.displayName)}</span>
           {server.config.displayName && <span className="ml-2 text-xs text-muted-foreground">{name}</span>}
         </div>
         <Badge variant="outline">{isStdio ? 'stdio' : 'http'}</Badge>

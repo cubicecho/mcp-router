@@ -21,6 +21,7 @@ import { Switch } from '@/components/ui/switch';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
 export const Route = createFileRoute('/servers/$name')({
@@ -81,7 +82,7 @@ function ServerDetailPage() {
           iconSlot={<ArrowLeft />}
         />
       }
-      title={server?.config.displayName ?? name}
+      title={serverLabel(name, server?.config.displayName)}
       description={server?.config.description}
       loading={query.isPending}
       contentSlot={

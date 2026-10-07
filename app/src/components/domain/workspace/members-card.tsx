@@ -5,6 +5,7 @@ import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useServers, useUpdateWorkspace } from '@/lib/queries';
+import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
 /** Which overrides a member carries, for the "overrides" hint badges. */
@@ -71,7 +72,7 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
                     onCheckedChange={(on) => toggle(name, member, on)}
                   />
                   <div className="min-w-0 flex-1">
-                    <span className="font-medium">{server?.config.displayName || name}</span>
+                    <span className="font-medium">{serverLabel(name, server?.config.displayName)}</span>
                     {server?.config.displayName && (
                       <span className="ml-2 font-mono text-xs text-muted-foreground">{name}</span>
                     )}
