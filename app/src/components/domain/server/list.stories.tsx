@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { remoteServer, stdioServer } from '@/storybook/fixtures';
+import { needsSignInServer, remoteServer, stdioServer } from '@/storybook/fixtures';
 import { apiRequest } from '@/storybook/mock-api';
 import { ServerList } from './list.tsx';
 
@@ -41,5 +41,14 @@ export const DeletesOnlyAfterConfirming: Story = {
     const dialog = within(await body.findByRole('alertdialog'));
     await userEvent.click(dialog.getByRole('button', { name: /delete/i }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DELETE /api/servers/docs', undefined));
+  },
+};
+
+export const OffersSignInWhereAServerAsksForIt: Story = {
+  args: { servers: [stdioServer(), needsSignInServer()] },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(canvas.getByText('needs sign-in')).toBeVisible();
+    await expect(canvas.getAllByRole('button', { name: 'Sign in' })).toHaveLength(1);
   },
 };

@@ -1,10 +1,11 @@
-import type { ServerStatus } from '@mcp-router/shared';
+import { ServerRuntimeState, type ServerStatus } from '@mcp-router/shared';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ActionButton } from '@/components/action-button';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
+import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { EmptyState } from '@/components/page';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
@@ -66,7 +67,12 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
         </Link>
       </TableCell>
       <TableCell>
-        <ServerStateBadge state={server.state} lastError={server.lastError} />
+        <span className="inline-flex flex-wrap items-center gap-2">
+          <ServerStateBadge state={server.state} lastError={server.lastError} />
+          {server.state === ServerRuntimeState.NeedsAuth && (
+            <OAuthSignInButton name={config.name} variant="info-outline" size="xs" />
+          )}
+        </span>
       </TableCell>
       <TableCell className="hidden text-foreground/60 md:table-cell">{config.transport.type}</TableCell>
       <TableCell

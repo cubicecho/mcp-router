@@ -85,6 +85,86 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
 }
 
 /**
+ * Checks that typed text is blank or an http(s) URL.
+ *
+ * @param text - The typed address.
+ * @returns Whether it can be saved.
+ */
+function isPublicUrl(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) {
+    return true;
+  }
+  try {
+    return ['http:', 'https:'].includes(new URL(trimmed).protocol);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Inline editor for the router's public address, the one a remote server's login sends the browser back to.
+ *
+ * @param props.current - The stored address; undefined when unset.
+ * @returns The form; Save is enabled only for a blank or valid URL that differs from the stored one. Blank clears it.
+ */
+function PublicUrlEditor({ current }: { current?: string }) {
+  const update = useUpdateSettings();
+  const form = useAppForm({
+    defaultValues: { url: current ?? '' },
+    onSubmit: async ({ value }) => {
+      const url = value.url.trim().replace(/\/+$/, '');
+      try {
+        await update.mutateAsync({ publicUrl: url || null });
+        toast.success(url ? 'Public URL saved' : 'Public URL cleared');
+      } catch (error) {
+        toastApiError(error);
+      }
+    },
+  });
+  /** The typed address is valid and differs from the stored one. */
+  const isChanged = (text: string) => isPublicUrl(text) && text.trim().replace(/\/+$/, '') !== (current ?? '');
+
+  return (
+    <form
+      className="flex items-center gap-2"
+      onSubmit={(event) => {
+        event.preventDefault();
+        form.handleSubmit();
+      }}
+    >
+      <form.Field name="url">
+        {(field) => (
+          <Input
+            value={field.state.value}
+            inputMode="url"
+            placeholder={window.location.origin}
+            aria-label="Public URL"
+            aria-invalid={isPublicUrl(field.state.value) === false}
+            className="h-8 w-64"
+            onBlur={field.handleBlur}
+            onChange={(event) => field.handleChange(event.target.value)}
+          />
+        )}
+      </form.Field>
+      <form.Subscribe selector={(state) => isChanged(state.values.url)}>
+        {(changed) => (
+          <form.AppForm>
+            <form.SubmitButton
+              size="sm"
+              variant="outline"
+              disabled={changed === false}
+              aria-label="Save public URL"
+              content="Save"
+            />
+          </form.AppForm>
+        )}
+      </form.Subscribe>
+    </form>
+  );
+}
+
+/**
  * The Settings page: router status, the idle timeout and the config-file layout with a reload button.
  *
  * @returns The page.
@@ -150,6 +230,11 @@ function SettingsPage() {
                       title="Idle timeout"
                       description="How long an unused server keeps running before it is stopped."
                       actionSlot={<IdleTimeoutEditor key={data.idleTimeoutMs} currentMs={data.idleTimeoutMs} />}
+                    />
+                    <SettingRow
+                      title="Public URL"
+                      description="The address a remote server's login sends you back to after you sign in, and that it fetches MCP Router's client details from. Leave it blank to use the address this page is open at; set it when the router sits behind a proxy or is reached by another name."
+                      actionSlot={<PublicUrlEditor key={data.publicUrl ?? ''} current={data.publicUrl} />}
                     />
                   </>
                 )

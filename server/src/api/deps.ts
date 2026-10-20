@@ -1,5 +1,6 @@
 import type { ConfigStore } from '../config/store.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
+import type { OAuthService } from '../oauth/service.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
 /** Everything the REST routes are built over; each route module takes the whole set. */
@@ -9,6 +10,8 @@ export interface ApiDeps {
   registryClient: RegistryClient;
   /** The data directory; installed packages live under it. */
   dataDir: string;
+  /** OAuth sign-in for remote servers. */
+  oauth: OAuthService;
 }
 
 /**

@@ -1,5 +1,7 @@
 import {
   type InstallRequest,
+  type OAuthClientRequest,
+  ServerRuntimeState,
   type ServerStatus,
   SourceType,
   serverNameSchema,
@@ -11,8 +13,11 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { InputField, TextareaField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
+import { Disclosure } from '@/components/disclosure';
 import { KeyValueRows } from '@/components/domain/key-value/rows';
+import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { FormField } from '@/components/form-field';
+import { PasswordField } from '@/components/password-field';
 import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -20,7 +25,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { argsFromLines } from '@/lib/arg-lines';
 import { parseJsonConfig } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
-import { useInstallServer, useUpdateServer } from '@/lib/queries';
+import { useCheckServerOAuth, useInstallServer, useUpdateServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
@@ -47,6 +52,58 @@ function urlError(value: string): string | undefined {
 }
 
 /**
+ * What the OAuth client fields ask the router to change.
+ *
+ * @param clientId - The typed client id; blank means none.
+ * @param clientSecret - The typed secret; blank keeps a stored one.
+ * @param [current] - The stored client id, when editing.
+ * @returns The request field: a client, `null` to remove the stored one, or undefined to leave it alone.
+ */
+function oauthClientChange(
+  clientId: string,
+  clientSecret: string,
+  current?: string,
+): OAuthClientRequest | null | undefined {
+  const id = clientId.trim();
+  const secret = clientSecret.trim();
+  if (!id) {
+    return current ? null : undefined;
+  }
+  if (id === current && !secret) {
+    return undefined;
+  }
+  return { clientId: id, ...(secret ? { clientSecret: secret } : {}) };
+}
+
+/**
+ * The step after adding a remote server that asked for a login: sign in now, or later from its page.
+ *
+ * @param props.name - The server just added.
+ * @param props.onOpenChange - Called with false once signed in, or on "Later".
+ * @returns The dialog.
+ */
+function SignInStep({ name, onOpenChange }: { name: string; onOpenChange: (open: boolean) => void }) {
+  return (
+    <DialogLayout
+      open
+      onOpenChange={onOpenChange}
+      size="md"
+      title={`Sign in to ${name}`}
+      description="This server asks for a login before it answers. Sign in now and MCP Router keeps the session, refreshing it as needed."
+      footerActionsSlot={(close) => <Button type="button" variant="outline" onClick={close} content="Later" />}
+      contentSlot={
+        <div className="flex flex-col items-start gap-3">
+          <p className="text-foreground/70 text-sm">
+            The login opens in a new window. When it is done, the window closes and the server connects.
+          </p>
+          <OAuthSignInButton name={name} size="default" onSignedIn={() => onOpenChange(false)} />
+        </div>
+      }
+    />
+  );
+}
+
+/**
  * Dialog that adds a server by hand, as a stdio command or a streamable-HTTP URL, or edits an existing one.
  *
  * @param props.open - Whether the dialog is shown.
@@ -56,7 +113,8 @@ function urlError(value: string): string | undefined {
  *
  * @remarks
  * Editing never renames, and saving on the HTTP tab leaves the stored env untouched. A pasted config only fills the
- * stdio fields, from the first server in it.
+ * stdio fields, from the first server in it. A new HTTP server is asked whether it wants a login; when it does, the
+ * dialog stays open on a sign-in step.
  */
 export function AddServerDialog({
   open,
@@ -70,6 +128,8 @@ export function AddServerDialog({
 }) {
   const install = useInstallServer();
   const update = useUpdateServer();
+  const checkOAuth = useCheckServerOAuth();
+  const [signInFor, setSignInFor] = useState<string>();
   const isEdit = server !== undefined;
   const transport = server?.config.transport;
   const [jsonText, setJsonText] = useState('');
@@ -86,6 +146,8 @@ export function AddServerDialog({
       // http fields
       url: transport?.type === TRANSPORT_STREAMABLE_HTTP ? transport.url : '',
       headerRows: recordToRows(transport?.type === TRANSPORT_STREAMABLE_HTTP ? transport.headers : {}),
+      oauthClientId: server?.oauth?.clientId ?? '',
+      oauthClientSecret: '',
     },
     onSubmit: async ({ value }) => {
       const built =
@@ -99,6 +161,10 @@ export function AddServerDialog({
           : { type: TRANSPORT_STREAMABLE_HTTP, url: value.url.trim(), headers: rowsToRecord(value.headerRows) };
       // A streamable-http server has no child env.
       const env = value.mode === 'stdio' ? rowsToRecord(value.envRows) : {};
+      const oauthClient =
+        value.mode === 'http'
+          ? oauthClientChange(value.oauthClientId, value.oauthClientSecret, server?.oauth?.clientId)
+          : undefined;
 
       try {
         if (isEdit) {
@@ -107,6 +173,7 @@ export function AddServerDialog({
             name: server.config.name,
             transport: built,
             ...(value.mode === 'stdio' ? { env } : {}),
+            ...(oauthClient !== undefined ? { oauthClient } : {}),
           });
           toast.success(`Updated ${server.config.name}`);
           onOpenChange(false);
@@ -118,9 +185,18 @@ export function AddServerDialog({
           transport: built,
           env,
           enabled: true,
+          ...(oauthClient ? { oauthClient } : {}),
         };
         const status = await install.mutateAsync(body);
         toast.success(`Added ${status.config.name}`);
+        if (value.mode === 'http') {
+          // A failed check is no reason to keep the dialog: the server's own page says what is wrong.
+          const checked = await checkOAuth.mutateAsync(status.config.name).catch(() => undefined);
+          if (checked?.state === ServerRuntimeState.NeedsAuth) {
+            setSignInFor(status.config.name);
+            return;
+          }
+        }
         onOpenChange(false);
       } catch (error) {
         toastApiError(error);
@@ -168,6 +244,10 @@ export function AddServerDialog({
       toast.error(`Could not parse config: ${error instanceof Error ? error.message : 'invalid JSON'}`);
     }
   };
+
+  if (signInFor) {
+    return <SignInStep name={signInFor} onOpenChange={onOpenChange} />;
+  }
 
   return (
     <DialogLayout
@@ -309,6 +389,30 @@ export function AddServerDialog({
                   />
                 )}
               </form.Field>
+              <Disclosure
+                title="OAuth client (optional)"
+                description="Most servers that ask for a login register MCP Router on their own. Fill these in only for one that needs a client set up in advance."
+                defaultOpen={Boolean(server?.oauth?.clientId)}
+                contentClassName="flex flex-col gap-4 pt-2"
+                contentSlot={
+                  <>
+                    <InputField
+                      form={form}
+                      name="oauthClientId"
+                      label="Client ID"
+                      placeholder="mcp-router"
+                      autoComplete="off"
+                    />
+                    <PasswordField
+                      form={form}
+                      name="oauthClientSecret"
+                      label="Client secret"
+                      autoComplete="new-password"
+                      placeholder={server?.oauth?.hasClientSecret ? 'Stored — leave blank to keep it' : 'None'}
+                    />
+                  </>
+                }
+              />
             </TabsContent>
           </Tabs>
         </form>

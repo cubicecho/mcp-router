@@ -13,6 +13,7 @@ import { GatewayManager } from './gateway/manager.ts';
 import { createApp } from './http/app.ts';
 import { stopOnSignals } from './http/shutdown.ts';
 import { tuneInbound } from './http/tuning.ts';
+import { OAuthService } from './oauth/service.ts';
 
 /** Loads the config, starts the gateway and the HTTP server, and arranges a graceful stop on SIGTERM or SIGINT. */
 async function main(): Promise<void> {
@@ -21,7 +22,10 @@ async function main(): Promise<void> {
   const store = new ConfigStore(dataDir);
   await store.init();
 
-  const manager = new GatewayManager(() => store.getSettings());
+  const oauth = new OAuthService(store);
+  const manager = new GatewayManager(() => store.getSettings(), oauth);
+  // After a sign-in or sign-out, every connection of that server dials again with what is stored now.
+  oauth.setOnChange((name) => manager.resetServer(name));
   await manager.reconcile(store.getServers(), store.getWorkspaces());
   store.on('change', (state) => {
     console.log('[config] changed on disk, reconciling servers');
@@ -31,7 +35,7 @@ async function main(): Promise<void> {
   });
   store.startWatching();
 
-  const app = createApp({ store, manager });
+  const app = createApp({ store, manager, oauth });
   const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
   const host = listenHost(store.getSettings().host);

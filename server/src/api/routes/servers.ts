@@ -3,6 +3,8 @@ import {
   activityResponseSchema,
   HttpStatus,
   installRequestSchema,
+  type OAuthStartResponse,
+  oauthStartRequestSchema,
   type ServerConfig,
   type ServerStatus,
   updateServerRequestSchema,
@@ -12,6 +14,7 @@ import { conflict, errorMessage, notFound } from '../../core/errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
+import { applyOAuthClient, dropSignInOnMove } from '../../oauth/service.ts';
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
@@ -22,9 +25,10 @@ import { type ApiDeps, applyConfig } from '../deps.ts';
  * @param deps.manager - Reports status and reaches the running servers.
  * @param deps.registryClient - Looks up registry entries for an install.
  * @param deps.dataDir - Where packages are installed and removed.
+ * @param deps.oauth - Signs remote servers in and out.
  * @returns The router, with paths relative to /api/servers.
  */
-export function createServerRoutes({ store, manager, registryClient, dataDir }: ApiDeps): Router {
+export function createServerRoutes({ store, manager, registryClient, dataDir, oauth }: ApiDeps): Router {
   const router = Router();
 
   const installerDeps = {
@@ -59,7 +63,10 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     if (store.getServer(name)) {
       throw conflict(`Server "${name}" already exists`);
     }
-    const config = await buildServerConfig({ ...request, name }, installerDeps);
+    const built = await buildServerConfig({ ...request, name }, installerDeps);
+    const config: ServerConfig = request.oauthClient
+      ? { ...built, oauth: applyOAuthClient(built.oauth, request.oauthClient) }
+      : built;
     await store.saveServer(config);
     await applyConfig({ store, manager });
     res.status(HttpStatus.Created).json(requireStatus(config.name));
@@ -75,8 +82,11 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     // The request schema is a plain object, so an omitted field is an absent key
     // (never an explicit undefined) and spreads as "leave it alone". Only
     // idleTimeoutMs needs a hand: null means "clear the override", not "set null".
-    const { idleTimeoutMs, ...fields } = updateServerRequestSchema.parse(req.body);
-    const next: ServerConfig = { ...existing, ...fields };
+    const { idleTimeoutMs, oauthClient, ...fields } = updateServerRequestSchema.parse(req.body);
+    let next: ServerConfig = dropSignInOnMove(existing, { ...existing, ...fields });
+    if (oauthClient !== undefined) {
+      next = { ...next, oauth: applyOAuthClient(next.oauth, oauthClient) };
+    }
     if (idleTimeoutMs === null) {
       delete next.idleTimeoutMs;
     } else if (idleTimeoutMs !== undefined) {
@@ -95,8 +105,33 @@ export function createServerRoutes({ store, manager, registryClient, dataDir }: 
     // and removing its install directory out from under a live process is how a
     // half-deleted server with a file still open happens.
     await applyConfig({ store, manager });
+    oauth.forget(name);
     await uninstall(dataDir, name);
     res.status(HttpStatus.NoContent).end();
+  });
+
+  // The sign-in a remote server asks for: start it here, finish it at /oauth/callback (see oauth/routes.ts).
+  router.post('/:name/oauth/start', async (req, res) => {
+    const name = req.params.name;
+    requireServer(name);
+    const { origin } = oauthStartRequestSchema.parse(req.body);
+    const result: OAuthStartResponse = await oauth.start(name, origin);
+    res.json(result);
+  });
+
+  // Whether a remote server wants a sign-in, asked without a token; the add dialog calls it after an install.
+  router.post('/:name/oauth/check', async (req, res) => {
+    const name = req.params.name;
+    requireServer(name);
+    await oauth.check(name);
+    res.json(requireStatus(name));
+  });
+
+  router.delete('/:name/oauth', async (req, res) => {
+    const name = req.params.name;
+    requireServer(name);
+    await oauth.signOut(name);
+    res.json(requireStatus(name));
   });
 
   router.post('/:name/restart', async (req, res) => {

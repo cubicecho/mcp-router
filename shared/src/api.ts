@@ -21,6 +21,8 @@ export const ServerRuntimeState = {
   Starting: 'starting',
   Running: 'running',
   Error: 'error',
+  /** A remote server that asks for an OAuth login nobody has done yet, or whose login lapsed. */
+  NeedsAuth: 'needs-auth',
 } as const;
 /** One of the {@link ServerRuntimeState} values. */
 export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof ServerRuntimeState];
@@ -28,9 +30,28 @@ export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof Server
 /** Validates a {@link ServerRuntimeState} value. */
 export const serverRuntimeStateSchema = z.enum(ServerRuntimeState);
 
+/** Where a remote server's OAuth sign-in stands. Never carries a token. */
+export const serverOAuthStatusSchema = z.object({
+  /** Whether the router holds tokens for it. */
+  signedIn: z.boolean(),
+  /** When the access token runs out, ISO; absent when the server did not say. A refresh token renews it. */
+  expiresAt: z.string().optional(),
+  /** Whether it can be renewed without a login. */
+  refreshable: z.boolean(),
+  /** The pre-registered client id, when one was typed in. */
+  clientId: z.string().optional(),
+  /** Whether a secret is stored for `clientId`; the secret itself is never sent. */
+  hasClientSecret: z.boolean(),
+});
+/** Where a remote server's OAuth sign-in stands. */
+export type ServerOAuthStatus = z.infer<typeof serverOAuthStatusSchema>;
+
 /** A server as the API returns it: its stored config plus its runtime state. */
 export const serverStatusSchema = z.object({
+  /** The stored config, without `oauth`: tokens never leave the router. See `oauth` below. */
   config: serverConfigSchema,
+  /** A remote server's sign-in; absent for a stdio server. */
+  oauth: serverOAuthStatusSchema.optional(),
   state: serverRuntimeStateSchema,
   pid: z.number().optional(),
   startedAt: z.string().optional(), // ISO timestamp
@@ -45,6 +66,45 @@ export const serverStatusSchema = z.object({
 /** A server's stored config plus its runtime state. */
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 
+/** A pre-registered OAuth client for a remote server; `null` in an update removes it. */
+export const oauthClientRequestSchema = z.object({
+  clientId: z.string().min(1),
+  /** Omitted in an update keeps the stored secret; an empty string removes it. */
+  clientSecret: z.string().optional(),
+  scope: z.string().optional(),
+});
+/** A pre-registered OAuth client. */
+export type OAuthClientRequest = z.infer<typeof oauthClientRequestSchema>;
+
+/** Body of `POST /api/servers/:name/oauth/start`. */
+export const oauthStartRequestSchema = z.object({
+  /** The UI's own origin. The sign-in window reports back to it, and it is the router's address
+   *  when settings.json has no `publicUrl`. */
+  origin: z.url(),
+});
+/** Body of the start-sign-in request. */
+export type OAuthStartRequest = z.infer<typeof oauthStartRequestSchema>;
+
+/** What `POST /api/servers/:name/oauth/start` answers. */
+export const oauthStartResponseSchema = z.object({
+  /** The server's login page, to open in a window; absent when no login was needed after all. */
+  authorizationUrl: z.url().optional(),
+  /** True when the stored sign-in still worked (it was refreshed), so there is nothing to open. */
+  signedIn: z.boolean(),
+});
+/** What the start-sign-in request answers. */
+export type OAuthStartResponse = z.infer<typeof oauthStartResponseSchema>;
+
+/** The message the sign-in window posts to the window that opened it, then closes. */
+export const oauthResultMessageSchema = z.object({
+  type: z.literal('mcp-router-oauth'),
+  server: z.string(),
+  ok: z.boolean(),
+  error: z.string().optional(),
+});
+/** The message the sign-in window posts back. */
+export type OAuthResultMessage = z.infer<typeof oauthResultMessageSchema>;
+
 /** Body of the install-server request. */
 export const installRequestSchema = z.object({
   /** Local name; also the route segment. Derived from the package/server name when omitted. */
@@ -57,6 +117,8 @@ export const installRequestSchema = z.object({
   transport: serverTransportSchema.optional(),
   env: z.record(z.string(), z.string()).default({}),
   enabled: z.boolean().default(true),
+  /** For a remote server whose login only accepts a client registered with it in advance. */
+  oauthClient: oauthClientRequestSchema.optional(),
 });
 /** Body of the install-server request, fallbacks filled in. */
 export type InstallRequest = z.infer<typeof installRequestSchema>;
@@ -69,6 +131,8 @@ export const updateServerRequestSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
   idleTimeoutMs: z.number().int().positive().nullable().optional(),
   transport: serverTransportSchema.optional(),
+  /** Sets, or with `null` removes, the pre-registered OAuth client. Changing it signs the server out. */
+  oauthClient: oauthClientRequestSchema.nullable().optional(),
 });
 /** Body of the update-server request. */
 export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
@@ -295,6 +359,8 @@ export const routerStatusSchema = z.object({
   authEnabled: z.boolean(),
   /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
   idleTimeoutMs: z.number(),
+  /** settings.json's `publicUrl`, when set. */
+  publicUrl: z.string().optional(),
 });
 /** The router's own status. */
 export type RouterStatus = z.infer<typeof routerStatusSchema>;
@@ -302,6 +368,8 @@ export type RouterStatus = z.infer<typeof routerStatusSchema>;
 /** The subset of settings.json editable from the UI. */
 export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
+  /** The router's public address; `null` clears it. */
+  publicUrl: z.url().nullable().optional(),
 });
 /** Body of `PATCH /api/settings`. */
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
@@ -309,6 +377,7 @@ export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 /** What `PATCH /api/settings` answers: the editable settings as they now stand. */
 export const updateSettingsResponseSchema = z.object({
   idleTimeoutMs: z.number(),
+  publicUrl: z.string().optional(),
 });
 /** What `PATCH /api/settings` answers. */
 export type UpdateSettingsResponse = z.infer<typeof updateSettingsResponseSchema>;

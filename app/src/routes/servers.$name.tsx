@@ -10,6 +10,7 @@ import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
+import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
@@ -22,7 +23,7 @@ import { Switch } from '@/components/ui/switch';
 import { SCOPE_SERVER } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { formatRelativeTime, formatSource } from '@/lib/format';
-import { useDeleteServer, useRestartServer, useServer, useUpdateServer } from '@/lib/queries';
+import { useDeleteServer, useRestartServer, useServer, useSignOutServerOAuth, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
@@ -44,6 +45,7 @@ function ServerDetailPage() {
   const update = useUpdateServer();
   const restart = useRestartServer();
   const remove = useDeleteServer();
+  const signOut = useSignOutServerOAuth();
   const [editOpen, setEditOpen] = useState(false);
 
   const scope = { kind: SCOPE_SERVER, name } as const;
@@ -62,6 +64,13 @@ function ServerDetailPage() {
   const handleRestart = () => {
     restart.mutate(name, {
       onSuccess: () => toast.success(`Restarted ${name}`),
+      onError: toastApiError,
+    });
+  };
+
+  const handleSignOut = () => {
+    signOut.mutate(name, {
+      onSuccess: () => toast.success(`Signed out of ${name}`),
       onError: toastApiError,
     });
   };
@@ -169,6 +178,34 @@ function ServerDetailPage() {
                             }
                             valueClassName="break-all"
                           />
+                          {server.oauth && (server.oauth.signedIn || server.state === ServerRuntimeState.NeedsAuth) && (
+                            <PropertyRow
+                              label="Sign-in"
+                              value={
+                                server.oauth.signedIn
+                                  ? server.oauth.refreshable || !server.oauth.expiresAt
+                                    ? 'Signed in'
+                                    : `Signed in until ${new Date(server.oauth.expiresAt).toLocaleString()}`
+                                  : 'Not signed in'
+                              }
+                              actionSlot={
+                                server.oauth.signedIn ? (
+                                  <ConfirmButton
+                                    variant="outline"
+                                    size="sm"
+                                    label={`Sign out of ${name}`}
+                                    tooltip={false}
+                                    loading={signOut.isPending}
+                                    title={`Sign out of ${name}?`}
+                                    description="MCP Router forgets its tokens for this server. It stops answering until you sign in again."
+                                    onConfirm={handleSignOut}
+                                    confirmLabel="Sign out"
+                                    content="Sign out"
+                                  />
+                                ) : undefined
+                              }
+                            />
+                          )}
                           {server.pid !== undefined && (
                             <PropertyRow label="PID" value={server.pid} valueClassName="tabular-nums" />
                           )}
@@ -203,6 +240,14 @@ function ServerDetailPage() {
                         />
                       )}
                     />
+                    {server.state === ServerRuntimeState.NeedsAuth && (
+                      <Alert
+                        variant="warning"
+                        title="Sign in required"
+                        description="This server asks for a login before it answers. Sign in so MCP Router can reach it."
+                        actionSlot={<OAuthSignInButton name={name} />}
+                      />
+                    )}
                     {server.state === ServerRuntimeState.Error && server.lastError && (
                       <Alert variant="destructive" title="Last error" description={server.lastError} />
                     )}

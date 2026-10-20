@@ -40,3 +40,10 @@ export const FailedShowsWhyOnHover: Story = {
     await expect(await body.findByRole('tooltip')).toHaveTextContent('spawn node ENOENT');
   },
 };
+
+export const NeedsSignIn: Story = {
+  args: { state: ServerRuntimeState.NeedsAuth },
+  play: async ({ canvasElement }) => {
+    await expect(within(canvasElement).getByText('needs sign-in')).toBeVisible();
+  },
+};
