@@ -131,3 +131,30 @@ export const ReloadsTheConfig: Story = {
     );
   },
 };
+
+export const SavesThePublicUrl: Story = {
+  parameters: {
+    api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ publicUrl: 'https://router.example.com' }) },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = await canvas.findByRole('textbox', { name: 'Public URL' });
+    await userEvent.type(input, 'https://router.example.com/');
+    await userEvent.click(canvas.getByRole('button', { name: 'Save public URL' }));
+
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { publicUrl: 'https://router.example.com' }),
+    );
+    await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Public URL saved')).toBeVisible());
+  },
+};
+
+export const RefusesAPublicUrlThatIsNotAUrl: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const input = await canvas.findByRole('textbox', { name: 'Public URL' });
+    await userEvent.type(input, 'router.local');
+    await expect(input).toHaveAttribute('aria-invalid', 'true');
+    await expect(canvas.getByRole('button', { name: 'Save public URL' })).toBeDisabled();
+  },
+};

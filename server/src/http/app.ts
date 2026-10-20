@@ -10,6 +10,8 @@ import { HTTP_DEFAULTS } from '../core/defaults.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
 import { createMcpRouter } from '../gateway/routes.ts';
+import { createOAuthRoutes } from '../oauth/routes.ts';
+import { OAuthService } from '../oauth/service.ts';
 import { RegistryClient } from '../registry/client.ts';
 
 /** What the Express app is built over. */
@@ -20,6 +22,8 @@ export interface AppDeps {
   registryClient?: RegistryClient;
   /** Override for tests; `<repo>/app/dist` when absent. */
   appDistDir?: string;
+  /** Remote-server sign-in; the one the manager was built with. A fresh one, wired to `manager`, when absent. */
+  oauth?: OAuthService;
 }
 
 /**
@@ -31,6 +35,7 @@ export interface AppDeps {
 export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
   const registryClient = deps.registryClient ?? new RegistryClient();
+  const oauth = deps.oauth ?? new OAuthService(store, { onChange: (name) => manager.resetServer(name) });
   const app = express();
   app.disable('x-powered-by');
   app.use(express.json({ limit: HTTP_DEFAULTS.bodyLimit }));
@@ -48,7 +53,11 @@ export function createApp(deps: AppDeps): express.Express {
     res.json(health);
   });
 
-  app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir }));
+  // Also before it: a server's login fetches the client metadata and sends the browser back with no token. The
+  // callback is held to the `state` of a sign-in started through /api instead.
+  app.use(createOAuthRoutes({ store, oauth }));
+
+  app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir, oauth }));
   app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));
 
   // Production: serve the built web UI with an SPA fallback for non-API GETs.
@@ -56,7 +65,7 @@ export function createApp(deps: AppDeps): express.Express {
   if (existsSync(appDist)) {
     app.use(express.static(appDist));
     app.use((req, res, next) => {
-      const isBackendPath = req.path.startsWith('/api') || req.path.startsWith('/mcp');
+      const isBackendPath = req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path.startsWith('/oauth');
       if (req.method === 'GET' && isBackendPath === false) {
         res.sendFile(path.join(appDist, 'index.html'));
         return;

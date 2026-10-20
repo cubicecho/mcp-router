@@ -255,6 +255,62 @@ export function useDeleteServer() {
 }
 
 /**
+ * Asks a remote server whether it wants a sign-in.
+ *
+ * @returns The mutation; takes the server's name, yields its status, and invalidates everything a server change makes
+ * stale.
+ */
+export function useCheckServerOAuth() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.checkServerOAuth(name),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
+  });
+}
+
+/**
+ * Starts a remote server's sign-in. Nothing is stale yet: the window it opens reports back when it is done.
+ *
+ * @returns The mutation; takes the server's name and this window's origin, and yields the login page to open.
+ */
+export function useStartServerOAuth() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: ({ name, origin }: { name: string; origin: string }) => api.startServerOAuth(name, origin),
+    // Only when it finished without a login: a refreshed sign-in changes the status now.
+    onSuccess: (result) => {
+      if (result.signedIn) {
+        invalidate(...SERVER_CHANGE_KEYS);
+      }
+    },
+  });
+}
+
+/**
+ * Signs a remote server out.
+ *
+ * @returns The mutation; takes the server's name, yields its status, and invalidates everything a server change makes
+ * stale.
+ */
+export function useSignOutServerOAuth() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.signOutServerOAuth(name),
+    onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
+  });
+}
+
+/**
+ * Marks everything a server change makes stale, for a change made outside a mutation — the sign-in window's report.
+ *
+ * @returns A function taking nothing.
+ */
+export function useInvalidateServers() {
+  const invalidate = useInvalidate();
+  return () => invalidate(...SERVER_CHANGE_KEYS);
+}
+
+/**
  * Restarts a server.
  *
  * @returns The mutation; takes the server's name, yields its status, and invalidates everything a server change makes

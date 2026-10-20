@@ -25,6 +25,7 @@ import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
 import { notFound, unavailable, upstreamFailed } from '../core/errors.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 import { outboundFetch } from '../http/tuning.ts';
+import type { RemoteAuth } from '../oauth/service.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
 import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './instance-key.ts';
@@ -91,12 +92,16 @@ function resolveMemberConfig(base: ServerConfig, member: WorkspaceMember, worksp
  * Maps the connection half of a server config onto one arm of the pool's own `transport` union (pool 3.0).
  *
  * @param config - The server config.
+ * @param [base] - The base server's config, when `config` is a workspace instance of it.
+ * @param [remoteAuth] - Supplies the OAuth provider a remote server signs its requests with.
  * @returns The stdio or http connection fields.
  *
  * @remarks
- * `env` goes on the stdio arm only: it is a child's environment, and a remote server has no child to hand it to.
+ * `env` goes on the stdio arm only: it is a child's environment, and a remote server has no child to hand it to. A
+ * workspace instance signs in as its base server, but only while its URL is on the same origin: a token sent to a
+ * workspace's other URL would be handed to a server it was not issued for.
  */
-function toConnection(config: ServerConfig): McpConnection {
+function toConnection(config: ServerConfig, base?: ServerConfig, remoteAuth?: RemoteAuth): McpConnection {
   const { transport } = config;
   if (transport.type === TRANSPORT_STDIO) {
     return {
@@ -107,7 +112,16 @@ function toConnection(config: ServerConfig): McpConnection {
       env: config.env,
     };
   }
-  return { transport: 'http', url: transport.url, headers: transport.headers };
+  const baseTransport = (base ?? config).transport;
+  const sameOrigin =
+    baseTransport.type === TRANSPORT_STREAMABLE_HTTP &&
+    new URL(baseTransport.url).origin === new URL(transport.url).origin;
+  return {
+    transport: 'http',
+    url: transport.url,
+    headers: transport.headers,
+    ...(remoteAuth && sameOrigin ? { authProvider: remoteAuth.providerFor(config.name) } : {}),
+  };
 }
 
 /**
@@ -123,13 +137,19 @@ function toConnection(config: ServerConfig): McpConnection {
  * server's. `slug` is left unset and never read: the pool indexes no tools here (see `indexTools` below) and
  * `gateway/naming.ts` owns namespacing.
  */
-function toPoolConfig(key: InstanceKey, config: ServerConfig, settings: SettingsFile): McpServerConfig {
+function toPoolConfig(
+  key: InstanceKey,
+  config: ServerConfig,
+  settings: SettingsFile,
+  base: ServerConfig | undefined,
+  remoteAuth: RemoteAuth | undefined,
+): McpServerConfig {
   const stdio = config.transport.type === TRANSPORT_STDIO;
   return {
     id: key,
     label: config.displayName ?? config.name,
     enabled: config.enabled,
-    ...toConnection(config),
+    ...toConnection(config, base, remoteAuth),
     // After the spread, so a `toConnection` that sets either timeout cannot win.
     // Only a stdio child is reaped (0 is the pool's "never"). Resolved per row
     // because the default is a setting that changes while the router runs.
@@ -186,14 +206,17 @@ export class GatewayManager {
   private readonly getSettings: () => SettingsFile;
   private readonly meta = new Map<InstanceKey, ServerMeta>();
   private readonly activity = new ActivityLog();
+  private readonly remoteAuth?: RemoteAuth;
 
   /**
    * Builds a manager with no instances; `reconcile` gives it some.
    *
    * @param getSettings - Read on every reconcile, for the timeouts that can change while the router runs.
+   * @param [remoteAuth] - OAuth sign-in for remote servers; without it a remote authenticates by its headers alone.
    */
-  constructor(getSettings: () => SettingsFile) {
+  constructor(getSettings: () => SettingsFile, remoteAuth?: RemoteAuth) {
     this.getSettings = getSettings;
+    this.remoteAuth = remoteAuth;
     this.pool = new McpPool({
       clientName: 'mcp-router',
       // With `clientName`, all a dialled server learns about its caller.
@@ -258,7 +281,11 @@ export class GatewayManager {
       }
     }
     const settings = this.getSettings();
-    await this.pool.sync([...desired].map(([key, config]) => toPoolConfig(key, config, settings)));
+    await this.pool.sync(
+      [...desired].map(([key, config]) =>
+        toPoolConfig(key, config, settings, byName.get(config.name), this.remoteAuth),
+      ),
+    );
   }
 
   /**
@@ -353,6 +380,20 @@ export class GatewayManager {
   }
 
   /**
+   * Drops every connection of a server — its own and its workspace instances' — so the next use dials again.
+   *
+   * @param serverName - The base server.
+   *
+   * @remarks
+   * After a sign-in or sign-out. `stop` rather than a dial: it clears the backoff the failed, unauthorized connect left,
+   * and an instance nobody is using has no reason to connect now.
+   */
+  async resetServer(serverName: string): Promise<void> {
+    const keys = [...this.meta].filter(([, meta]) => meta.config.name === serverName).map(([key]) => key);
+    await Promise.all(keys.map((key) => this.pool.stop(key)));
+  }
+
+  /**
    * Re-throw one of the pool's refusals as the status this API answers it with.
    *
    * @param key - The instance, named in the message by its server name.
@@ -369,6 +410,13 @@ export class GatewayManager {
       throw cause;
     }
     const name = this.meta.get(key)?.config.name ?? key;
+    if ((cause.code === 'backoff' || cause.code === 'connect-failed') && this.remoteAuth?.requiresSignIn(name)) {
+      throw upstreamFailed(
+        `Server "${name}" needs you to sign in`,
+        'Open the server in MCP Router and choose Sign in.',
+        { cause },
+      );
+    }
     switch (cause.code) {
       case 'unknown-server':
         throw notFound(`Unknown server "${name}"`, undefined, { cause });
@@ -398,7 +446,7 @@ export class GatewayManager {
    */
   status(key: InstanceKey): ServerStatus | undefined {
     const meta = this.meta.get(key);
-    return meta ? toStatus(meta, this.connectionState().get(key)) : undefined;
+    return meta ? toStatus(meta, this.connectionState().get(key), this.remoteAuth) : undefined;
   }
 
   /**
@@ -411,7 +459,7 @@ export class GatewayManager {
     // Only base servers are exposed as "servers"; workspace-scoped instances are an internal detail.
     return [...this.meta]
       .filter(([key]) => isBaseServerKey(key))
-      .map(([key, meta]) => toStatus(meta, state.get(key)))
+      .map(([key, meta]) => toStatus(meta, state.get(key), this.remoteAuth))
       .sort((a, b) => a.config.name.localeCompare(b.config.name));
   }
 
@@ -511,12 +559,22 @@ export class GatewayManager {
  *
  * @param meta - The config and call bookkeeping.
  * @param state - The pool's row; undefined reads as stopped.
- * @returns The status, with the pool's empty-string "no error" reported as absent.
+ * @param [remoteAuth] - For a remote server's sign-in.
+ * @returns The status, with the pool's empty-string "no error" reported as absent, and the config without its OAuth
+ * tokens. A server that is not running because its last connect stopped at a login reads `needs-auth`.
  */
-function toStatus(meta: ServerMeta, state: McpServerState | undefined): ServerStatus {
+function toStatus(meta: ServerMeta, state: McpServerState | undefined, remoteAuth?: RemoteAuth): ServerStatus {
+  const { oauth: _secret, ...config } = meta.config;
+  const runtime = state ? RUNTIME_STATE[state.status] : ServerRuntimeState.Stopped;
+  const blocked =
+    (runtime === ServerRuntimeState.Error || runtime === ServerRuntimeState.Stopped) &&
+    meta.config.enabled &&
+    remoteAuth?.requiresSignIn(meta.config.name) === true;
+  const oauth = remoteAuth?.status(meta.config);
   return {
-    config: meta.config,
-    state: state ? RUNTIME_STATE[state.status] : ServerRuntimeState.Stopped,
+    config,
+    ...(oauth ? { oauth } : {}),
+    state: blocked ? ServerRuntimeState.NeedsAuth : runtime,
     pid: state?.pid,
     startedAt: state?.startedAt,
     // The pool reports "no error" as an empty string; this API reports it as absent.

@@ -153,7 +153,11 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   // never speaks. Generous by default because a first `uvx`/`npx` spawn may
   // download the package before it says anything. Takes effect on the next
   // connect after a reload; a running child is not bounced for it.
-  "connectTimeoutMs": 60000
+  "connectTimeoutMs": 60000,
+  // The router's address as your browser and a remote server's login reach it.
+  // Used for OAuth sign-in (see "Remote servers that need a login"). Omit to use
+  // the address the web UI is open at; set it behind a proxy that rewrites hosts.
+  "publicUrl": "https://router.example.com"
 }
 ```
 
@@ -266,6 +270,36 @@ base server's own `enabled` flag is ignored inside a workspace. Members that
 reference a server which no longer exists are skipped. Manage workspaces from the
 **Workspaces** page in the web UI, or hand-edit these files and reload.
 
+## Remote servers that need a login
+
+Some remote MCP servers — Home Assistant's, and most hosted ones — don't take an
+API key. They ask the client to sign in with OAuth instead, the way
+`codex mcp add homeassistant --url …` opens a browser login. MCP Router does the
+same:
+
+1. **Add server → HTTP (streamable)**, with the server's URL, e.g.
+   `http://homeassistant.local:8123/api/mcp`. No headers needed.
+2. If the server asks for a login, the dialog moves on to **Sign in**. Click it,
+   log in in the window that opens, and the window closes itself. The server
+   now shows as running. Later you can also sign in from the server's page or its
+   row in the list (it shows **needs sign-in**).
+
+MCP Router keeps the tokens in `servers/<name>.json` (like other secrets,
+plaintext at mode 0600, never sent to the web UI) and refreshes them on its own.
+**Sign out** on the server's page forgets them.
+
+The login sends your browser back to `<router>/oauth/callback`, and servers that
+identify clients by URL (Home Assistant does) fetch
+`<router>/oauth/client-metadata.json`. Both are served without the bearer token.
+The server must be able to reach that address, so set `publicUrl` in
+settings.json (or on the Settings page) when the router is reached by a different
+name than the one in your browser. Home Assistant's login also checks that
+the URL you use for it matches its configured Internal or External URL.
+
+For a server whose login only accepts a client registered in advance, open
+**OAuth client (optional)** in the add or edit dialog and enter its client ID and
+secret.
+
 ## Connecting MCP clients
 
 All MCP endpoints speak streamable HTTP and require the bearer token (unless
@@ -368,7 +402,7 @@ clients](#connecting-mcp-clients).
 ## Security notes
 
 - **Secrets are stored in plaintext** in the JSON config files (`env` values,
-  remote-transport headers, the auth token). The router writes these files
+  remote-transport headers, OAuth tokens and client secrets, the auth token). The router writes these files
   with mode `0600`, but anyone with read access to `DATA_DIR` — or to your
   Docker bind mount — can read them. Protect the directory accordingly and
   keep backups equally private.

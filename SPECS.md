@@ -15,6 +15,7 @@ hand-editable flat config files.
 | Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
 | Secrets | Plaintext values in the JSON config files, written with mode 0600 |
+| Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's config file, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
 | Config | Flat files under `DATA_DIR/config`; watched for changes (chokidar) + explicit `POST /api/reload` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
@@ -39,12 +40,15 @@ mcp-router/
 ### Flat config files (`DATA_DIR/config`, default `./data/config`)
 
 - `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
-  connectTimeoutMs, session TTL/cap
+  connectTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
+  callbacks; the UI's origin when unset)
 - `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
 - `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
   command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
-  from the registry), idleTimeoutMs. npm packages install into
+  from the registry), idleTimeoutMs, oauth (a remote's sign-in: typed-in
+  clientId/clientSecret/scope, and the router-written clientInformation,
+  redirectUri, tokens, tokensSavedAt — plaintext, never sent to the UI). npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
   (uv resolves/caches on spawn, no install dir)
 - `workspaces/<slug>.json` — one file per workspace (`workspaceConfigSchema`): name,
@@ -75,6 +79,9 @@ and it reports nothing else.
 | `PATCH /api/servers/:name` | `UpdateServerRequest` (env, enabled, transport, …) → persists to its JSON file |
 | `DELETE /api/servers/:name` | stop, delete config file, remove `data/servers/<name>` install dir |
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
+| `POST /api/servers/:name/oauth/check` | ask a remote, without a token, whether it wants a login; `ServerStatus` (`needs-auth` when it does) |
+| `POST /api/servers/:name/oauth/start` | `OAuthStartRequest { origin }` → `OAuthStartResponse { authorizationUrl?, signedIn }` |
+| `DELETE /api/servers/:name/oauth` | sign out: forget tokens and the registered client (a typed-in client stays) |
 | `GET /api/servers/:name/tools` | connect (spawning if needed) and list downstream tools |
 | `GET /api/servers/:name/resources` | connect and list downstream resources + resource templates (empty when unsupported) |
 | `POST /api/servers/:name/resources/read` | read one resource by URI from the UI (`ResourceReadRequest`); recorded to activity as via 'ui' |
@@ -139,6 +146,46 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   before any MCP handling.
 
 ---
+
+## Remote OAuth sign-in
+
+The same second step Codex and Claude Code do for a login-gated MCP server (e.g.
+Home Assistant's `/api/mcp`): the server is added by URL, then signed in from the
+browser. The router is the OAuth client; the browser only carries the redirect.
+
+1. **Add.** `POST /api/servers` as for any remote. The add dialog then calls
+   `POST /api/servers/:name/oauth/check`, which sends an unauthenticated
+   `initialize` and reads only the status: a `401` marks the server `needs-auth`
+   and the dialog stays open on a "Sign in" step.
+2. **Start.** The UI opens a blank window on the click (so it is not a blocked
+   popup), then `POST …/oauth/start { origin }`. The router reads the 401's
+   `WWW-Authenticate` hints, runs the SDK's `auth()` with a provider bound to an
+   in-memory flow (random `state`, PKCE verifier, 10-minute TTL), and returns the
+   authorization URL; the UI points the window at it.
+3. **Client identity.** In order: a typed-in `oauth.clientId`; a stored client
+   registered for the same redirect URI; the router's Client ID Metadata
+   Document URL `<base>/oauth/client-metadata.json` when the login advertises
+   `client_id_metadata_document_supported` (used even over plain HTTP — the SDK
+   would refuse — because the redirect URI shares its origin, which is what an
+   IndieAuth-style login such as Home Assistant checks); otherwise RFC 7591
+   dynamic registration. `<base>` is `settings.publicUrl`, else the UI's origin.
+4. **Callback.** `GET /oauth/callback?code&state` — mounted before the bearer
+   guard, like `/healthz`; the single-use `state` is its credential. It exchanges
+   the code, writes the tokens to `servers/<name>.json`, drops every connection of
+   the server (base and workspace instances) so the next use dials with them, and
+   answers a page that `postMessage`s `{ type: 'mcp-router-oauth', server, ok }`
+   to the UI's origin and closes. `GET /oauth/client-metadata.json` is public too.
+5. **Use.** Every remote row hands the pool an `authProvider` (pool ≥ 3.8.0)
+   reading the store. The SDK attaches the token and refreshes it on a 401;
+   with nothing to refresh with, the provider marks the server `needs-auth`
+   instead of starting a login, and the API answers its listings `502` "needs you
+   to sign in".
+
+Rules: tokens never leave the router (`ServerStatus.config` has no `oauth`; the
+`oauth` summary carries `signedIn`, `expiresAt`, `refreshable`, `clientId`,
+`hasClientSecret`). A URL edit to another origin forgets the tokens; a workspace
+member whose `url` override is on another origin gets no provider. A changed
+typed-in client forgets the tokens and registered client.
 
 ## How the `@cubicecho/agent-*` packages are used
 
@@ -512,3 +559,19 @@ notifications, DELETE termination. These are the remaining items.
   ([agent-mcp-pool#98](https://github.com/cubicecho/agent-mcp-pool/pull/98),
   released in 3.6.0) and `withClient` is a call to `pool.use()`, keeping only
   the router's error wording and its read of the handshake.
+
+### Phase 6 — Remote OAuth sign-in
+
+- [x] O1 **Pool:** `HttpServerConfig.authProvider`, passed to the SDK transport;
+  not part of `sameConnection`, never reported by `state()` (agent-mcp-pool 3.8.0).
+- [x] O2 **Shared:** `settings.publicUrl`, `serverOAuthSchema` on the server
+  config, `needs-auth` runtime state, `ServerStatus.oauth`, the start/check DTOs,
+  `oauthClient` on install and update.
+- [x] O3 **Server:** `oauth/` — `StoredOAuthProvider`, `OAuthService` (flows,
+  check, sign-out), public `/oauth/callback` and `/oauth/client-metadata.json`;
+  manager attaches the provider and reports `needs-auth`. Covered end to end in
+  `oauth/__tests__/oauth.test.ts` against a stub login + protected MCP server
+  (sign-in, refresh, single-use state, cancelled login, sign-out, publicUrl).
+- [x] O4 **App:** `OAuthSignInButton` (popup + `postMessage`, blocked-popup
+  link), sign-in step in the add dialog, optional OAuth client fields, sign-in
+  row and sign-out on the server page, `needs sign-in` badge, Public URL setting.

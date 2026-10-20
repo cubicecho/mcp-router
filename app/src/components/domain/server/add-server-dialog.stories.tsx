@@ -1,7 +1,7 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { remoteServer, stdioServer } from '@/storybook/fixtures';
+import { needsSignInServer, remoteServer, stdioServer } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { AddServerDialog } from './add-server-dialog.tsx';
 
@@ -65,7 +65,12 @@ export const AddsACommandServer: Story = {
 };
 
 export const AddsAnHttpServer: Story = {
-  parameters: { api: { [ADD_ROUTE]: remoteServer({ name: 'notes' }) } },
+  parameters: {
+    api: {
+      [ADD_ROUTE]: remoteServer({ name: 'notes' }),
+      'POST /api/servers/notes/oauth/check': remoteServer({ name: 'notes' }),
+    },
+  },
   play: async ({ args, canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('dialog', { name: 'Add a server' }));
@@ -252,5 +257,66 @@ export const ShowsWhyTheEditWasRefused: Story = {
     await waitFor(() => expect(body.getByText('Invalid transport')).toBeVisible());
     await expect(body.getByText('cwd must be absolute')).toBeVisible();
     await expect(args.onOpenChange).not.toHaveBeenCalled();
+  },
+};
+
+/** Fills in a new HTTP server called `ha` at Home Assistant's MCP URL. */
+async function fillHomeAssistant(dialog: ReturnType<typeof within>) {
+  await userEvent.type(dialog.getByRole('textbox', { name: 'Local name' }), 'ha');
+  await userEvent.click(dialog.getByRole('tab', { name: 'HTTP (streamable)' }));
+  await userEvent.type(
+    await dialog.findByRole('textbox', { name: 'Server URL' }),
+    'http://homeassistant.local:8123/api/mcp',
+  );
+}
+
+export const AsksToSignInWhenTheNewServerWantsALogin: Story = {
+  parameters: {
+    api: {
+      [ADD_ROUTE]: remoteServer({ name: 'ha' }),
+      'POST /api/servers/ha/oauth/check': needsSignInServer({ name: 'ha' }),
+    },
+  },
+  play: async ({ args, canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Add a server' }));
+    await fillHomeAssistant(dialog);
+    await userEvent.click(dialog.getByRole('button', { name: 'Add server' }));
+
+    const signIn = within(await body.findByRole('dialog', { name: 'Sign in to ha' }));
+    await expect(signIn.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+    await expect(args.onOpenChange).not.toHaveBeenCalled();
+
+    await userEvent.click(signIn.getByRole('button', { name: 'Later' }));
+    await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledWith(false));
+  },
+};
+
+export const SendsAPreRegisteredOAuthClient: Story = {
+  parameters: {
+    api: {
+      [ADD_ROUTE]: remoteServer({ name: 'ha' }),
+      'POST /api/servers/ha/oauth/check': remoteServer({ name: 'ha' }),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Add a server' }));
+    await fillHomeAssistant(dialog);
+    await userEvent.click(dialog.getByRole('button', { name: /OAuth client/ }));
+    await userEvent.type(await dialog.findByRole('textbox', { name: 'Client ID' }), 'router');
+    await userEvent.type(dialog.getByLabelText('Client secret'), 's3cret');
+    await userEvent.click(dialog.getByRole('button', { name: 'Add server' }));
+
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(ADD_ROUTE, {
+        name: 'ha',
+        source: { type: 'remote' },
+        transport: { type: 'streamable-http', url: 'http://homeassistant.local:8123/api/mcp', headers: {} },
+        env: {},
+        enabled: true,
+        oauthClient: { clientId: 'router', clientSecret: 's3cret' },
+      }),
+    );
   },
 };

@@ -24,17 +24,21 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
       runningCount: manager.runningCount(),
       authEnabled: effectiveAuth(store.getSettings()).enabled,
       idleTimeoutMs: store.getSettings().idleTimeoutMs,
+      ...(store.getSettings().publicUrl ? { publicUrl: store.getSettings().publicUrl } : {}),
     };
     res.json(status);
   });
 
   router.patch('/settings', async (req, res) => {
-    const patch = updateSettingsRequestSchema.parse(req.body);
-    const next = await store.updateSettings(patch);
+    const { publicUrl, ...patch } = updateSettingsRequestSchema.parse(req.body);
+    // null clears the address: an absent key, so the schema reads it as unset.
+    const next = await store.updateSettings(
+      publicUrl === undefined ? patch : { ...patch, publicUrl: publicUrl === null ? undefined : publicUrl },
+    );
     // The global idle timeout is resolved onto each server's row when the pool is
     // reconciled, so an edited one only reaches the running children through one.
     await applyConfig({ store, manager });
-    res.json({ idleTimeoutMs: next.idleTimeoutMs });
+    res.json({ idleTimeoutMs: next.idleTimeoutMs, ...(next.publicUrl ? { publicUrl: next.publicUrl } : {}) });
   });
 
   router.post('/reload', async (_req, res) => {

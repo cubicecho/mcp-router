@@ -7,6 +7,8 @@ import {
   type ErrorCode,
   HttpStatus,
   type InstallRequest,
+  type OAuthStartResponse,
+  oauthStartResponseSchema,
   type PromptGetRequest,
   type PromptGetResponse,
   promptGetResponseSchema,
@@ -227,6 +229,40 @@ export function deleteServer(name: string): Promise<void> {
  */
 export function restartServer(name: string): Promise<ServerStatus> {
   return request(`/api/servers/${encodeURIComponent(name)}/restart`, serverStatusSchema, { method: 'POST' });
+}
+
+/**
+ * Asks a remote server whether it wants a sign-in, with `POST /api/servers/:name/oauth/check`.
+ *
+ * @param name - The server's local name.
+ * @returns Its status; `needs-auth` when it asked for a login.
+ */
+export function checkServerOAuth(name: string): Promise<ServerStatus> {
+  return request(`/api/servers/${encodeURIComponent(name)}/oauth/check`, serverStatusSchema, { method: 'POST' });
+}
+
+/**
+ * Starts a remote server's sign-in with `POST /api/servers/:name/oauth/start`.
+ *
+ * @param name - The server's local name.
+ * @param origin - This window's origin, which the sign-in window reports back to.
+ * @returns The login page to open, or `signedIn` when none is needed.
+ */
+export function startServerOAuth(name: string, origin: string): Promise<OAuthStartResponse> {
+  return request(`/api/servers/${encodeURIComponent(name)}/oauth/start`, oauthStartResponseSchema, {
+    method: 'POST',
+    body: { origin },
+  });
+}
+
+/**
+ * Signs a remote server out with `DELETE /api/servers/:name/oauth`.
+ *
+ * @param name - The server's local name.
+ * @returns Its status after the sign-out.
+ */
+export function signOutServerOAuth(name: string): Promise<ServerStatus> {
+  return request(`/api/servers/${encodeURIComponent(name)}/oauth`, serverStatusSchema, { method: 'DELETE' });
 }
 
 /** The `kind` of a capability scope that is one server. */

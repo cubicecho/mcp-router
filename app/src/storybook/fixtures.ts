@@ -1,6 +1,8 @@
 import {
   type ActivityEntry,
   activityEntrySchema,
+  type OAuthStartResponse,
+  oauthStartResponseSchema,
   type PromptGetResponse,
   promptGetResponseSchema,
   type Registry,
@@ -81,6 +83,51 @@ export function remoteServer(overrides: Partial<ServerStatus> & { name?: string 
     },
     state: 'stopped',
     ...status,
+  });
+}
+
+/**
+ * Builds a remote server that asked for an OAuth login nobody has done yet.
+ *
+ * @param [overrides] - Any part of the status to replace; `name` sets the config's name.
+ * @returns The status, parsed through the shared schema.
+ */
+export function needsSignInServer(overrides: Partial<ServerStatus> & { name?: string } = {}): ServerStatus {
+  return remoteServer({
+    name: 'home-assistant',
+    state: 'needs-auth',
+    oauth: { signedIn: false, refreshable: false, hasClientSecret: false },
+    ...overrides,
+  });
+}
+
+/**
+ * Builds a remote server the router is signed in to, with a refreshable token.
+ *
+ * @param [overrides] - Any part of the status to replace; `name` sets the config's name.
+ * @returns The status, parsed through the shared schema.
+ */
+export function signedInServer(overrides: Partial<ServerStatus> & { name?: string } = {}): ServerStatus {
+  return remoteServer({
+    name: 'home-assistant',
+    state: 'running',
+    toolCount: 4,
+    oauth: { signedIn: true, refreshable: true, expiresAt: '2026-10-01T13:00:00.000Z', hasClientSecret: false },
+    ...overrides,
+  });
+}
+
+/**
+ * Builds the answer to starting a sign-in: the login page to open.
+ *
+ * @param [overrides] - Any part of the answer to replace.
+ * @returns The answer, parsed through the shared schema.
+ */
+export function oauthStart(overrides: Partial<OAuthStartResponse> = {}): OAuthStartResponse {
+  return oauthStartResponseSchema.parse({
+    signedIn: false,
+    authorizationUrl: 'about:blank#login',
+    ...overrides,
   });
 }
 

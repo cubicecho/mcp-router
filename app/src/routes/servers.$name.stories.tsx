@@ -1,7 +1,7 @@
 import { ErrorCode, HttpStatus, ServerRuntimeState } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, stdioServer } from '@/storybook/fixtures';
+import { appRoutes, capabilities, needsSignInServer, signedInServer, stdioServer } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 
 const SERVER_ROUTE = '/api/servers/filesystem';
@@ -223,5 +223,55 @@ export const GoesBackToTheServers: Story = {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('link', { name: 'Back to servers' }));
     await expect(await canvas.findByRole('heading', { name: 'Servers' })).toBeVisible();
+  },
+};
+
+const HA_ROUTE = '/api/servers/home-assistant';
+
+/** The app's routes plus one OAuth-protected server, answering its listings as `status` would. */
+function haRoutes(status: ReturnType<typeof signedInServer>) {
+  const refused = apiError(
+    HttpStatus.BadGateway,
+    ErrorCode.UpstreamFailed,
+    'Server "home-assistant" needs you to sign in',
+    'Open the server in MCP Router and choose Sign in.',
+  );
+  const signedIn = status.oauth?.signedIn === true;
+  return {
+    ...appRoutes(),
+    [`GET ${HA_ROUTE}`]: status,
+    [`GET ${HA_ROUTE}/tools`]: signedIn ? capabilities.tools : refused,
+    [`GET ${HA_ROUTE}/resources`]: signedIn ? capabilities.resources : refused,
+    [`GET ${HA_ROUTE}/prompts`]: signedIn ? capabilities.prompts : refused,
+    [`GET ${HA_ROUTE}/activity`]: { entries: [] },
+  };
+}
+
+export const AsksToSignInWhereTheServerWantsALogin: Story = {
+  parameters: { route: '/servers/home-assistant', api: haRoutes(needsSignInServer()) },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Sign in required')).toBeVisible();
+    await expect(canvas.getByText('needs sign-in')).toBeVisible();
+    await expect(canvas.getByText('Not signed in')).toBeVisible();
+    await expect(canvas.getByRole('button', { name: 'Sign in' })).toBeEnabled();
+  },
+};
+
+export const SignsOutOnlyAfterConfirming: Story = {
+  parameters: {
+    route: '/servers/home-assistant',
+    api: { ...haRoutes(signedInServer()), [`DELETE ${HA_ROUTE}/oauth`]: needsSignInServer() },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByText('Signed in')).toBeVisible();
+    await expect(canvas.queryByText('Sign in required')).not.toBeInTheDocument();
+
+    await userEvent.click(canvas.getByRole('button', { name: 'Sign out of home-assistant' }));
+    await expect(apiRequest).not.toHaveBeenCalledWith(`DELETE ${HA_ROUTE}/oauth`, undefined);
+    const dialog = within(await within(canvasElement.ownerDocument.body).findByRole('alertdialog'));
+    await userEvent.click(dialog.getByRole('button', { name: /sign out/i }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`DELETE ${HA_ROUTE}/oauth`, undefined));
   },
 };

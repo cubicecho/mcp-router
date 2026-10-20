@@ -8,7 +8,13 @@ const STATE_VARIANTS = {
   [ServerRuntimeState.Starting]: 'warning',
   [ServerRuntimeState.Running]: 'positive',
   [ServerRuntimeState.Error]: 'destructive',
+  [ServerRuntimeState.NeedsAuth]: 'warning',
 } as const satisfies Record<ServerRuntimeState, BadgeVariant>;
+
+/** What each state reads as, where the wire value is not already plain words. */
+const STATE_LABELS: Partial<Record<ServerRuntimeState, string>> = {
+  [ServerRuntimeState.NeedsAuth]: 'needs sign-in',
+};
 
 /**
  * Badge naming a server's runtime state, coloured by it.
@@ -21,7 +27,7 @@ export function ServerStateBadge({ state, lastError }: { state: ServerRuntimeSta
   const badge = (
     <Badge variant={STATE_VARIANTS[state]}>
       {state === ServerRuntimeState.Starting && <Spinner label="Starting" className="size-3" />}
-      {state}
+      {STATE_LABELS[state] ?? state}
     </Badge>
   );
 

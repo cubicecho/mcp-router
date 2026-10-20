@@ -108,3 +108,29 @@ export const INSTALL_DEFAULTS: Readonly<InstallSettings> = Object.freeze({
   npmTimeoutMs: 300_000,
   stderrTailChars: 1_000,
 });
+
+/** Settings for the OAuth sign-in to remote servers. */
+export interface OAuthSettings {
+  /** How long a started sign-in waits for its callback before the link stops working, in ms. */
+  flowTtlMs: number;
+  /** How long the after-install check waits for a remote server to say whether it wants a sign-in, in ms. */
+  checkTimeoutMs: number;
+  /** Random bytes in a sign-in's `state`. It is sent as base64url. */
+  stateBytes: number;
+  /** The router's name, as a server's login shows it on its consent page. */
+  clientName: string;
+  /** Where the login sends the browser back to, under the router's address. */
+  callbackPath: string;
+  /** Where the router's client metadata document is served, under its address. Doubles as its client id. */
+  clientMetadataPath: string;
+}
+
+/** The fixed OAuth settings this build ships with. */
+export const OAUTH_DEFAULTS: Readonly<OAuthSettings> = Object.freeze({
+  flowTtlMs: 600_000,
+  checkTimeoutMs: 10_000,
+  stateBytes: 32,
+  clientName: 'MCP Router',
+  callbackPath: '/oauth/callback',
+  clientMetadataPath: '/oauth/client-metadata.json',
+});

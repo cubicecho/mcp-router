@@ -77,6 +77,12 @@ export const settingsFileSchema = z
      *  re-read on every reconcile, and applies at the next connect — an edited timeout is no
      *  reason to bounce a running child. */
     connectTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.connectTimeoutMs),
+    /** The router's own address as a browser reaches it, e.g. https://router.example.com. The
+     *  OAuth sign-in for a remote server sends the browser back to `<publicUrl>/oauth/callback`
+     *  and names the router by `<publicUrl>/oauth/client-metadata.json`, and the server's login
+     *  must be able to reach both. Unset, the address the UI was opened at is used — which is
+     *  wrong behind a proxy that rewrites the host. */
+    publicUrl: z.url().optional(),
   })
   .loose();
 
@@ -159,6 +165,36 @@ export const envVarMetaSchema = z
   })
   .loose();
 
+/**
+ * A remote server's OAuth sign-in, as the router keeps it.
+ *
+ * `clientId`/`clientSecret` are typed by hand, for a server whose login only knows clients it was
+ * told about in advance. Everything else is written by the router: the client the server's login
+ * registered (or the router's own metadata URL, for one that takes it as an id), the redirect URI
+ * that client was set up with, and the tokens. Values are plaintext, like `env`.
+ */
+export const serverOAuthSchema = z
+  .object({
+    /** A pre-registered client id. Wins over a registered one. */
+    clientId: z.string().min(1).optional(),
+    /** The secret of `clientId`, for a server that issues confidential clients. */
+    clientSecret: z.string().min(1).optional(),
+    /** Scopes to ask for when the server does not say which it wants. */
+    scope: z.string().min(1).optional(),
+    /** The redirect URI the stored client and tokens were obtained with. */
+    redirectUri: z.url().optional(),
+    /** What the server's login answered a registration with (RFC 7591), or the metadata-URL id. */
+    clientInformation: z.record(z.string(), z.unknown()).optional(),
+    /** The token response: access token, refresh token, expiry in seconds. */
+    tokens: z.record(z.string(), z.unknown()).optional(),
+    /** When `tokens` was saved, ISO; with `tokens.expires_in` it dates the access token. */
+    tokensSavedAt: z.string().optional(),
+  })
+  .loose();
+
+/** A remote server's stored OAuth sign-in. */
+export type ServerOAuth = z.infer<typeof serverOAuthSchema>;
+
 /** Shape of `servers/<name>.json`: one installed server. */
 export const serverConfigSchema = z
   .object({
@@ -175,6 +211,8 @@ export const serverConfigSchema = z
     envMeta: z.record(z.string(), envVarMetaSchema).default({}),
     /** Override the global stdio idle shutdown. */
     idleTimeoutMs: z.number().int().positive().optional(),
+    /** OAuth sign-in for a remote server that asks for one; see {@link serverOAuthSchema}. */
+    oauth: serverOAuthSchema.optional(),
   })
   .loose();
 
