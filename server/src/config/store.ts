@@ -4,9 +4,9 @@ import { existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import path from 'node:path';
+import { hostSlug } from '@cubicecho/mcp-discovery';
 import {
   DEFAULT_REGISTRY,
-  instanceIdFrom,
   type RegistriesFile,
   type Registry,
   registriesFileSchema,
@@ -24,6 +24,9 @@ import { conflict, errorMessage, notFound } from '../core/errors.ts';
 
 /** Owner read and write only: these files hold the auth token and API keys in plain text. */
 const CONFIG_FILE_MODE = 0o600;
+
+/** The instance id written when the hostname has nothing usable in it. */
+const FALLBACK_INSTANCE_ID = 'router';
 
 /** Everything the config files hold, as last loaded. */
 export interface ConfigState {
@@ -381,7 +384,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     }
     // Kept once written, so renaming the machine does not change the router's identity on the network.
     if (settings.instanceId === undefined) {
-      settings.instanceId = instanceIdFrom(hostname());
+      settings.instanceId = hostSlug(hostname(), FALLBACK_INSTANCE_ID);
       dirty = true;
     }
     if (dirty) {

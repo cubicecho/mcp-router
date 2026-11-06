@@ -1,7 +1,8 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
-import { instanceIdFrom, type ServerConfig } from '@mcp-router/shared';
+import { hostSlug } from '@cubicecho/mcp-discovery';
+import type { ServerConfig } from '@mcp-router/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../store.ts';
 
@@ -56,7 +57,7 @@ describe('ConfigStore', () => {
     await store.init();
     const settingsFile = path.join(dataDir, 'config', 'settings.json');
     const first = JSON.parse(await readFile(settingsFile, 'utf8'));
-    expect(first.instanceId).toBe(instanceIdFrom(hostname()));
+    expect(first.instanceId).toBe(hostSlug(hostname(), 'router'));
     await writeFile(settingsFile, JSON.stringify({ ...first, instanceId: 'kept' }));
     await store.reload();
     expect(store.getSettings().instanceId).toBe('kept');

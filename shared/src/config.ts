@@ -49,24 +49,6 @@ export const instanceIdSchema = z
   .max(NAME_DEFAULTS.serverNameMaxLength)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase alphanumerics and dashes; must start alphanumeric');
 
-/** The instance id used when a hostname has nothing usable in it. */
-const FALLBACK_INSTANCE_ID = 'router';
-
-/**
- * Derives a router's network name from its machine's hostname.
- *
- * @param hostname - E.g. `NAS`, `my_box.lan`.
- * @returns The first label, lower-cased, with every other character run turned into one dash: `nas`, `my-box`.
- */
-export function instanceIdFrom(hostname: string): string {
-  const [label = ''] = hostname.toLowerCase().split('.');
-  const id = label
-    .replace(/[^a-z0-9-]+/g, '-')
-    .replace(/^-+|-+$/g, '')
-    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
-  return id || FALLBACK_INSTANCE_ID;
-}
-
 /** Shape of `settings.json`; every key has a fallback, so an empty object parses. */
 export const settingsFileSchema = z
   .object({
