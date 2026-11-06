@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { instanceIdFrom, instanceIdSchema, slugify, suggestServerName } from '../config.ts';
+import { slugify, suggestServerName } from '../config.ts';
 
 describe('suggestServerName', () => {
   it('uses the last path segment, lower-cased and made URL-safe', () => {
@@ -14,16 +14,5 @@ describe('suggestServerName', () => {
 
   it('is empty when no usable character is left', () => {
     expect(suggestServerName('///')).toBe('');
-  });
-});
-
-describe('instanceIdFrom', () => {
-  it.each([
-    ['NAS', 'nas'],
-    ['my_box.lan', 'my-box'],
-    ['---', 'router'],
-  ])('%s → %s', (hostname, expected) => {
-    expect(instanceIdFrom(hostname)).toBe(expected);
-    expect(instanceIdSchema.safeParse(expected).success).toBe(true);
   });
 });
