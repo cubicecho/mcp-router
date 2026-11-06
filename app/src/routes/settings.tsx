@@ -1,4 +1,4 @@
-import { MS_PER_MINUTE } from '@mcp-router/shared';
+import { DiscoveredServerState, MS_PER_MINUTE, type RouterStatus } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
@@ -12,8 +12,9 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
+import { Switch } from '@/components/ui/switch';
 import { formatUptime } from '@/lib/format';
-import { useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
+import { useDiscovery, useReloadConfig, useRouterStatus, useSetDismissed, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** The `/settings` route. */
@@ -22,7 +23,7 @@ export const Route = createFileRoute('/settings')({
 });
 
 const CONFIG_TREE = `config/
-├── settings.json        # port, auth token, auth enabled, idle timeout
+├── settings.json        # port, auth token, auth enabled, idle timeout, network discovery
 ├── registries.json      # { registries: [{ name, url }] }
 └── servers/
     └── <name>.json      # one file per installed server`;
@@ -165,6 +166,99 @@ function PublicUrlEditor({ current }: { current?: string }) {
 }
 
 /**
+ * The switches for announcing the router on the local network and looking for servers there, and the found servers
+ * the user dismissed.
+ *
+ * @param props.status - The router status, which carries the two settings and the router's network name.
+ * @returns The card.
+ */
+function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
+  const update = useUpdateSettings();
+  const discovery = useDiscovery();
+  const setDismissed = useSetDismissed();
+  const dismissed = (discovery.data?.servers ?? []).filter(
+    (server) => server.state === DiscoveredServerState.Dismissed,
+  );
+
+  const toggle = (patch: { lanAdvertise: boolean } | { lanDiscovery: boolean }, message: string) => {
+    update.mutate(patch, { onSuccess: () => toast.success(message), onError: toastApiError });
+  };
+
+  return (
+    <CardLayout
+      level={2}
+      title="Network discovery"
+      description={
+        <>
+          This router describes its endpoints at <Code>/.well-known/ai-catalog.json</Code> either way. These switches
+          control the mDNS announcement (<Code>_mcp._tcp</Code>) and the search for servers on your network.
+        </>
+      }
+      contentClassName="flex flex-col gap-4"
+      contentSlot={
+        <>
+          <SettingRow
+            title="Announce this router"
+            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs the token when auth is on.`}
+            actionSlot={({ titleId, descriptionId }) => (
+              <Switch
+                checked={status.lanAdvertise}
+                disabled={update.isPending}
+                aria-labelledby={titleId}
+                aria-describedby={descriptionId}
+                onCheckedChange={(lanAdvertise) =>
+                  toggle({ lanAdvertise }, lanAdvertise ? 'Announcing the router' : 'Stopped announcing the router')
+                }
+              />
+            )}
+          />
+          <SettingRow
+            title="Look for servers on the network"
+            description="Offers each MCP server another machine announces on the Servers page, for you to add."
+            actionSlot={({ titleId, descriptionId }) => (
+              <Switch
+                checked={status.lanDiscovery}
+                disabled={update.isPending}
+                aria-labelledby={titleId}
+                aria-describedby={descriptionId}
+                onCheckedChange={(lanDiscovery) =>
+                  toggle({ lanDiscovery }, lanDiscovery ? 'Looking for servers' : 'Stopped looking for servers')
+                }
+              />
+            )}
+          />
+          {dismissed.map((server) => {
+            const title = server.title ?? server.cardName;
+            return (
+              <SettingRow
+                key={server.key}
+                title={`${title} (dismissed)`}
+                description={server.url}
+                actionSlot={
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    aria-label={`Offer ${title} again`}
+                    disabled={setDismissed.isPending}
+                    onClick={() =>
+                      setDismissed.mutate(
+                        { key: server.key, dismissed: false },
+                        { onSuccess: () => toast.success(`${title} is offered again`), onError: toastApiError },
+                      )
+                    }
+                    content="Offer again"
+                  />
+                }
+              />
+            );
+          })}
+        </>
+      }
+    />
+  );
+}
+
+/**
  * The Settings page: router status, the idle timeout and the config-file layout with a reload button.
  *
  * @returns The page.
@@ -241,6 +335,8 @@ function SettingsPage() {
               )
             }
           />
+
+          {data && <NetworkDiscoveryCard status={data} />}
 
           <CardLayout
             level={2}

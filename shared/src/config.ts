@@ -42,6 +42,31 @@ export const DEFAULT_REGISTRY: Registry = {
   url: 'https://registry.modelcontextprotocol.io',
 };
 
+/** A router's network name: lowercase letters, digits and dashes, as a Server Card's namespace allows. */
+export const instanceIdSchema = z
+  .string()
+  .min(1)
+  .max(NAME_DEFAULTS.serverNameMaxLength)
+  .regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase alphanumerics and dashes; must start alphanumeric');
+
+/** The instance id used when a hostname has nothing usable in it. */
+const FALLBACK_INSTANCE_ID = 'router';
+
+/**
+ * Derives a router's network name from its machine's hostname.
+ *
+ * @param hostname - E.g. `NAS`, `my_box.lan`.
+ * @returns The first label, lower-cased, with every other character run turned into one dash: `nas`, `my-box`.
+ */
+export function instanceIdFrom(hostname: string): string {
+  const [label = ''] = hostname.toLowerCase().split('.');
+  const id = label
+    .replace(/[^a-z0-9-]+/g, '-')
+    .replace(/^-+|-+$/g, '')
+    .slice(0, NAME_DEFAULTS.serverNameMaxLength);
+  return id || FALLBACK_INSTANCE_ID;
+}
+
 /** Shape of `settings.json`; every key has a fallback, so an empty object parses. */
 export const settingsFileSchema = z
   .object({
@@ -83,6 +108,16 @@ export const settingsFileSchema = z
      *  must be able to reach both. Unset, the address the UI was opened at is used — which is
      *  wrong behind a proxy that rewrites the host. */
     publicUrl: z.url().optional(),
+    /** This router's name on the network, in its Server Cards and mDNS announcement. Written on first run from the
+     *  hostname and then kept, so renaming the machine does not change the router's identity. */
+    instanceId: instanceIdSchema.optional(),
+    /** Announce the router on the local network over mDNS (`_mcp._tcp`), so other tools find it without its address.
+     *  The discovery documents (`/.well-known/ai-catalog.json`, `<endpoint>/server-card`) are served either way. */
+    lanAdvertise: z.boolean().default(false),
+    /** Watch the local network for MCP servers that advertise themselves, and offer to add each one. */
+    lanDiscovery: z.boolean().default(true),
+    /** Servers found on the network that the user chose not to add, by their discovery key. */
+    lanDismissed: z.array(z.string()).default([]),
   })
   .loose();
 
@@ -195,6 +230,19 @@ export const serverOAuthSchema = z
 /** A remote server's stored OAuth sign-in. */
 export type ServerOAuth = z.infer<typeof serverOAuthSchema>;
 
+/** Which server on the local network a config was added from, so the router can recognise it again. */
+export const discoveredFromSchema = z
+  .object({
+    /** The discovery key: the announcing host's mDNS instance name and the card's name, `<instance>/<card name>`. */
+    key: z.string().min(1),
+    /** The Server Card's `name`. */
+    cardName: z.string().min(1),
+  })
+  .loose();
+
+/** Where a discovered server came from. */
+export type DiscoveredFrom = z.infer<typeof discoveredFromSchema>;
+
 /** Shape of `servers/<name>.json`: one installed server. */
 export const serverConfigSchema = z
   .object({
@@ -213,6 +261,8 @@ export const serverConfigSchema = z
     idleTimeoutMs: z.number().int().positive().optional(),
     /** OAuth sign-in for a remote server that asks for one; see {@link serverOAuthSchema}. */
     oauth: serverOAuthSchema.optional(),
+    /** Set when the server was added from one found on the local network; see {@link discoveredFromSchema}. */
+    discovered: discoveredFromSchema.optional(),
   })
   .loose();
 

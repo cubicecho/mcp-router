@@ -65,6 +65,17 @@ mcp-router/
 the auth middleware so Docker's healthcheck, the CI boot job and a load balancer can call it without a token,
 and it reports nothing else.
 
+### Discovery documents (no auth)
+
+`GET /.well-known/ai-catalog.json` (an AI Catalog) and `GET <endpoint>/server-card` (an MCP Server Card, SEP-2127)
+for the aggregate `/mcp`, every enabled server `/mcp/<name>` and every enabled workspace `/mcp/w/<slug>`. Mounted
+ahead of the origin and auth guards because they are public by design; they are built per request from the
+origin the client used, so a LAN client is told LAN URLs. A card names
+`io.github.cubicecho.mcp-router.<instanceId>/<endpoint>`, declares `Authorization` as a required secret header
+when auth is on (never its value), and carries `_meta["io.github.cubicecho.mcp-router/role"]`
+(`aggregate` | `server` | `workspace`), plus `…/upstream` with the registry name for a registry-installed server.
+Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are built in `server/src/discovery/endpoints.ts`.
+
 ### Management REST API (`/api`, bearer auth)
 
 | Method & path | Purpose |
@@ -575,3 +586,24 @@ notifications, DELETE termination. These are the remaining items.
 - [x] O4 **App:** `OAuthSignInButton` (popup + `postMessage`, blocked-popup
   link), sign-in step in the add dialog, optional OAuth client fields, sign-in
   row and sign-out on the server page, `needs sign-in` badge, Public URL setting.
+
+### Phase 7 — LAN discovery
+
+The router finds MCP servers other machines announce, and offers each one to add; it never adds one by itself.
+Design notes and the mDNS convention are in `@cubicecho/mcp-discovery`'s SPECS.md.
+
+- [x] D1 **Shared:** `settings.instanceId` (written from the hostname on first run, then kept), `lanAdvertise`
+  (default false), `lanDiscovery` (default true), `lanDismissed`; `discovered: { key, cardName }` on a server
+  config and on the install request; `DiscoveredServer`, `GET /api/discovery`, `POST /api/discovery/dismissed`;
+  the three settings on `RouterStatus` and the settings PATCH.
+- [x] D2 **Server:** discovery documents (above). `discovery/lan-servers.ts` wraps `watchServers`: it leaves out
+  the router's own announcement and every card with the router role (so two routers never add each other in a
+  loop), works out available / added / dismissed (added = a config with that discovery key, or already pointing at
+  the URL), suggests a free local name, and repoints an added server's config when it moves. `createAdvertiser`
+  announces `MCP Router on <instanceId>` while `lanAdvertise` is on and the router is not bound to loopback. Both
+  follow the store's `change` event and close first on shutdown.
+- [x] D3 **App:** "Found on your network" card on the Servers page (Add opens a dialog for the local name and
+  any required header, Dismiss hides it); "Network discovery" card in Settings with both switches and "Offer
+  again" for dismissed servers.
+- [x] D4 **End to end, 2026-11-05:** mcp-skills-manager advertising on the LAN; the router offered `/mcp` and its
+  workspace, the UI added `/mcp` with its token, and the router served its tools as `skills__*` on `/mcp`.

@@ -157,9 +157,44 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   // The router's address as your browser and a remote server's login reach it.
   // Used for OAuth sign-in (see "Remote servers that need a login"). Omit to use
   // the address the web UI is open at; set it behind a proxy that rewrites hosts.
-  "publicUrl": "https://router.example.com"
+  "publicUrl": "https://router.example.com",
+  // This router's name on the network, in its Server Cards and mDNS announcement.
+  // Written from the hostname on first run, then kept.
+  "instanceId": "nas",
+  // Announce the router on the local network over mDNS (_mcp._tcp). Off by default.
+  "lanAdvertise": false,
+  // Look for MCP servers on the local network and offer them on the Servers page.
+  "lanDiscovery": true,
+  // Found servers you dismissed, by discovery key; "Offer again" in Settings removes one.
+  "lanDismissed": []
 }
 ```
+
+### Network discovery
+
+The router describes its endpoints so other tools can find them without being
+given each URL: `GET /.well-known/ai-catalog.json` lists the aggregate, every
+enabled server and every enabled workspace, each with an
+[MCP Server Card](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) at
+`<endpoint>/server-card`. Both are public; a card says when the bearer token is
+needed but never carries it.
+
+With **Look for servers on the network** on (the default), the router watches for
+MCP servers other machines announce over mDNS, such as
+[mcp-skills-manager](https://github.com/cubicecho/mcp-skills-manager) with its
+advertising on. Each one shows on the Servers page under **Found on your
+network**: **Add** opens a dialog for its local name and any token it needs, and
+adds it as a remote server; **Dismiss** hides it until you offer it again from
+Settings. Nothing is added without you. Other routers' endpoints are never
+offered, so two routers can't add each other in a loop. A server added this way
+remembers where it came from, and when it shows up at a new address the router
+points the config there.
+
+**Announce this router** (off by default) makes the router itself findable as
+`MCP Router on <instanceId>`. mDNS needs multicast, which Docker's default bridge
+network drops: in a container, use `network_mode: host` for discovery to work in
+either direction. All of this comes from
+[`@cubicecho/mcp-discovery`](https://github.com/cubicecho/mcp-discovery).
 
 ### `registries.json`
 

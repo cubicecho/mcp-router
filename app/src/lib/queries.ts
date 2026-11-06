@@ -2,6 +2,7 @@ import type {
   CreateRegistryRequest,
   CreateWorkspaceRequest,
   InstallRequest,
+  SetDismissedRequest,
   UpdateServerRequest,
   UpdateSettingsRequest,
   UpdateWorkspaceRequest,
@@ -34,6 +35,7 @@ export const queryKeys = {
   registrySearch: (registry: string, search: string) => ['registries', registry, 'search', search] as const,
   workspaces: ['workspaces'] as const,
   workspace: (slug: string) => ['workspaces', slug] as const,
+  discovery: ['discovery'] as const,
 };
 
 /**
@@ -211,7 +213,7 @@ function useInvalidate() {
  * What a change to a server makes stale: the servers themselves, the router status, and the
  * workspaces — a workspace lists its members' tools, resources and prompts under its own key.
  */
-const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.workspaces] as const;
+const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.workspaces, queryKeys.discovery] as const;
 
 /**
  * Installs a server.
@@ -475,7 +477,33 @@ export function useUpdateSettings() {
   const invalidate = useInvalidate();
   return useMutation({
     mutationFn: (body: UpdateSettingsRequest) => api.updateSettings(body),
-    onSuccess: () => invalidate(queryKeys.status),
+    onSuccess: () => invalidate(queryKeys.status, queryKeys.discovery),
+  });
+}
+
+/**
+ * Lists the servers found on the local network and keeps the list polled.
+ *
+ * @returns The query; `data` says whether the router is watching, and lists what it found.
+ */
+export function useDiscovery() {
+  return useQuery({
+    queryKey: queryKeys.discovery,
+    queryFn: api.getDiscovery,
+    refetchInterval: POLLING_DEFAULTS.discoveryMs,
+  });
+}
+
+/**
+ * Hides a found server, or offers it again.
+ *
+ * @returns The mutation; takes the key and whether it is dismissed, and refreshes the found servers.
+ */
+export function useSetDismissed() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: (body: SetDismissedRequest) => api.setDismissed(body),
+    onSuccess: (discovery) => queryClient.setQueryData(queryKeys.discovery, discovery),
   });
 }
 

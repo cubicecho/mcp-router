@@ -1,7 +1,14 @@
 import { ErrorCode, HttpStatus, MS_PER_MINUTE } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, reloadResult, routerStatus, settingsResult } from '@/storybook/fixtures';
+import {
+  appRoutes,
+  discoveredServer,
+  discovery,
+  reloadResult,
+  routerStatus,
+  settingsResult,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 
 const TIMEOUT_LABEL = 'Idle timeout in minutes';
@@ -156,5 +163,41 @@ export const RefusesAPublicUrlThatIsNotAUrl: Story = {
     await userEvent.type(input, 'router.local');
     await expect(input).toHaveAttribute('aria-invalid', 'true');
     await expect(canvas.getByRole('button', { name: 'Save public URL' })).toBeDisabled();
+  },
+};
+
+export const TurnsOnTheNetworkAnnouncement: Story = {
+  parameters: { api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ lanAdvertise: true }) } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const announce = await canvas.findByRole('switch', { name: 'Announce this router' });
+    await expect(announce).not.toBeChecked();
+    await expect(canvas.getByRole('switch', { name: 'Look for servers on the network' })).toBeChecked();
+    await expect(canvas.getByText(/MCP Router on nas/)).toBeVisible();
+    await userEvent.click(announce);
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { lanAdvertise: true }));
+    const body = within(canvasElement.ownerDocument.body);
+    await waitFor(() => expect(body.getByText('Announcing the router')).toBeVisible());
+  },
+};
+
+export const OffersADismissedServerAgain: Story = {
+  parameters: {
+    api: {
+      ...appRoutes(),
+      'GET /api/discovery': discovery({ servers: [discoveredServer({ state: 'dismissed' })] }),
+      'POST /api/discovery/dismissed': discovery(),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await canvas.findByRole('button', { name: 'Offer MCP Skills on nas again' }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith('POST /api/discovery/dismissed', {
+        key: discoveredServer().key,
+        dismissed: false,
+      }),
+    );
+    await waitFor(() => expect(canvas.queryByRole('button', { name: 'Offer MCP Skills on nas again' })).toBeNull());
   },
 };

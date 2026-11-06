@@ -25,6 +25,9 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
       authEnabled: effectiveAuth(store.getSettings()).enabled,
       idleTimeoutMs: store.getSettings().idleTimeoutMs,
       ...(store.getSettings().publicUrl ? { publicUrl: store.getSettings().publicUrl } : {}),
+      instanceId: store.getSettings().instanceId ?? '',
+      lanAdvertise: store.getSettings().lanAdvertise,
+      lanDiscovery: store.getSettings().lanDiscovery,
     };
     res.json(status);
   });
@@ -38,7 +41,12 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
     // The global idle timeout is resolved onto each server's row when the pool is
     // reconciled, so an edited one only reaches the running children through one.
     await applyConfig({ store, manager });
-    res.json({ idleTimeoutMs: next.idleTimeoutMs, ...(next.publicUrl ? { publicUrl: next.publicUrl } : {}) });
+    res.json({
+      idleTimeoutMs: next.idleTimeoutMs,
+      ...(next.publicUrl ? { publicUrl: next.publicUrl } : {}),
+      lanAdvertise: next.lanAdvertise,
+      lanDiscovery: next.lanDiscovery,
+    });
   });
 
   router.post('/reload', async (_req, res) => {

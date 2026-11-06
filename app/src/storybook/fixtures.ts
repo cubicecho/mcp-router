@@ -1,6 +1,10 @@
 import {
   type ActivityEntry,
   activityEntrySchema,
+  type DiscoveredServer,
+  type DiscoveryResponse,
+  discoveredServerSchema,
+  discoveryResponseSchema,
   type OAuthStartResponse,
   oauthStartResponseSchema,
   type PromptGetResponse,
@@ -145,6 +149,9 @@ export function routerStatus(overrides: Partial<RouterStatus> = {}): RouterStatu
     runningCount: 1,
     authEnabled: false,
     idleTimeoutMs: 300_000,
+    instanceId: 'nas',
+    lanAdvertise: false,
+    lanDiscovery: true,
     ...overrides,
   });
 }
@@ -292,6 +299,7 @@ export function appRoutes(): ApiRoutes {
     'GET /api/workspaces/research': workspace(),
     'GET /api/registries': [registry()],
     'GET /api/registries/official/servers': registryPage(),
+    'GET /api/discovery': discovery({ servers: [] }),
   };
   for (const server of servers) {
     routes[`GET /api/servers/${server.config.name}`] = server;
@@ -383,7 +391,12 @@ export function promptGetResult(overrides: Partial<PromptGetResponse> = {}): Pro
  * @returns The saved settings.
  */
 export function settingsResult(overrides: Partial<UpdateSettingsResponse> = {}): UpdateSettingsResponse {
-  return updateSettingsResponseSchema.parse({ idleTimeoutMs: 300_000, ...overrides });
+  return updateSettingsResponseSchema.parse({
+    idleTimeoutMs: 300_000,
+    lanAdvertise: false,
+    lanDiscovery: true,
+    ...overrides,
+  });
 }
 
 /**
@@ -431,4 +444,36 @@ export function registryServer(overrides: Partial<RegistryServer> = {}): Registr
     ],
     ...overrides,
   });
+}
+
+/**
+ * Builds a skills server found on the local network, which asks for a token.
+ *
+ * @param [overrides] - Any part of it to replace; the result must still pass the shared schema.
+ * @returns The found server, not yet added.
+ */
+export function discoveredServer(overrides: Partial<DiscoveredServer> = {}): DiscoveredServer {
+  return discoveredServerSchema.parse({
+    key: 'MCP Skills on nas/io.github.cubicecho.mcp-skills.nas/skills',
+    cardName: 'io.github.cubicecho.mcp-skills.nas/skills',
+    title: 'MCP Skills on nas',
+    description: 'Skills for agents, served over MCP.',
+    version: '4.1.0',
+    host: 'MCP Skills on nas',
+    url: 'http://192.168.1.20:3000/mcp',
+    requiredHeaders: ['Authorization'],
+    suggestedName: 'skills',
+    state: 'available',
+    ...overrides,
+  });
+}
+
+/**
+ * Builds what `GET /api/discovery` answers.
+ *
+ * @param [overrides] - Any part of the answer to replace; the result must still pass the shared schema.
+ * @returns Discovery on, with one found server waiting to be added.
+ */
+export function discovery(overrides: Partial<DiscoveryResponse> = {}): DiscoveryResponse {
+  return discoveryResponseSchema.parse({ enabled: true, servers: [discoveredServer()], ...overrides });
 }

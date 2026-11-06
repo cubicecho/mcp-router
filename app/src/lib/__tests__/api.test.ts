@@ -17,6 +17,9 @@ const routerStatus = {
   runningCount: 0,
   authEnabled: true,
   idleTimeoutMs: 300_000,
+  instanceId: 'nas',
+  lanAdvertise: false,
+  lanDiscovery: true,
 };
 
 const serverStatus = {

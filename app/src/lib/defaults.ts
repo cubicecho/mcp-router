@@ -12,6 +12,8 @@ export interface PollingSettings {
   activityMs: number;
   /** How long a capability listing is reused before it is fetched again, in ms. Fetching may spawn a server. */
   capabilityStaleMs: number;
+  /** The servers found on the local network, in ms. */
+  discoveryMs: number;
 }
 
 /** The polling intervals and stale times the query hooks use. */
@@ -21,6 +23,7 @@ export const POLLING_DEFAULTS: Readonly<PollingSettings> = Object.freeze({
   detailMs: 10_000,
   activityMs: 5_000,
   capabilityStaleMs: 60_000,
+  discoveryMs: 10_000,
 });
 
 /** How much the UI shows before it asks for a click. */

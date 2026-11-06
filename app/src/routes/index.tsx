@@ -1,6 +1,8 @@
+import { DiscoveredServerState } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { CompassIcon, ServerIcon } from 'lucide-react';
 import { useState } from 'react';
+import { FoundServersCard } from '@/components/domain/discovery/found-servers-card';
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
@@ -10,7 +12,7 @@ import { QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/ui/icons';
 import { AGGREGATE_ENDPOINT_PATH, endpointUrl } from '@/lib/endpoint';
-import { useServers } from '@/lib/queries';
+import { useDiscovery, useServers } from '@/lib/queries';
 
 /** The `/` route. */
 export const Route = createFileRoute('/')({
@@ -18,7 +20,8 @@ export const Route = createFileRoute('/')({
 });
 
 /**
- * The Servers page: the installed servers, the aggregate endpoint's connect card and the add-server dialog.
+ * The Servers page: servers found on the network, the installed servers, the aggregate endpoint's connect card and
+ * the add-server dialog.
  *
  * @returns The page.
  */
@@ -26,6 +29,8 @@ function ServersPage() {
   const servers = useServers();
   const { data } = servers;
   const [addOpen, setAddOpen] = useState(false);
+  const discovery = useDiscovery();
+  const found = (discovery.data?.servers ?? []).filter((server) => server.state === DiscoveredServerState.Available);
 
   return (
     <PageLayout
@@ -34,6 +39,8 @@ function ServersPage() {
       actionSlot={<Button onClick={() => setAddOpen(true)} iconSlot={<Plus />} content="Add server" />}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
+          {found.length > 0 && <FoundServersCard servers={found} />}
+
           <QueryState
             query={servers}
             what="servers"

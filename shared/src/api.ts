@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import {
+  discoveredFromSchema,
   serverConfigSchema,
   serverNameSchema,
   serverSourceSchema,
@@ -119,6 +120,8 @@ export const installRequestSchema = z.object({
   enabled: z.boolean().default(true),
   /** For a remote server whose login only accepts a client registered with it in advance. */
   oauthClient: oauthClientRequestSchema.optional(),
+  /** For a server added from one found on the local network: which one, so it is not offered again. */
+  discovered: discoveredFromSchema.optional(),
 });
 /** Body of the install-server request, fallbacks filled in. */
 export type InstallRequest = z.infer<typeof installRequestSchema>;
@@ -361,6 +364,12 @@ export const routerStatusSchema = z.object({
   idleTimeoutMs: z.number(),
   /** settings.json's `publicUrl`, when set. */
   publicUrl: z.string().optional(),
+  /** This router's network name, from settings.json's `instanceId`. */
+  instanceId: z.string(),
+  /** Whether the router announces itself on the local network. */
+  lanAdvertise: z.boolean(),
+  /** Whether the router watches the local network for servers to offer. */
+  lanDiscovery: z.boolean(),
 });
 /** The router's own status. */
 export type RouterStatus = z.infer<typeof routerStatusSchema>;
@@ -370,6 +379,8 @@ export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
   /** The router's public address; `null` clears it. */
   publicUrl: z.url().nullable().optional(),
+  lanAdvertise: z.boolean().optional(),
+  lanDiscovery: z.boolean().optional(),
 });
 /** Body of `PATCH /api/settings`. */
 export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
@@ -378,9 +389,65 @@ export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
 export const updateSettingsResponseSchema = z.object({
   idleTimeoutMs: z.number(),
   publicUrl: z.string().optional(),
+  lanAdvertise: z.boolean(),
+  lanDiscovery: z.boolean(),
 });
 /** What `PATCH /api/settings` answers. */
 export type UpdateSettingsResponse = z.infer<typeof updateSettingsResponseSchema>;
+
+/** What has become of a server found on the local network. */
+export const DiscoveredServerState = {
+  /** Not added yet: the UI offers it. */
+  Available: 'available',
+  /** A server config was added from it, or already points at its URL. */
+  Added: 'added',
+  /** The user chose not to add it; it is not offered again until restored. */
+  Dismissed: 'dismissed',
+} as const;
+/** One of the {@link DiscoveredServerState} values. */
+export type DiscoveredServerState = (typeof DiscoveredServerState)[keyof typeof DiscoveredServerState];
+
+/** A server another host on the local network advertises. */
+export const discoveredServerSchema = z.object({
+  /** Unique on the network: `<mDNS instance>/<card name>`. */
+  key: z.string(),
+  /** The Server Card's `name`, e.g. `io.github.cubicecho.mcp-skills.nas/skills`. */
+  cardName: z.string(),
+  /** The card's display name, when it has one. */
+  title: z.string().optional(),
+  description: z.string(),
+  version: z.string(),
+  /** The announcing host's mDNS instance name, e.g. `MCP Skills on nas`. */
+  host: z.string(),
+  /** The streamable-HTTP endpoint to add. */
+  url: z.string(),
+  /** Headers the user has to supply before it can be added, e.g. `Authorization`. */
+  requiredHeaders: z.array(z.string()),
+  /** A local name for it, derived from the card and free in this router. */
+  suggestedName: z.string(),
+  state: z.enum(DiscoveredServerState),
+  /** The local server it was added as, when `state` is `added`. */
+  serverName: z.string().optional(),
+});
+/** A server another host on the local network advertises. */
+export type DiscoveredServer = z.infer<typeof discoveredServerSchema>;
+
+/** What `GET /api/discovery` answers. */
+export const discoveryResponseSchema = z.object({
+  /** Whether the router is watching the network (settings.json's `lanDiscovery`). */
+  enabled: z.boolean(),
+  servers: z.array(discoveredServerSchema),
+});
+/** What `GET /api/discovery` answers. */
+export type DiscoveryResponse = z.infer<typeof discoveryResponseSchema>;
+
+/** Body of `POST /api/discovery/dismissed`: hide a found server, or offer it again. */
+export const setDismissedRequestSchema = z.object({
+  key: z.string().min(1),
+  dismissed: z.boolean(),
+});
+/** Body of `POST /api/discovery/dismissed`. */
+export type SetDismissedRequest = z.infer<typeof setDismissedRequestSchema>;
 
 /** What `POST /api/reload` answers. */
 export const reloadResponseSchema = z.object({
