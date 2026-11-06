@@ -58,6 +58,28 @@ export const NavigatesWithTheSidebar: Story = {
   },
 };
 
+export const PutsSettingsAtTheFootOfTheSidebar: Story = {
+  globals: { viewport: { value: 'desktop' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nav = within(await canvas.findByRole('navigation', { name: 'Main' }));
+    await expect(nav.getByRole('link', { name: 'Registries' })).toBeVisible();
+    // As in the other cubeui apps, Settings sits with the theme picker at the foot, not with the places.
+    await expect(nav.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
+    await expect(canvas.getByRole('link', { name: 'Settings' })).toBeVisible();
+  },
+};
+
+export const ShowsSettingsInTheBarOnANarrowScreen: Story = {
+  globals: { viewport: { value: 'mobile1' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    // The bar has no foot, so Settings is one of its places.
+    const nav = within(await canvas.findByRole('navigation', { name: 'Main' }));
+    await expect(nav.getByRole('link', { name: 'Settings' })).toBeVisible();
+  },
+};
+
 export const KeepsServersCurrentOnAServerPage: Story = {
   parameters: { route: '/servers/filesystem' },
   play: async ({ canvasElement }) => {

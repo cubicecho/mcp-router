@@ -3,7 +3,7 @@ import { LayersIcon, ServerIcon } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { ActionButton } from '@/components/action-button';
 import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
-import { Lock } from '@/components/ui/icons';
+import { Lock, Settings } from '@/components/ui/icons';
 import { AppLayout } from './app-layout.tsx';
 
 const STATUS = '1/2 servers running';
@@ -92,6 +92,21 @@ export const PlacesAnActionBesideTheThemePicker: Story = {
     onLock.mockClear();
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Lock' }));
     await expect(onLock).toHaveBeenCalledTimes(1);
+  },
+};
+
+export const PutsFooterPlacesUnderTheNavigation: Story = {
+  args: { sidebarFooterNavSlot: <SidebarNavItem href="/settings" label="Settings" iconSlot={<Settings />} /> },
+  globals: { viewport: { value: 'desktop' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    const nav = within(canvas.getByRole('navigation', { name: 'Main' }));
+    await expect(nav.queryByRole('link', { name: 'Settings' })).not.toBeInTheDocument();
+    const settings = canvas.getByRole('link', { name: 'Settings' });
+    await expect(settings).toBeVisible();
+    // Below the places, at the foot of the sidebar.
+    const servers = nav.getByRole('link', { name: 'Servers' });
+    await expect(settings.getBoundingClientRect().top).toBeGreaterThan(servers.getBoundingClientRect().bottom);
   },
 };
 
