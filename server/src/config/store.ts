@@ -2,9 +2,11 @@ import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { existsSync } from 'node:fs';
 import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { hostname } from 'node:os';
 import path from 'node:path';
 import {
   DEFAULT_REGISTRY,
+  instanceIdFrom,
   type RegistriesFile,
   type Registry,
   registriesFileSchema,
@@ -376,6 +378,11 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       dirty = true;
       // The one time the token is printed: first run, when nobody has seen it yet.
       console.log(`[auth] generated a bearer token and saved it to ${file}:\n  ${settings.authToken}`);
+    }
+    // Kept once written, so renaming the machine does not change the router's identity on the network.
+    if (settings.instanceId === undefined) {
+      settings.instanceId = instanceIdFrom(hostname());
+      dirty = true;
     }
     if (dirty) {
       await this.writeJsonAtomic(file, settings);

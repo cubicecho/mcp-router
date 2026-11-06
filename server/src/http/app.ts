@@ -1,5 +1,6 @@
 import { existsSync } from 'node:fs';
 import path from 'node:path';
+import { discoveryMiddleware } from '@cubicecho/mcp-discovery';
 import type { Health } from '@mcp-router/shared';
 import express from 'express';
 import { errorMiddleware } from '../api/error-middleware.ts';
@@ -8,6 +9,8 @@ import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from '../
 import type { ConfigStore } from '../config/store.ts';
 import { HTTP_DEFAULTS } from '../core/defaults.ts';
 import { SERVER_VERSION } from '../core/version.ts';
+import { discoveryEndpoints } from '../discovery/endpoints.ts';
+import { idleLanServers, type LanServers } from '../discovery/lan-servers.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
 import { createMcpRouter } from '../gateway/routes.ts';
 import { createOAuthRoutes } from '../oauth/routes.ts';
@@ -24,13 +27,15 @@ export interface AppDeps {
   appDistDir?: string;
   /** Remote-server sign-in; the one the manager was built with. A fresh one, wired to `manager`, when absent. */
   oauth?: OAuthService;
+  /** The servers found on the local network; one that never watches when absent. */
+  lanServers?: LanServers;
 }
 
 /**
  * Build the Express app (separate from listen() so tests can drive it with supertest).
  *
  * @param deps - The store and gateway, plus the test overrides.
- * @returns The app: /healthz, /api, /mcp, and the built web UI when its directory exists.
+ * @returns The app: /healthz, the discovery documents, /api, /mcp, and the built web UI when its directory exists.
  */
 export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
@@ -53,11 +58,16 @@ export function createApp(deps: AppDeps): express.Express {
     res.json(health);
   });
 
+  // Also before it: the AI Catalog and each endpoint's Server Card are public by design. They name the endpoints and
+  // say a token is needed, but never carry it.
+  app.use(discoveryMiddleware(() => discoveryEndpoints(store)));
+
   // Also before it: a server's login fetches the client metadata and sends the browser back with no token. The
   // callback is held to the `state` of a sign-in started through /api instead.
   app.use(createOAuthRoutes({ store, oauth }));
 
-  app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir, oauth }));
+  const lanServers = deps.lanServers ?? idleLanServers();
+  app.use('/api', auth, createApiRouter({ store, manager, registryClient, dataDir: store.dataDir, oauth, lanServers }));
   app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));
 
   // Production: serve the built web UI with an SPA fallback for non-API GETs.

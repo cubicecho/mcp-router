@@ -4,6 +4,10 @@ services:
     image: mcp-router
     ports:
       - '3000:3000'
+    # LAN discovery (finding servers on the network, and announcing the router)
+    # uses mDNS multicast, which the default bridge network drops. For it to work,
+    # replace `ports` with:
+    # network_mode: host
     volumes:
       # Config files, installed server packages, and logs — hand-editable on
       # the host; apply edits with POST /api/reload (or the Settings page).

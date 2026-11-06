@@ -4,6 +4,8 @@ import {
   apiErrorSchema,
   type CreateRegistryRequest,
   type CreateWorkspaceRequest,
+  type DiscoveryResponse,
+  discoveryResponseSchema,
   type ErrorCode,
   HttpStatus,
   type InstallRequest,
@@ -28,6 +30,7 @@ import {
   type ServerResourcesResponse,
   type ServerStatus,
   type ServerToolsResponse,
+  type SetDismissedRequest,
   serverPromptsResponseSchema,
   serverResourcesResponseSchema,
   serverStatusSchema,
@@ -494,4 +497,23 @@ export function updateSettings(body: UpdateSettingsRequest): Promise<UpdateSetti
  */
 export function reloadConfig(): Promise<ReloadResponse> {
   return request('/api/reload', reloadResponseSchema, { method: 'POST' });
+}
+
+/**
+ * Lists the servers found on the local network with `GET /api/discovery`.
+ *
+ * @returns Whether the router is watching, and each found server with whether it is available, added or dismissed.
+ */
+export function getDiscovery(): Promise<DiscoveryResponse> {
+  return request('/api/discovery', discoveryResponseSchema);
+}
+
+/**
+ * Hides a found server, or offers it again, with `POST /api/discovery/dismissed`.
+ *
+ * @param body - Its discovery key, and whether it is dismissed.
+ * @returns The found servers afterwards.
+ */
+export function setDismissed(body: SetDismissedRequest): Promise<DiscoveryResponse> {
+  return request('/api/discovery/dismissed', discoveryResponseSchema, { method: 'POST', body });
 }

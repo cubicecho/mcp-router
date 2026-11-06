@@ -1,7 +1,7 @@
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
+import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
-import type { ServerConfig } from '@mcp-router/shared';
+import { instanceIdFrom, type ServerConfig } from '@mcp-router/shared';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../store.ts';
 
@@ -50,6 +50,16 @@ describe('ConfigStore', () => {
     expect(mode).toBe(0o600);
 
     expect(store.getRegistries()).toEqual([{ name: 'official', url: 'https://registry.modelcontextprotocol.io' }]);
+  });
+
+  it('names the router after its hostname on first run, then keeps the name', async () => {
+    await store.init();
+    const settingsFile = path.join(dataDir, 'config', 'settings.json');
+    const first = JSON.parse(await readFile(settingsFile, 'utf8'));
+    expect(first.instanceId).toBe(instanceIdFrom(hostname()));
+    await writeFile(settingsFile, JSON.stringify({ ...first, instanceId: 'kept' }));
+    await store.reload();
+    expect(store.getSettings().instanceId).toBe('kept');
   });
 
   it('does not generate a token when MCP_ROUTER_TOKEN is set', async () => {

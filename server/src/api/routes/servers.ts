@@ -64,9 +64,10 @@ export function createServerRoutes({ store, manager, registryClient, dataDir, oa
       throw conflict(`Server "${name}" already exists`);
     }
     const built = await buildServerConfig({ ...request, name }, installerDeps);
-    const config: ServerConfig = request.oauthClient
+    const signedIn: ServerConfig = request.oauthClient
       ? { ...built, oauth: applyOAuthClient(built.oauth, request.oauthClient) }
       : built;
+    const config: ServerConfig = request.discovered ? { ...signedIn, discovered: request.discovered } : signedIn;
     await store.saveServer(config);
     await applyConfig({ store, manager });
     res.status(HttpStatus.Created).json(requireStatus(config.name));

@@ -323,7 +323,7 @@ describe('REST API', () => {
 
     const patched = await authed(request(app).patch('/api/settings')).send({ idleTimeoutMs: 120_000 });
     expect(patched.status).toBe(200);
-    expect(patched.body).toEqual({ idleTimeoutMs: 120_000 });
+    expect(patched.body).toEqual({ idleTimeoutMs: 120_000, lanAdvertise: false, lanDiscovery: true });
     expect(store.getSettings().idleTimeoutMs).toBe(120_000);
     // The token must survive a settings merge.
     expect(store.getSettings().authToken).toBe(token);
