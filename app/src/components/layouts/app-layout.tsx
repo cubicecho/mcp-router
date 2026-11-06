@@ -21,8 +21,6 @@ function Brand() {
 interface AppLayoutProps {
   /** The places of the app as sidebar items, shown on wide screens. */
   sidebarNavSlot: SlotNode;
-  /** Places drawn at the foot of the sidebar, over the status — Settings. */
-  sidebarFooterNavSlot?: SlotNode;
   /** The same places as bar items, shown on narrow screens. */
   barNavSlot: SlotNode;
   /** One line about the app's state, under the navigation. */
@@ -36,7 +34,6 @@ interface AppLayoutProps {
  * The app's frame: brand, navigation, status, theme picker and the page.
  *
  * @param props.sidebarNavSlot - The places of the app as sidebar items, shown on wide screens.
- * @param [props.sidebarFooterNavSlot] - Places drawn at the foot of the sidebar, over the status — Settings.
  * @param props.barNavSlot - The same places as bar items, shown on narrow screens.
  * @param [props.status] - One line about the app's state, under the navigation.
  * @param [props.actionSlot] - Actions that sit beside the theme picker.
@@ -46,14 +43,7 @@ interface AppLayoutProps {
  * @remarks
  * It holds no data and no routing.
  */
-export function AppLayout({
-  sidebarNavSlot,
-  sidebarFooterNavSlot,
-  barNavSlot,
-  status,
-  actionSlot,
-  contentSlot,
-}: AppLayoutProps) {
+export function AppLayout({ sidebarNavSlot, barNavSlot, status, actionSlot, contentSlot }: AppLayoutProps) {
   return (
     <SidebarLayout
       // The frame is as tall as the screen, so a long page scrolls inside `main` and the navigation stays put.
@@ -69,7 +59,6 @@ export function AppLayout({
           contentSlot={<SidebarSection as="nav" label="Main" contentSlot={sidebarNavSlot} />}
           footerSlot={
             <div className="flex flex-col gap-2">
-              {sidebarFooterNavSlot}
               {status && <span className="text-foreground/60 text-xs">{status}</span>}
               <div className="flex items-center gap-1">
                 <div className="min-w-0 flex-1">

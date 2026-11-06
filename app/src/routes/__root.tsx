@@ -17,20 +17,13 @@ export const Route = createRootRoute({
   component: RootComponent,
 });
 
-/**
- * The places of the app. `footer` ones sit at the foot of the sidebar, as cubeui apps put Settings; the
- * narrow-screen bar has no foot, so it shows every place.
- */
 const NAV_ITEMS = [
-  { to: '/', label: 'Servers', icon: ServerIcon, placement: 'main' },
-  { to: '/browse', label: 'Browse', icon: CompassIcon, placement: 'main' },
-  { to: '/workspaces', label: 'Workspaces', icon: LayersIcon, placement: 'main' },
-  { to: '/registries', label: 'Registries', icon: Library, placement: 'main' },
-  { to: '/settings', label: 'Settings', icon: Settings, placement: 'footer' },
+  { to: '/', label: 'Servers', icon: ServerIcon },
+  { to: '/browse', label: 'Browse', icon: CompassIcon },
+  { to: '/workspaces', label: 'Workspaces', icon: LayersIcon },
+  { to: '/registries', label: 'Registries', icon: Library },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ] as const;
-
-const MAIN_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'main');
-const FOOTER_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'footer');
 
 const SidebarLink = createLink(SidebarNavItem);
 const BarLink = createLink(BarNavItem);
@@ -87,10 +80,7 @@ function AppFrame() {
 
   return (
     <AppLayout
-      sidebarNavSlot={MAIN_ITEMS.map(({ to, label, icon: Icon }) => (
-        <SidebarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
-      ))}
-      sidebarFooterNavSlot={FOOTER_ITEMS.map(({ to, label, icon: Icon }) => (
+      sidebarNavSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
         <SidebarLink key={to} to={to} label={label} iconSlot={<Icon />} active={isActive(to)} />
       ))}
       barNavSlot={NAV_ITEMS.map(({ to, label, icon: Icon }) => (
