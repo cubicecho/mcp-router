@@ -2,7 +2,7 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { PackageInstallCard } from '@/components/domain/browse/package-install-card';
 import { RegistryServerCard } from '@/components/domain/browse/server-card';
-import { OptionSelect } from '@/components/option-select';
+import { Combobox } from '@/components/combobox';
 import { CardGrid, EmptyState } from '@/components/page';
 import { PageLayout } from '@/components/page-layout';
 import { QueryError, QueryState } from '@/components/query-state';
@@ -45,7 +45,7 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
   return (
     <div className="flex flex-col gap-4">
       <div className="flex flex-wrap gap-2">
-        <OptionSelect
+        <Combobox
           className="w-48"
           aria-label="Registry"
           options={(registries ?? []).map((r) => ({ value: r.name, label: r.name }))}

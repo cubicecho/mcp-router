@@ -130,7 +130,7 @@ function RegistriesPage() {
                       <ConfirmButton
                         variant="ghost"
                         size="icon-sm"
-                        label={`Delete ${registry.name}`}
+                        aria-label={`Delete ${registry.name}`}
                         title={`Delete registry ${registry.name}?`}
                         description={
                           <>

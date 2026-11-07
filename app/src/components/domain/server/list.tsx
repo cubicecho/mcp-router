@@ -3,7 +3,6 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
@@ -20,6 +19,7 @@ import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
+import { Button } from '@/components/ui/button';
 
 /**
  * Table row for one installed server: state, usage, the enable switch and the actions menu.
@@ -127,10 +127,10 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       <TableCell className="text-right">
         <Menu>
           <MenuTrigger asChild>
-            <ActionButton
+            <Button
               variant="ghost"
               size="icon-sm"
-              label={`Actions for ${config.name}`}
+              aria-label={`Actions for ${config.name}`}
               loading={test.isPending || restart.isPending || remove.isPending}
               iconSlot={<Ellipsis />}
             />

@@ -3,7 +3,6 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { LayersIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { EmptyState } from '@/components/page';
@@ -106,17 +105,17 @@ function WorkspacesPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <ActionButton
+                        <Button
                           variant="ghost"
                           size="icon-sm"
-                          label={`Edit ${workspace.name}`}
+                          aria-label={`Edit ${workspace.name}`}
                           onClick={() => setDialog({ mode: 'edit', workspace })}
                           iconSlot={<Pencil />}
                         />
                         <ConfirmButton
                           variant="ghost"
                           size="icon-sm"
-                          label={`Delete ${workspace.name}`}
+                          aria-label={`Delete ${workspace.name}`}
                           title={`Delete workspace ${workspace.name}?`}
                           description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                           onConfirm={() =>

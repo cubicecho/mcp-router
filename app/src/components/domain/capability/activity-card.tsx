@@ -5,7 +5,7 @@ import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DisclosureRow } from '@/components/disclosure-row';
-import { OptionSelect } from '@/components/option-select';
+import { Combobox } from '@/components/combobox';
 import { EmptyState } from '@/components/page';
 import { QueryError } from '@/components/query-state';
 import { Alert } from '@/components/ui/alert';
@@ -103,7 +103,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             size="sm"
             loading={clear.isPending}
             disabled={entries.length === 0}
-            label="Clear activity"
+            aria-label="Clear activity"
             title="Clear the activity log?"
             description={
               scope.kind === SCOPE_SERVER
@@ -137,7 +137,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
           {entries.length > 0 && (
             <>
               <div className="mb-3 flex flex-wrap gap-2">
-                <OptionSelect
+                <Combobox
                   data-size="sm"
                   className="w-28"
                   aria-label="Filter by outcome"
@@ -149,7 +149,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
                   value={outcome}
                   onValueChange={(value) => setOutcome(value as typeof outcome)}
                 />
-                <OptionSelect
+                <Combobox
                   data-size="sm"
                   className="w-52"
                   aria-label="Filter by method"

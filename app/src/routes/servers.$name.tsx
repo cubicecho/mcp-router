@@ -3,7 +3,6 @@ import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DescriptionList, PropertyRow } from '@/components/description-list';
@@ -90,11 +89,10 @@ function ServerDetailPage() {
   return (
     <PageLayout
       iconSlot={
-        <ActionButton
+        <Button
           variant="ghost"
           size="icon-sm"
-          label="Back to servers"
-          tooltip={false}
+          aria-label="Back to servers"
           linkSlot={<Link to="/" />}
           iconSlot={<ArrowLeft />}
         />
@@ -130,8 +128,7 @@ function ServerDetailPage() {
                     <ConfirmButton
                       variant="outline"
                       size="sm"
-                      label={`Delete ${name}`}
-                      tooltip={false}
+                      aria-label={`Delete ${name}`}
                       loading={remove.isPending}
                       title={`Delete ${name}?`}
                       description="This stops the server, deletes its config file, and removes its install directory."
@@ -193,8 +190,7 @@ function ServerDetailPage() {
                                   <ConfirmButton
                                     variant="outline"
                                     size="sm"
-                                    label={`Sign out of ${name}`}
-                                    tooltip={false}
+                                    aria-label={`Sign out of ${name}`}
                                     loading={signOut.isPending}
                                     title={`Sign out of ${name}?`}
                                     description="MCP Router forgets its tokens for this server. It stops answering until you sign in again."

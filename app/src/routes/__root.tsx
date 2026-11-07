@@ -1,7 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createLink, createRootRoute, Outlet, useLocation } from '@tanstack/react-router';
 import { CompassIcon, LayersIcon, ServerIcon } from 'lucide-react';
-import { ActionButton } from '@/components/action-button';
 import { TokenForm } from '@/components/domain/auth/token-form';
 import { AppLayout } from '@/components/layouts/app-layout';
 import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
@@ -11,6 +10,7 @@ import { useThemePreference } from '@/components/ui/theme-preference';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { clearToken, requireAuth, setToken, useNeedsAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
+import { Button } from '@/components/ui/button';
 
 /** The root route: the app frame, or the token screen, around every page. */
 export const Route = createRootRoute({
@@ -99,10 +99,10 @@ function AppFrame() {
       status={status}
       actionSlot={
         data?.authEnabled === true && (
-          <ActionButton
+          <Button
             variant="ghost"
             size="icon-sm"
-            label="Lock (forget the stored token)"
+            aria-label="Lock (forget the stored token)"
             hint="Lock — forget the stored token"
             onClick={lock}
             iconSlot={<Lock />}

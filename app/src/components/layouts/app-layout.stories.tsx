@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LayersIcon, ServerIcon } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { ActionButton } from '@/components/action-button';
 import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
 import { Lock, Settings } from '@/components/ui/icons';
 import { AppLayout } from './app-layout.tsx';
+import { Button } from '@/components/ui/button';
 
 const STATUS = '1/2 servers running';
 const PARAGRAPH_COUNT = 60;
@@ -85,7 +85,7 @@ export const WithoutAStatusLine: Story = {
 
 export const PlacesAnActionBesideTheThemePicker: Story = {
   args: {
-    actionSlot: <ActionButton variant="ghost" size="icon-sm" label="Lock" onClick={onLock} iconSlot={<Lock />} />,
+    actionSlot: <Button variant="ghost" size="icon-sm" aria-label="Lock" onClick={onLock} iconSlot={<Lock />} />,
   },
   globals: { viewport: { value: 'desktop' } },
   play: async ({ canvasElement }) => {
