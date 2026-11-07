@@ -1,12 +1,12 @@
 import { createFileRoute, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
+import { Combobox } from '@/components/combobox';
 import { PackageInstallCard } from '@/components/domain/browse/package-install-card';
 import { RegistryServerCard } from '@/components/domain/browse/server-card';
-import { Combobox } from '@/components/combobox';
 import { EmptyState } from '@/components/empty-state';
 import { GridLayout } from '@/components/grid-layout';
+import { LoadError, LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryError, QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
 import { Search } from '@/components/ui/icons';
 import { SearchInput } from '@/components/ui/search-input';
@@ -74,17 +74,21 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
       </div>
 
       {registriesError && (
-        <QueryError error={registriesError} onRetry={() => registriesQuery.refetch()} what="registries" />
+        <LoadError error={registriesError} onRetry={() => registriesQuery.refetch()} what="registries" />
       )}
 
       {registry && (
-        <QueryState
+        <LoadState
           query={results}
           what="search results"
           count={servers.length}
           rows={3}
           emptySlot={
-            <EmptyState iconSlot={<Search />} title="No servers found" description="Try another search term or registry." />
+            <EmptyState
+              iconSlot={<Search />}
+              title="No servers found"
+              description="Try another search term or registry."
+            />
           }
         />
       )}

@@ -3,14 +3,14 @@ import { createLink, createRootRoute, Outlet, useLocation } from '@tanstack/reac
 import { CompassIcon, LayersIcon, ServerIcon } from 'lucide-react';
 import { TokenForm } from '@/components/domain/auth/token-form';
 import { AppLayout } from '@/components/layouts/app-layout';
-import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
+import { AppBarItem, SidebarItem } from '@/components/sidebar';
+import { Button } from '@/components/ui/button';
 import { Library, Lock, Settings } from '@/components/ui/icons';
 import { Toaster } from '@/components/ui/sonner';
 import { useThemePreference } from '@/components/ui/theme-preference';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { clearToken, requireAuth, setToken, useNeedsAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
-import { Button } from '@/components/ui/button';
 
 /** The root route: the app frame, or the token screen, around every page. */
 export const Route = createRootRoute({
@@ -32,8 +32,8 @@ const NAV_ITEMS = [
 const MAIN_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'main');
 const FOOTER_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'footer');
 
-const SidebarLink = createLink(SidebarNavItem);
-const BarLink = createLink(BarNavItem);
+const SidebarLink = createLink(SidebarItem);
+const BarLink = createLink(AppBarItem);
 
 /**
  * The root of every screen: the token screen while the router wants a token, else the app frame.

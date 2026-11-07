@@ -6,8 +6,8 @@ import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { EmptyState } from '@/components/empty-state';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -43,7 +43,7 @@ function WorkspacesPage() {
       actionSlot={<Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<Plus />} content="New workspace" />}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <QueryState
+          <LoadState
             query={workspaces}
             what="workspaces"
             count={data?.length ?? 0}

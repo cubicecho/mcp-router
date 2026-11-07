@@ -1,10 +1,10 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { LayersIcon, ServerIcon } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
-import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
+import { AppBarItem, SidebarItem } from '@/components/sidebar';
+import { Button } from '@/components/ui/button';
 import { Lock, Settings } from '@/components/ui/icons';
 import { AppLayout } from './app-layout.tsx';
-import { Button } from '@/components/ui/button';
 
 const STATUS = '1/2 servers running';
 const PARAGRAPH_COUNT = 60;
@@ -20,14 +20,14 @@ const meta = {
   args: {
     sidebarNavSlot: (
       <>
-        <SidebarNavItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
-        <SidebarNavItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
+        <SidebarItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
+        <SidebarItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
       </>
     ),
     barNavSlot: (
       <>
-        <BarNavItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
-        <BarNavItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
+        <AppBarItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
+        <AppBarItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
       </>
     ),
     status: STATUS,
@@ -96,7 +96,7 @@ export const PlacesAnActionBesideTheThemePicker: Story = {
 };
 
 export const PutsFooterPlacesUnderTheNavigation: Story = {
-  args: { sidebarFooterNavSlot: <SidebarNavItem href="/settings" label="Settings" iconSlot={<Settings />} /> },
+  args: { sidebarFooterNavSlot: <SidebarItem href="/settings" label="Settings" iconSlot={<Settings />} /> },
   globals: { viewport: { value: 'desktop' } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

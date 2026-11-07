@@ -1,5 +1,5 @@
 import { type ReactNode, useState } from 'react';
-import { Disclosure } from '@/components/disclosure';
+import { Collapsible } from '@/components/collapsible';
 import { CodeBlock } from '@/components/ui/code';
 import { SegmentedButton, SegmentedGroup } from '@/components/ui/segmented';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
@@ -162,7 +162,7 @@ function Node({
   }
 
   return (
-    <Disclosure
+    <Collapsible
       open={open}
       onOpenChange={setOpen}
       className="gap-0"

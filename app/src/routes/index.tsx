@@ -7,8 +7,8 @@ import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
 import { EmptyState } from '@/components/empty-state';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/ui/icons';
 import { AGGREGATE_ENDPOINT_PATH, endpointUrl } from '@/lib/endpoint';
@@ -41,7 +41,7 @@ function ServersPage() {
         <div className="flex flex-col gap-6 py-4 md:py-6">
           {found.length > 0 && <FoundServersCard servers={found} />}
 
-          <QueryState
+          <LoadState
             query={servers}
             what="servers"
             count={data?.length ?? 0}

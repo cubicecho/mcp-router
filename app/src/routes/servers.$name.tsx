@@ -5,14 +5,14 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
-import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { EnvEditor } from '@/components/domain/server/env-editor';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
+import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
 import { Alert } from '@/components/ui/alert';
 import { Button } from '@/components/ui/button';
@@ -102,7 +102,7 @@ function ServerDetailPage() {
       loading={query.isPending}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <QueryState query={query} what="server" count={server ? 1 : 0} rows={1} />
+          <LoadState query={query} what="server" count={server ? 1 : 0} rows={1} />
           {server && (
             <>
               <CardLayout
@@ -141,7 +141,7 @@ function ServerDetailPage() {
                 contentClassName="gap-4"
                 contentSlot={
                   <>
-                    <DescriptionList
+                    <PropertyList
                       contentSlot={
                         <>
                           <PropertyRow

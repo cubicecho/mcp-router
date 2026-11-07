@@ -7,6 +7,7 @@ import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { EmptyState } from '@/components/empty-state';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Ellipsis, Pencil, Trash2 } from '@/components/ui/icons';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
@@ -19,7 +20,6 @@ import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
-import { Button } from '@/components/ui/button';
 
 /**
  * Table row for one installed server: state, usage, the enable switch and the actions menu.

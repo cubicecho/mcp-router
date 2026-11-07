@@ -3,11 +3,11 @@ import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
-import { ConfirmButton } from '@/components/confirm-button';
-import { DisclosureRow } from '@/components/disclosure-row';
+import { CollapsibleRow } from '@/components/collapsible-row';
 import { Combobox } from '@/components/combobox';
+import { ConfirmButton } from '@/components/confirm-button';
 import { EmptyState } from '@/components/empty-state';
-import { QueryError } from '@/components/query-state';
+import { LoadError } from '@/components/load-state';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,7 +30,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const hasDetail = entry.params !== undefined || entry.result !== undefined || entry.error !== undefined;
 
   return (
-    <DisclosureRow
+    <CollapsibleRow
       open={open}
       onOpenChange={setOpen}
       title={<span className="font-mono">{entry.method}</span>}
@@ -125,7 +125,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
       loading={isPending}
       contentSlot={
         <>
-          {error && <QueryError error={error} onRetry={() => refetch()} what="activity" />}
+          {error && <LoadError error={error} onRetry={() => refetch()} what="activity" />}
           {data && entries.length === 0 && (
             <EmptyState
               compact

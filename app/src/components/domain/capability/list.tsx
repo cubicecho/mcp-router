@@ -1,8 +1,8 @@
 import type { UseMutationResult } from '@tanstack/react-query';
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
-import { DisclosureRow } from '@/components/disclosure-row';
-import { QueryError } from '@/components/query-state';
+import { CollapsibleRow } from '@/components/collapsible-row';
+import { LoadError } from '@/components/load-state';
 import { Play } from '@/components/ui/icons';
 import { toastApiError } from '@/lib/toast';
 import type { SlotNode } from '@/lib/utils';
@@ -53,7 +53,7 @@ export function CapabilityList({ title, description, query, what, emptySlot, con
       contentClassName="gap-2"
       contentSlot={
         query.error
-          ? [<QueryError key="error" error={query.error} onRetry={query.refetch} what={what} />, ...contentSlot]
+          ? [<LoadError key="error" error={query.error} onRetry={query.refetch} what={what} />, ...contentSlot]
           : contentSlot
       }
     />
@@ -82,7 +82,7 @@ interface CapabilityRowProps {
 export function CapabilityRow({ title, meta, description, contentSlot }: CapabilityRowProps) {
   const [open, setOpen] = useState(false);
   return (
-    <DisclosureRow
+    <CollapsibleRow
       open={open}
       onOpenChange={setOpen}
       title={<span className="font-mono">{title}</span>}
