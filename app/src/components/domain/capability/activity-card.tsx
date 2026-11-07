@@ -6,7 +6,7 @@ import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { DisclosureRow } from '@/components/disclosure-row';
 import { Combobox } from '@/components/combobox';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { QueryError } from '@/components/query-state';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';

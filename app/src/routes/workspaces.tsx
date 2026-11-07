@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { Badge } from '@/components/ui/badge';
@@ -49,7 +49,7 @@ function WorkspacesPage() {
             count={data?.length ?? 0}
             emptySlot={
               <EmptyState
-                icon={LayersIcon}
+                iconSlot={<LayersIcon />}
                 title="No workspaces yet"
                 description="Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace."
                 actionSlot={

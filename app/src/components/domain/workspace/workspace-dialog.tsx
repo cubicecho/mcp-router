@@ -14,7 +14,7 @@ import { InputField, SwitchField, TextareaField, useAppForm } from '@/components
 import { DialogLayout } from '@/components/dialog-layout';
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { FormField } from '@/components/form-field';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';

@@ -3,7 +3,8 @@ import { useState } from 'react';
 import { PackageInstallCard } from '@/components/domain/browse/package-install-card';
 import { RegistryServerCard } from '@/components/domain/browse/server-card';
 import { Combobox } from '@/components/combobox';
-import { CardGrid, EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
+import { GridLayout } from '@/components/grid-layout';
 import { PageLayout } from '@/components/page-layout';
 import { QueryError, QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
@@ -83,14 +84,14 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
           count={servers.length}
           rows={3}
           emptySlot={
-            <EmptyState icon={Search} title="No servers found" description="Try another search term or registry." />
+            <EmptyState iconSlot={<Search />} title="No servers found" description="Try another search term or registry." />
           }
         />
       )}
 
       {servers.length > 0 && (
         <>
-          <CardGrid
+          <GridLayout
             contentSlot={servers.map((entry) => (
               <RegistryServerCard
                 key={entry.server.name}

@@ -6,7 +6,7 @@ import { FoundServersCard } from '@/components/domain/discovery/found-servers-ca
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { ServerList } from '@/components/domain/server/list';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { PageLayout } from '@/components/page-layout';
 import { QueryState } from '@/components/query-state';
 import { Button } from '@/components/ui/button';
@@ -47,7 +47,7 @@ function ServersPage() {
             count={data?.length ?? 0}
             emptySlot={
               <EmptyState
-                icon={ServerIcon}
+                iconSlot={<ServerIcon />}
                 title="No servers installed yet"
                 description="Add one by hand, or install one from a registry."
                 actionSlot={

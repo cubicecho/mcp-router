@@ -6,7 +6,7 @@ import { toast } from 'sonner';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Ellipsis, Pencil, Trash2 } from '@/components/ui/icons';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
