@@ -3,20 +3,34 @@
 import { AlertDialog as AlertDialogPrimitive } from 'radix-ui';
 import type * as React from 'react';
 import { type ButtonProps, buttonVariants } from '@/components/ui/button';
-import { cn } from '@/lib/utils';
+import { DIALOG_CONTENT_CLASS, DIALOG_DESCRIPTION_CLASS, DIALOG_TITLE_CLASS } from '@/components/ui/dialog-base';
+import { FrameFocusGuard } from '@/lib/frame-focus-guard';
+import { bridgePress, cn } from '@/lib/utils';
 
+/** The root of a dialog that must be answered: it holds the open state. */
 function AlertDialog({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Root>) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />;
 }
 
-function AlertDialogTrigger({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
-  return <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" {...props} />;
+/** The element that opens the alert dialog. */
+function AlertDialogTrigger({
+  asChild,
+  children,
+  ...props
+}: React.ComponentProps<typeof AlertDialogPrimitive.Trigger>) {
+  return (
+    <AlertDialogPrimitive.Trigger data-slot="alert-dialog-trigger" asChild={asChild ?? false} {...props}>
+      {asChild ? bridgePress(children) : children}
+    </AlertDialogPrimitive.Trigger>
+  );
 }
 
+/** Where the alert dialog is mounted, outside the tree that opened it. */
 function AlertDialogPortal({ ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Portal>) {
   return <AlertDialogPrimitive.Portal data-slot="alert-dialog-portal" {...props} />;
 }
 
+/** The dimmed backdrop behind the alert dialog. */
 function AlertDialogOverlay({ className, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Overlay>) {
   return (
     <AlertDialogPrimitive.Overlay
@@ -30,9 +44,11 @@ function AlertDialogOverlay({ className, ...props }: React.ComponentProps<typeof
   );
 }
 
+/** The alert dialog's card, with `role="alertdialog"`. */
 function AlertDialogContent({
   className,
   size = 'default',
+  children,
   ...props
 }: React.ComponentProps<typeof AlertDialogPrimitive.Content> & {
   size?: 'default' | 'sm';
@@ -43,22 +59,31 @@ function AlertDialogContent({
       <AlertDialogPrimitive.Content
         data-slot="alert-dialog-content"
         data-size={size}
+        // The dialog's own card, so the surface cannot drift from it: this was a hand copy with a
+        // bare `border` and no text colour, and portalled out of the themed tree that drew a black
+        // outline in light and a black title on the dark card.
         className={cn(
-          'group/alert-dialog-content fixed top-[50%] left-[50%] z-50 grid w-full max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] gap-4 rounded-lg border bg-background p-6 shadow-lg duration-200 data-[size=sm]:max-w-xs data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[size=default]:sm:max-w-lg',
+          DIALOG_CONTENT_CLASS,
+          'group/alert-dialog-content fixed top-[50%] left-[50%] z-50 grid max-w-[calc(100%-2rem)] translate-x-[-50%] translate-y-[-50%] text-foreground duration-200 data-[size=sm]:max-w-xs data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95 data-[size=default]:sm:max-w-lg',
           className,
         )}
         {...props}
-      />
+      >
+        {children}
+        {/* A framed app focusing itself would take the focus out of the confirm. */}
+        <FrameFocusGuard />
+      </AlertDialogPrimitive.Content>
     </AlertDialogPortal>
   );
 }
 
+/** The block holding the title and the description. */
 function AlertDialogHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
       data-slot="alert-dialog-header"
       className={cn(
-        'grid grid-rows-[auto_1fr] place-items-center gap-1.5 text-center has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-6 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]',
+        'grid grid-rows-[auto_1fr] place-items-start gap-1 text-left has-data-[slot=alert-dialog-media]:grid-rows-[auto_auto_1fr] has-data-[slot=alert-dialog-media]:gap-x-6 sm:group-data-[size=default]/alert-dialog-content:place-items-start sm:group-data-[size=default]/alert-dialog-content:text-left sm:group-data-[size=default]/alert-dialog-content:has-data-[slot=alert-dialog-media]:grid-rows-[auto_1fr]',
         className,
       )}
       {...props}
@@ -66,6 +91,7 @@ function AlertDialogHeader({ className, ...props }: React.ComponentProps<'div'>)
   );
 }
 
+/** The row holding the cancel and the action buttons. */
 function AlertDialogFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -79,12 +105,14 @@ function AlertDialogFooter({ className, ...props }: React.ComponentProps<'div'>)
   );
 }
 
+/** The question the alert dialog asks, and its accessible name. */
 function AlertDialogTitle({ className, ...props }: React.ComponentProps<typeof AlertDialogPrimitive.Title>) {
   return (
     <AlertDialogPrimitive.Title
       data-slot="alert-dialog-title"
       className={cn(
-        'text-lg font-semibold sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
+        DIALOG_TITLE_CLASS,
+        'sm:group-data-[size=default]/alert-dialog-content:group-has-data-[slot=alert-dialog-media]/alert-dialog-content:col-start-2',
         className,
       )}
       {...props}
@@ -92,6 +120,7 @@ function AlertDialogTitle({ className, ...props }: React.ComponentProps<typeof A
   );
 }
 
+/** The sentence under the title, read as the dialog's description. */
 function AlertDialogDescription({
   className,
   ...props
@@ -99,12 +128,13 @@ function AlertDialogDescription({
   return (
     <AlertDialogPrimitive.Description
       data-slot="alert-dialog-description"
-      className={cn('text-sm text-foreground/60', className)}
+      className={cn(DIALOG_DESCRIPTION_CLASS, className)}
       {...props}
     />
   );
 }
 
+/** An icon or image above the title. */
 function AlertDialogMedia({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -128,6 +158,7 @@ function AlertDialogMedia({ className, ...props }: React.ComponentProps<'div'>) 
  */
 type NativePress = { onClick?: React.MouseEventHandler<HTMLButtonElement> | undefined };
 
+/** The button that confirms, and closes the dialog. */
 function AlertDialogAction({
   className,
   variant = 'default',
@@ -147,6 +178,7 @@ function AlertDialogAction({
   );
 }
 
+/** The button that declines, and closes the dialog. */
 function AlertDialogCancel({
   className,
   variant = 'outline',

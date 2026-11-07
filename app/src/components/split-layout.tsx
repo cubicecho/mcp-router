@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { createContext, type ReactNode } from 'react';
+import { AppBar, type AppBarNav } from '@/components/app-bar';
+import { useReportBottomBar } from '@/lib/bottom-bar';
 import { cn, type SlotNode } from '@/lib/utils';
 
 /**
@@ -45,8 +47,8 @@ const SIZED: Record<keyof typeof STACK_BELOW, Record<SplitWidth, string>> = {
   never: {
     auto: 'grow-0',
     sm: 'w-80 grow-0 shrink',
-    md: 'w-[22rem] min-w-64 grow-0 shrink',
-    lg: 'w-[28rem] min-w-72 grow-0 shrink',
+    md: 'w-88 min-w-64 grow-0 shrink',
+    lg: 'w-112 min-w-72 grow-0 shrink',
     fifth: 'flex-1',
     'two-fifths': 'flex-[2]',
     half: 'flex-1',
@@ -55,8 +57,8 @@ const SIZED: Record<keyof typeof STACK_BELOW, Record<SplitWidth, string>> = {
   md: {
     auto: 'md:grow-0',
     sm: 'md:w-80 md:grow-0 md:shrink',
-    md: 'md:w-[22rem] md:min-w-64 md:grow-0 md:shrink',
-    lg: 'md:w-[28rem] md:min-w-72 md:grow-0 md:shrink',
+    md: 'md:w-88 md:min-w-64 md:grow-0 md:shrink',
+    lg: 'md:w-112 md:min-w-72 md:grow-0 md:shrink',
     fifth: 'md:flex-1',
     'two-fifths': 'md:flex-[2]',
     half: 'md:flex-1',
@@ -65,8 +67,8 @@ const SIZED: Record<keyof typeof STACK_BELOW, Record<SplitWidth, string>> = {
   lg: {
     auto: 'lg:grow-0',
     sm: 'lg:w-80 lg:grow-0 lg:shrink',
-    md: 'lg:w-[22rem] lg:min-w-64 lg:grow-0 lg:shrink',
-    lg: 'lg:w-[28rem] lg:min-w-72 lg:grow-0 lg:shrink',
+    md: 'lg:w-88 lg:min-w-64 lg:grow-0 lg:shrink',
+    lg: 'lg:w-112 lg:min-w-72 lg:grow-0 lg:shrink',
     fifth: 'lg:flex-1',
     'two-fifths': 'lg:flex-[2]',
     half: 'lg:flex-1',
@@ -75,8 +77,8 @@ const SIZED: Record<keyof typeof STACK_BELOW, Record<SplitWidth, string>> = {
   xl: {
     auto: 'xl:grow-0',
     sm: 'xl:w-80 xl:grow-0 xl:shrink',
-    md: 'xl:w-[22rem] xl:min-w-64 xl:grow-0 xl:shrink',
-    lg: 'xl:w-[28rem] xl:min-w-72 xl:grow-0 xl:shrink',
+    md: 'xl:w-88 xl:min-w-64 xl:grow-0 xl:shrink',
+    lg: 'xl:w-112 xl:min-w-72 xl:grow-0 xl:shrink',
     fifth: 'xl:flex-1',
     'two-fifths': 'xl:flex-[2]',
     half: 'xl:flex-1',
@@ -114,6 +116,23 @@ const DIVIDER_AT: Record<keyof typeof STACK_BELOW, string> = {
   xl: 'h-px w-full xl:h-auto xl:w-px',
 };
 
+/**
+ * The panes' row inside the scroller a stacking split is drawn in. Stacked, it is as tall as the
+ * two panes one after the other and the scroller moves it — two scrolling `HeaderContentFooter`s are
+ * two screens of chrome, and a column that only grows is a phone screen nothing reaches the bottom
+ * of. From the breakpoint up it is exactly the scroller's height, so the panes side by side share
+ * the height the split was given and each scrolls inside itself, as before. `grow` fills a
+ * scroller taller than the stack.
+ *
+ * `h-full` rather than a shrink: a scroller hands its content as much height as it asks for, on
+ * device as on the web, so only a height said outright bounds it.
+ */
+const FILL_FROM = {
+  md: 'grow md:h-full',
+  lg: 'grow lg:h-full',
+  xl: 'grow xl:h-full',
+} as const;
+
 /** What sits between the panes. A rule is drawn flush; space is drawn with nothing in it. */
 const DIVIDERS = { space: 'gap-4', line: 'gap-0', none: 'gap-0' } as const;
 
@@ -150,17 +169,10 @@ type SplitLayoutProps = {
    */
   stackBelow?: keyof typeof STACK_BELOW | undefined;
   /**
-   * What separates the panes.
-   *
-   * - `space` — a gap. Two surfaces on a page, which is what most content splits are.
-   * - `line` — flush, with a hairline rule between them. The app shell: a navigation column
-   *   against a working surface. Every hand-written one draws this as a `border-r` on one pane,
-   *   which is right until the layout stacks and the border becomes a line down one side of the
-   *   screen instead of a line between the two panes.
-   * - `none` — flush, nothing drawn. The panes carry their own edges.
-   *
-   * One prop rather than a `gap` and a `bordered`, because they are the same decision: a rule
-   * with a gap on both sides is a line floating in the middle of nothing.
+   * What separates the panes: `space` is a gap, `line` is flush with a hairline rule between them,
+   * and `none` is flush with nothing drawn. One prop rather than a gap and a border, because a rule
+   * with a gap on both sides floats in the middle of nothing. The rule stays between the panes when
+   * they stack, which a `border-r` on one pane does not.
    */
   divider?: keyof typeof DIVIDERS | undefined;
   className?: string | undefined;
@@ -169,61 +181,14 @@ type SplitLayoutProps = {
 } & SplitWidths;
 
 /**
- * Two surfaces side by side, as equals.
+ * Two surfaces side by side, as equals. The slots are numbered because a role pair is wrong for an
+ * even split and a side pair is wrong once the panes stack or the page is RTL.
  *
- * The slots are numbered rather than named for a role or a side, because neither survives what
- * this component already does. A role pair (`content`/`sidebar`) is a lie about a genuinely even
- * split, and a side pair (`left`/`right`) is a lie below `stackBelow`, where the panes are above
- * and below, and again under RTL. `firstSlot` and `secondSlot` are true in every one of those:
- * first in reading order, wherever reading is going.
- *
- * {@link SidebarLayout} is this component with the roles put back, for the common case where one
- * pane is the screen and the other is beside it.
- *
- * The floors are the reason this is a component rather than a class string. A flex item's
- * `min-width` is `auto`, so one wide child — a table, a long unbroken string — grows its pane
- * and pushes the other pane off the screen instead of scrolling inside its own. `min-h-0` /
- * `min-w-0` on both panes is what makes a nested scroll container work at all, and it is the same
- * failure `HeaderContentFooter` guards in the other axis: there a wide child pushes the
- * chrome out of the column, here it pushes the neighbouring pane out of the row. Half the panes
- * this replaces are missing one or both.
- *
- * **It is not resizable, and that is a decision rather than a gap.** A draggable divider needs a
- * pointer handler and a stored width, and a stored width is state, which rule 8 keeps out of a
- * shell. The two ways to keep it out both fail on their own terms: expressing the drag in CSS
- * (`resize: horizontal`) gives a handle only a mouse can reach, and lifting the width out to
- * `firstWidth`/`onFirstWidthChange` still leaves the drag itself — behaviour — in here, to be
- * re-derived worse than `react-resizable-panels`, which shadcn already ships as `resizable`.
- * Rule 3 says do not wrap what shadcn ships; this is its other half, do not rebuild it either. A
- * screen that genuinely needs a draggable split is a screen for that primitive. None of the
- * eleven call sites this replaces has one.
- *
- * Because nothing drags, the divider is a rule and not a control: `aria-hidden`, no role, no tab
- * stop. A focus stop that does nothing when you press an arrow key is worse than no focus stop —
- * axe is satisfied and the keyboard user is standing in a dead end. The contrast is
- * `HeaderContentFooter`'s scrolling body, which takes a tab stop precisely because it
- * *does* something once you are there. Scrolling stays there too: a pane that needs to scroll is
- * a `StickyHeaderContentFooter` passed as `firstSlot` or `secondSlot`, so this shell adds no scroll
- * container of its own and no keyboard trap to go with it.
- *
- * **A collapsed pane is an absent one.** Every second pane eventually wants to close, and the
- * whole of that is `secondSlot={open ? nav : undefined}` — the caller already holds the toggle, and
- * the un-split layout is the full-width column that was needed anyway for the inspector with
- * nothing selected. A `collapsed` prop would buy a second way to say it and a piece of state to
- * keep in step with the first.
- *
- * **No `loading`.** `CardLayout` has one because a card has a single body and a precedence to
- * own (`loading` outranks `emptySlot`). A split has neither: it has two panes that arrive at
- * different times, and one boolean across both has to either skeleton a pane that was never
- * waiting or pick one, which is a second prop. The prior art shows the failure directly — the
- * layout this is drawn from had a `loading` that replaced the entire chassis with a bare
- * skeleton, so chrome already on the screen blinked out and came back. Each pane's content owns
- * its own loading state, and a pane that is a `CardLayout` already has the word for it.
- *
- * **Horizontal only.** Stacking below `stackBelow` is the vertical arrangement, and a split that
- * is vertical at every width is two zones in a column with floors between them — which is
- * `HeaderContentFooter`, already. A vertical orientation here would be rule 7's exact bug:
- * a second implementation of a shape another shell owns.
+ * Both panes carry `min-h-0`/`min-w-0`, so a wide child scrolls inside its pane instead of pushing
+ * the other one off the screen. The divider is a rule and not a control, because nothing drags: a
+ * draggable split is shadcn's `resizable`. A collapsed pane is an absent one
+ * (`secondSlot={open ? nav : undefined}`), each pane owns its own loading state, and a split that
+ * is vertical at every width is `HeaderContentFooter`.
  */
 export function SplitLayout({
   firstSlot,
@@ -236,49 +201,50 @@ export function SplitLayout({
   firstClassName,
   secondClassName,
 }: SplitLayoutProps) {
-  // Rule 5 — an absent slot draws nothing. Not an empty cell, and not a gap still spent: with one
-  // pane there is one column and it has the whole width.
-  if (!secondSlot) {
-    return (
-      <div data-slot="split-layout" className={cn('cube-rn-view', 'min-h-0 min-w-0 flex-col', className)}>
-        <div data-slot="split-layout-first" className={cn('cube-rn-view', PANE, firstClassName)}>
-          {firstSlot}
-        </div>
-      </div>
-    );
-  }
-
   // One pane carries the width and the other takes the rest. Neither given, `half` is two even
   // panes, which is the same classes on both.
   const width = secondWidth ?? firstWidth ?? 'half';
   const sized = SIZED[stackBelow][width];
   const rest = REST[stackBelow][width === 'fifth' || width === 'two-fifths' ? width : 'other'];
 
+  // Rule 5 — an absent slot draws nothing. Not an empty cell, and not a gap still spent: with one
+  // pane there is one column and it has the whole width. Its box is exactly the split's, as is a
+  // row that never stacks, so neither has anything for the scroller to move.
+  const stacks = Boolean(secondSlot) && stackBelow !== 'never';
+  const row = secondSlot
+    ? cn(STACK_BELOW[stackBelow], DIVIDERS[divider], stacks ? FILL_FROM[stackBelow] : 'h-full')
+    : 'h-full flex-col';
+
+  // Every split is drawn in a scroller, on both platforms, so that a stack taller than the split
+  // can be scrolled to its end — see FILL_FROM. It is the same tree whether one pane is passed or
+  // two, so a pane that comes and goes leaves the other mounted: an editor's textarea keeps its
+  // undo history when its preview pane is shut.
   return (
-    <div
-      data-slot="split-layout"
-      className={cn('cube-rn-view', 'min-h-0 min-w-0', STACK_BELOW[stackBelow], DIVIDERS[divider], className)}
-    >
-      <div
-        data-slot="split-layout-first"
-        className={cn('cube-rn-view', PANE, secondWidth ? rest : sized, firstClassName)}
-      >
-        {firstSlot}
-      </div>
-      {divider === 'line' ? (
-        // The rule is an element of its own rather than a border on a pane, so that when the
-        // panes stack it becomes a row between them instead of a line down one side of the screen.
+    <div data-slot="split-layout" className={cn('cube-rn-view overflow-auto', 'min-h-0 min-w-0', className)}>
+      <div className={cn('cube-rn-view', cn('min-w-0', row))}>
         <div
-          data-slot="split-layout-divider"
-          aria-hidden
-          className={cn('cube-rn-view', 'shrink-0 self-stretch bg-foreground/10', DIVIDER_AT[stackBelow])}
-        />
-      ) : null}
-      <div
-        data-slot="split-layout-second"
-        className={cn('cube-rn-view', PANE, secondWidth ? sized : rest, secondClassName)}
-      >
-        {secondSlot}
+          data-slot="split-layout-first"
+          className={cn('cube-rn-view', PANE, secondSlot ? (secondWidth ? rest : sized) : undefined, firstClassName)}
+        >
+          {firstSlot}
+        </div>
+        {secondSlot && divider === 'line' ? (
+          // The rule is an element of its own rather than a border on a pane, so that when the
+          // panes stack it becomes a row between them instead of a line down one side of the screen.
+          <div
+            data-slot="split-layout-divider"
+            aria-hidden
+            className={cn('cube-rn-view', 'shrink-0 self-stretch bg-foreground/10', DIVIDER_AT[stackBelow])}
+          />
+        ) : null}
+        {secondSlot ? (
+          <div
+            data-slot="split-layout-second"
+            className={cn('cube-rn-view', PANE, secondWidth ? sized : rest, secondClassName)}
+          >
+            {secondSlot}
+          </div>
+        ) : null}
       </div>
     </div>
   );
@@ -345,10 +311,11 @@ type SidebarLayoutNarrow =
       navLabel?: never;
       status?: never;
       actionSlot?: never;
+      barPosition?: never;
     }
   | ({
       /**
-       * Under this width the sidebar pane is not drawn and the bar — `brandSlot`, `navSlot`,
+       * Under this width the sidebar pane is not drawn and an `AppBar` — `brandSlot`, `navSlot`,
        * `status`, `actionSlot` — is drawn over `contentSlot` in its place; from it up, the other
        * way round. For an app's navigation rail, which has no room on a phone and does not stack.
        *
@@ -377,6 +344,22 @@ type SidebarLayoutNarrow =
       status?: ReactNode | undefined;
       /** The bar's far end: the theme switch, sign out — the rail's footer, in one row. */
       actionSlot?: SlotNode | undefined;
+      /**
+       * Where the `navSlot` is drawn under the breakpoint. `top`, the default, is in the bar with
+       * the rest. `bottom` is a bar of its own under the page, the places spread across it, which
+       * is where a phone's thumb is and where Android and iOS apps put them. The brand, the
+       * `status` and the `actionSlot` stay in the bar at the top.
+       *
+       * The bottom safe-area inset is the app's, as the top one is: nothing here measures insets,
+       * and a shell is not the place to add the dependency that does. A `SafeAreaView` that takes
+       * the bottom edge stops the bar above the home indicator and leaves a strip under it in the
+       * `SafeAreaView`'s own fill, not the bar's. For the bar's fill to reach the screen's edge,
+       * leave `"bottom"` out of the app's `edges` and pad the bar by the inset through
+       * `bottomBarClassName`: `pb-safe-offset-2` is NativeWind's (the inset plus the bar's own
+       * `py-2`), and a DOM app with `viewport-fit=cover` writes
+       * `pb-[calc(env(safe-area-inset-bottom)+0.5rem)]`.
+       */
+      barPosition?: 'top' | 'bottom' | undefined;
     } & SidebarLayoutNav);
 
 type SidebarLayoutProps = {
@@ -398,43 +381,32 @@ type SidebarLayoutProps = {
   className?: string | undefined;
   contentClassName?: string | undefined;
   sidebarClassName?: string | undefined;
-  /** On the bar, when `sidebarHideBelow` draws one. */
+  /** On the `AppBar`, when `sidebarHideBelow` draws one. */
   headerClassName?: string | undefined;
+  /** On the bar along the bottom, when `barPosition="bottom"` draws one. */
+  bottomBarClassName?: string | undefined;
 } & SidebarLayoutNarrow;
 
 /**
- * {@link SplitLayout} with the roles put back: a main surface, and a sidebar beside it.
+ * {@link SplitLayout} with the roles put back: a main surface, and a sidebar beside it. A preset
+ * rather than a second implementation; for two comparable panes use `SplitLayout` and its numbered
+ * slots.
  *
- * This is the common case and it is worth its own name — most splits are not even. `contentSlot` is
- * the main surface in every shell in this set (rule 2), and it keeps that meaning here, so the
- * pair reads the way it does everywhere else and the width is named for the pane a caller
- * actually thinks about: the sidebar.
+ * `sidebarHideBelow` is the app shell's narrow width: under it the rail is hidden and an `AppBar`
+ * holding the brand, the `navSlot`, the `status` and the `actionSlot` is drawn over the page, both
+ * from the one breakpoint. Which of the two is drawn is a media query, not state.
  *
- * A preset rather than a second implementation, exactly as `StickyHeaderContentFooter` presets
- * `HeaderContentFooter`. When the two panes are genuinely comparable — a diff, two lists side by
- * side, a form beside its preview — reach for `SplitLayout` directly and its numbered slots,
- * rather than calling one of two equals the "sidebar".
- *
- * **`sidebarHideBelow` is the app shell's narrow width.** Six apps drew the same thing by hand: a
- * rail hidden under `md`, and over the page an `md:hidden` bar with the brand, the places as icon
- * links and the rail's footer buttons in a row. The two halves were two class strings that had to
- * name the same breakpoint, and the bar's `<nav>` had a name in some copies and not in others.
- * Here the breakpoint is said once and both halves read it, and the bar is a `header` — the
- * banner — with the navigation landmark inside it, named. The places in it are `BarNavItem`s
- * (`sidebar.tsx`), the rail's rows with only the icon drawn.
- *
- * **`status` is the bar's one line of words**, and the part that yields. The brand, the places and
- * the actions keep their width; the status takes what is left between the `navSlot` and the
- * `actionSlot`, so on a 390px phone it shortens, and on a narrower bar still it is gone, rather
- * than pushing an action off the edge. Without the slot an app put the line in `actionSlot`, which
- * never shrinks.
- *
- * It holds no state: nothing opens, nothing is remembered, and which of the two is drawn is a
- * media query in the stylesheet rather than a width read in JavaScript. On device NativeWind reads
- * the same breakpoint off the window, so a phone draws the bar and a tablet the rail — the answer
- * `Sidebar`'s `hideBelow` already gives there. A drawer that slides the rail in over the page is a
- * different component, with an open state, and not this one.
+ * `barPosition="bottom"` moves the `navSlot` out of that bar into one along the bottom of the
+ * page, still the one navigation landmark named by `navLabel`.
  */
+/**
+ * Which edge {@link SidebarLayout} put its sidebar on, for a `Sidebar` inside it: the sidebar draws
+ * its border on the edge facing the content, and without this it guessed `start` while the layout's
+ * default is `end`, so the rule landed on the frame's outer edge and nothing parted it from the page.
+ * `undefined` outside a `SidebarLayout`.
+ */
+export const SidebarPositionContext = createContext<'start' | 'end' | undefined>(undefined);
+
 export function SidebarLayout({
   contentSlot,
   sidebarSlot,
@@ -448,65 +420,59 @@ export function SidebarLayout({
   navLabel,
   status,
   actionSlot,
+  barPosition = 'top',
   className,
   contentClassName,
   sidebarClassName,
   headerClassName,
+  bottomBarClassName,
 }: SidebarLayoutProps) {
+  const navAtBottom = barPosition === 'bottom';
+  const topNavSlot = navAtBottom ? undefined : navSlot;
+  // Told to the toasts, so one raised on a phone sits above the places rather than over them.
+  useReportBottomBar(navAtBottom && navSlot && sidebarHideBelow ? sidebarHideBelow : undefined);
   // Rule 5 — the bar, and the column it sits in, are drawn only when there is something in the
   // bar. Without one the content pane holds the caller's node exactly as it always has.
+  // Built in an `if`, not a ternary: a ternary of two object literals is widened into one shape
+  // with both keys optional, which `AppBar`'s either-or nav props reject under
+  // `exactOptionalPropertyTypes`.
+  let barNav: AppBarNav = {};
+  if (topNavSlot && navLabel !== undefined) {
+    barNav = { navSlot: topNavSlot, navLabel };
+  }
   const main =
     sidebarHideBelow && (brandSlot || navSlot || status || actionSlot) ? (
       <div data-slot="sidebar-layout-main" className={cn('cube-rn-view', COLUMN)}>
-        <header
-          data-slot="sidebar-layout-header"
-          className={cn(
-            'cube-rn-view',
-            'min-h-14 shrink-0 flex-row items-center gap-2 border-foreground/10 border-b bg-background px-4 py-2',
-            HEADER_HIDE_FROM[sidebarHideBelow],
-            headerClassName,
-          )}
-        >
-          {brandSlot ? (
-            <div data-slot="sidebar-layout-brand" className="cube-rn-view min-w-0 shrink-0 flex-row items-center gap-2">
-              {brandSlot}
-            </div>
-          ) : null}
-          {navSlot ? (
-            <nav
-              aria-label={navLabel}
-              data-slot="sidebar-layout-nav"
-              className="cube-rn-view min-w-0 flex-row items-center gap-1"
-            >
-              {navSlot}
-            </nav>
-          ) : null}
-          {status ? (
-            // `flex-1` is a zero basis: the status asks for no width of its own and is handed
-            // what the others leave, which is what makes it the one that gives way. Everything
-            // else in the bar is `shrink-0` or a view, which does not shrink either.
-            <div data-slot="sidebar-layout-status" className="cube-rn-view min-w-0 flex-1 overflow-hidden">
-              {typeof status === 'string' || typeof status === 'number' ? (
-                <span className="cube-rn-text truncate text-right text-foreground/60 text-sm">{status}</span>
-              ) : (
-                status
-              )}
-            </div>
-          ) : null}
-          {actionSlot ? (
-            // `ml-auto` rather than a spacer, so the action keeps the far end with no `navSlot`
-            // before it.
-            <div
-              data-slot="sidebar-layout-action"
-              className="cube-rn-view ml-auto shrink-0 flex-row items-center gap-1"
-            >
-              {actionSlot}
-            </div>
-          ) : null}
-        </header>
+        {/* Rule 5 again: with the places along the bottom and nothing else given, there is no
+            bar at the top to draw. */}
+        {brandSlot || topNavSlot || status || actionSlot ? (
+          <AppBar
+            brandSlot={brandSlot}
+            {...barNav}
+            status={status}
+            actionSlot={actionSlot}
+            className={cn(HEADER_HIDE_FROM[sidebarHideBelow], headerClassName)}
+          />
+        ) : null}
         <div data-slot="sidebar-layout-content" className={cn('cube-rn-view', BELOW_HEADER)}>
           {contentSlot}
         </div>
+        {navAtBottom && navSlot ? (
+          // The landmark is the bar itself: there is nothing else in it to tell apart from the
+          // places. `justify-around` spreads them over the width, each with the same room.
+          <nav
+            aria-label={navLabel}
+            data-slot="sidebar-layout-bottom-bar"
+            className={cn(
+              'cube-rn-view',
+              'min-h-14 shrink-0 flex-row items-center justify-around gap-1 border-foreground/10 border-t bg-background px-4 py-2',
+              HEADER_HIDE_FROM[sidebarHideBelow],
+              bottomBarClassName,
+            )}
+          >
+            {navSlot}
+          </nav>
+        ) : null}
       </div>
     ) : (
       contentSlot
@@ -524,15 +490,17 @@ export function SidebarLayout({
     : sidebarClassName;
 
   return (
-    <SplitLayout
-      firstSlot={atStart ? sidebarSlot : main}
-      secondSlot={atStart ? main : sidebarSlot}
-      firstClassName={atStart ? railClassName : contentClassName}
-      secondClassName={atStart ? contentClassName : railClassName}
-      {...(atStart ? { firstWidth: sidebarWidth } : { secondWidth: sidebarWidth })}
-      stackBelow={sidebarHideBelow ? 'never' : stackBelow}
-      divider={divider}
-      className={className}
-    />
+    <SidebarPositionContext.Provider value={sidebarPosition}>
+      <SplitLayout
+        firstSlot={atStart ? sidebarSlot : main}
+        secondSlot={atStart ? main : sidebarSlot}
+        firstClassName={atStart ? railClassName : contentClassName}
+        secondClassName={atStart ? contentClassName : railClassName}
+        {...(atStart ? { firstWidth: sidebarWidth } : { secondWidth: sidebarWidth })}
+        stackBelow={sidebarHideBelow ? 'never' : stackBelow}
+        divider={divider}
+        className={className}
+      />
+    </SidebarPositionContext.Provider>
   );
 }

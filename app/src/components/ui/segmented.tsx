@@ -1,31 +1,3 @@
-/**
- * Compiled from `registry/ui/segmented.tsx` by `scripts/rn2web`.
- * Do not edit — edit the source and re-run `npm run compile`.
- *
- * The prose below is the source's own, carried across untouched, which is the property that makes
- * a compiled registry worth having: this is the same component, not a second one to keep in step
- * by hand. Where a comment names a React Native component it is describing the source; the
- * element map in `scripts/rn2web/tables.mjs` says what that became here.
- */
-
-/**
- * A pill in a segmented control — a row of mutually exclusive options.
- *
- * Ships a component *and* two class helpers, which is unusual and deliberate.
- * The same pill is often a router link rather than a button (a nav bar is a
- * segmented control whose items navigate), and a link is a host component the
- * app owns — expo-router's `<Link>`, react-router's `<NavLink>`. Those cannot
- * take a `Pressable` wrapper without losing the router's press handling, so
- * they take the class instead and render their own element.
- *
- * `SegmentedGroup` is the row they sit in: the frame, the `role="group"` and its
- * name, and optionally the current value, so each pill can say `value="week"`
- * instead of `active={view === "week"}`.
- *
- * A pill takes an `iconSlot`, drawn before its label and sized and coloured by the
- * pill, and the group can drop the labels of such pills under a width or at
- * every width (`labelHideBelow`), leaving the label as the pill's name.
- */
 import type { ReactNode } from 'react';
 import * as React from 'react';
 import { IconClassContext } from '@/components/ui/icons-base';
@@ -39,8 +11,10 @@ import { cn, type SlotNode } from '@/lib/utils';
  */
 export function segmentedItemClass(active: boolean, className?: string) {
   return cn(
-    'rounded-md px-3 py-1.5 text-sm font-medium transition-colors',
-    active ? 'bg-active text-active-foreground' : 'text-foreground/60 hover:bg-hover hover:text-foreground',
+    'rounded-md px-3 py-1.5 text-sm font-semibold transition-colors',
+    active
+      ? 'bg-active/40 text-foreground hover:bg-active/60'
+      : 'text-foreground/60 hover:bg-hover hover:text-foreground',
     className,
   );
 }
@@ -52,8 +26,15 @@ export function segmentedItemClass(active: boolean, className?: string) {
  * `Text` and text-in-text does inherit.
  */
 export function segmentedTextClass(active: boolean, className?: string) {
-  return cn('text-sm font-medium', active ? 'text-active-foreground' : 'text-foreground/60', className);
+  return cn('text-sm font-semibold', active ? 'text-foreground' : ['text-foreground/60', HOVER_INK], className);
 }
+
+/**
+ * A quiet label lifted to full ink under the pointer, as the web halves' `hover:text-foreground`
+ * does. The colour sits on each `Text`, which a container's `hover:` cannot reach, so it reads the
+ * pressable's `group` instead. Web only: a device has no pointer to hover with.
+ */
+const HOVER_INK = 'group-hover:text-foreground';
 
 /**
  * Where a pill with an `iconSlot` stops drawing its label: at every width, or under
@@ -94,21 +75,26 @@ const SegmentedGroupContext = React.createContext<SegmentedGroupContextValue | n
  * page with nothing round them, for a toolbar or a nav bar.
  */
 const SEGMENTED_GROUP_VARIANTS = {
-  framed: 'h-10 rounded-md border border-foreground/15 bg-background p-1',
+  framed: 'h-10 rounded-md border border-foreground/50 bg-background p-1',
   plain: '',
 } as const;
 
-export type SegmentedGroupProps = Omit<
+export type SegmentedGroupProps<TValue extends string = string> = Omit<
   React.ComponentPropsWithoutRef<'div'>,
-  'children' | 'className' | 'style' | 'role'
+  'children' | 'className' | 'style' | 'role' | 'ref'
 > & {
   /**
    * The current pill's `value`. With it, a `SegmentedButton value="week"` works
    * out whether it is current, so no pill needs `active={x === value}`.
    */
-  value?: string | undefined;
-  /** Called with a pill's `value` when it is pressed. */
-  onValueChange?: ((value: string) => void) | undefined;
+  value?: TValue | undefined;
+  /**
+   * Called with a pill's `value` when it is pressed. Typed as the group's
+   * `value` is, so a group over a closed set hands back a member of the set
+   * and the caller neither looks it up again nor asserts it.
+   */
+  onValueChange?: ((value: TValue) => void) | undefined;
+  ref?: React.Ref<HTMLDivElement> | undefined;
   /** `framed` (the default) draws the input-height box; `plain` draws the row alone. */
   variant?: keyof typeof SEGMENTED_GROUP_VARIANTS | undefined;
   /**
@@ -140,37 +126,54 @@ export type SegmentedGroupProps = Omit<
  *
  * Holds no value of its own. `value` and `onValueChange` are the caller's, and
  * both are optional: a row of pills that each pass `active` still works inside it.
+ *
+ * Generic over the value, `string` unless the caller's `value` says otherwise, so
+ * a group over `"week" | "month"` calls `onValueChange` with that union.
  */
-const SegmentedGroup = React.forwardRef<HTMLDivElement, SegmentedGroupProps>(
-  ({ value, onValueChange, variant = 'framed', labelHideBelow, className, children, ...props }, ref) => {
-    const framed = variant === 'framed';
-    const context = React.useMemo(
-      () => ({ value, onValueChange, framed, labelHideBelow }),
-      [value, onValueChange, framed, labelHideBelow],
-    );
-    return (
-      <SegmentedGroupContext.Provider value={context}>
-        <div
-          ref={ref as React.Ref<HTMLDivElement>}
-          role="group"
-          className={cn(
-            'cube-rn-view',
-            'flex-row items-center gap-1 self-start',
-            // A flex container is block-level on the web and would stretch the
-            // frame across the page; on device `self-start` already hugs it.
-            'w-fit',
-            SEGMENTED_GROUP_VARIANTS[variant],
-            className,
-          )}
-          {...(props as React.ComponentPropsWithoutRef<'div'>)}
-        >
-          {children}
-        </div>
-      </SegmentedGroupContext.Provider>
-    );
-  },
-);
-SegmentedGroup.displayName = 'SegmentedGroup';
+function SegmentedGroup<TValue extends string = string>({
+  value,
+  onValueChange,
+  variant = 'framed',
+  labelHideBelow,
+  className,
+  children,
+  ref,
+  ...props
+}: SegmentedGroupProps<TValue>) {
+  const framed = variant === 'framed';
+  const context = React.useMemo<SegmentedGroupContextValue>(
+    () => ({
+      value,
+      // The one place `TValue` is taken on trust. A pill only compares its own
+      // `value` and hands it back, so the context carries `string`; what makes
+      // that string a `TValue` is that the caller wrote the pills from the set.
+      onValueChange: onValueChange as ((value: string) => void) | undefined,
+      framed,
+      labelHideBelow,
+    }),
+    [value, onValueChange, framed, labelHideBelow],
+  );
+  return (
+    <SegmentedGroupContext.Provider value={context}>
+      <div
+        ref={ref as React.Ref<HTMLDivElement>}
+        role="group"
+        className={cn(
+          'cube-rn-view',
+          'flex-row items-center gap-1 self-start',
+          // A flex container is block-level on the web and would stretch the
+          // frame across the page; on device `self-start` already hugs it.
+          'w-fit',
+          SEGMENTED_GROUP_VARIANTS[variant],
+          className,
+        )}
+        {...(props as React.ComponentPropsWithoutRef<'div'>)}
+      >
+        {children}
+      </div>
+    </SegmentedGroupContext.Provider>
+  );
+}
 
 export type SegmentedButtonProps = Omit<
   React.ComponentPropsWithoutRef<'button'>,
@@ -220,9 +223,11 @@ const SegmentedButton = React.forwardRef<HTMLButtonElement, SegmentedButtonProps
   ({ active, value, iconSlot, className, children, onClick: onPress, ...props }, ref) => {
     const group = React.useContext(SegmentedGroupContext);
     const current = active ?? (group !== null && value !== undefined && group.value === value);
-    const ink = current ? 'text-active-foreground' : 'text-foreground/60';
+    // The pill's own ink, for the container and the icon.
+    const ink = current ? 'text-foreground' : 'text-foreground/60';
     // Only a pill with an icon has something left to draw once its label is gone.
     const labelHideBelow = iconSlot ? group?.labelHideBelow : undefined;
+    const iconOnlyHeight = group?.framed ? 'min-h-7' : 'min-h-8';
     return (
       <button
         type="button"
@@ -241,15 +246,19 @@ const SegmentedButton = React.forwardRef<HTMLButtonElement, SegmentedButtonProps
         // `aria-label` still wins.
         {...(labelHideBelow && typeof children === 'string' ? { 'aria-label': children } : {})}
         onClick={(event) => {
-          if (group && value !== undefined) group.onValueChange?.(value);
+          if (group && value !== undefined) {
+            group.onValueChange?.(value);
+          }
           onPress?.(event);
         }}
         className={cn(
           // Inside the frame a pill is 4px shorter, so it fits the input-height
           // box instead of spilling past its padding.
+          // Inside the frame, `rounded-sm`: the radius nested in the frame's, as a tab's is.
           'cube-rn-view cube-rn-pressable',
-          group?.framed ? 'rounded-md px-3 py-1' : 'rounded-md px-3 py-1.5',
-          current ? 'bg-active' : 'hover:bg-hover',
+          group?.framed ? 'rounded-sm px-3 py-1' : 'rounded-md px-3 py-1.5',
+          // The current pill is the chosen tint, a step further under the pointer and focused.
+          current ? 'bg-active/40 hover:bg-active/60 focus-visible:bg-active/60' : 'group hover:bg-hover',
           // The label colour on the container too, which native ignores and web
           // reads: an element child passes through untouched below, so on web its
           // colour can only come from inheriting it here.
@@ -258,7 +267,7 @@ const SegmentedButton = React.forwardRef<HTMLButtonElement, SegmentedButtonProps
           // The label's line is what gives a pill its height, and an icon is
           // shorter than it: with the label hidden the pill would shrink, so it
           // is held at the height a labelled pill beside it has.
-          iconSlot ? (group?.framed ? 'min-h-7' : 'min-h-8') : undefined,
+          iconSlot ? iconOnlyHeight : undefined,
           className,
         )}
         {...(props as React.ComponentPropsWithoutRef<'button'>)}

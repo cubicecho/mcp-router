@@ -12,6 +12,18 @@ import {
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 
+/**
+ * The question asked before unsaved work is thrown away — "Discard your changes?", Discard and
+ * Keep editing — in one place, so `DialogLayout` and `UnsavedChangesDialog` ask it in the same
+ * words.
+ */
+export const DISCARD_QUESTION = {
+  title: 'Discard your changes?',
+  description: 'What you have typed here will not be saved.',
+  discardLabel: 'Discard',
+  keepLabel: 'Keep editing',
+} as const;
+
 type ConfirmDialogProps = {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -65,12 +77,7 @@ export function ConfirmDialog({
 }: ConfirmDialogProps) {
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent
-        role="alertdialog"
-        showCloseButton={false}
-        onInteractOutside={holdOpen}
-        className="sm:max-w-[360px]"
-      >
+      <DialogContent role="alertdialog" showCloseButton={false} onInteractOutside={holdOpen} className="sm:max-w-sm">
         {/* Keyed by the text, so a prompt raised over an open one for something else starts
             empty too. Closing unmounts the body on both platforms, which is what empties the
             box between openings. */}
@@ -138,7 +145,9 @@ function ConfirmDialogBody({
           <Label id={labelId} htmlFor={inputId}>
             {requireTextLabel ?? (
               <>
-                Type <span className="cube-rn-text font-semibold text-foreground">{requireText}</span> to confirm
+                {/* Monospace, so the literal reads as the thing to type: inside an already
+                    semibold label a bolder word did not stand out. */}
+                Type <span className="cube-rn-text font-mono text-foreground">{requireText}</span> to confirm
               </>
             )}
           </Label>
@@ -148,7 +157,9 @@ function ConfirmDialogBody({
             value={typed}
             onChangeText={setTyped}
             onSubmitEditing={() => {
-              if (!locked) onConfirm();
+              if (locked === false) {
+                onConfirm();
+              }
             }}
             autoFocus
           />

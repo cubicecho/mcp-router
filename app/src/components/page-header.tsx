@@ -2,40 +2,27 @@ import type { ReactNode } from 'react';
 import { cn, type SlotNode } from '@/lib/utils';
 
 /**
- * How each heading level is drawn.
+ * How large a title is drawn. Each heading level has a size it takes unless `size` names another
+ * (see {@link LEVEL_SIZE}), so a page can keep its `h1` and still have a compact title.
  *
- * The level is a prop rather than a hardcoded tag because this block is the same shape at three
- * depths and only the caller knows which one it is in: `<h1>` is right for the page it names and
- * wrong inside a card that already sits under one, and `<h2>` is the reverse. A shell that picks
- * for you is wrong on half the screens, and a shell that takes `title={<h1 className="…">…}` has
- * handed the size back to the caller — which is the drift, not the fix. The same page `<h1>` is
- * `text-lg`, `text-xl`, `text-2xl` and `text-3xl` in four of these projects, and two headers in
- * *one* project disagree with each other. This map is what ends that.
- *
- * - `row` is the floor under the title row. It holds the row to one height whether or not the
- *   page has an action and whether or not it has a description, so `contentSlot` beneath it starts
- *   at the same place on every page.
- * - `bar` is the height of one line of `title`, so a loading header is exactly as tall as the
- *   header it becomes.
- *
- * A literal map, per rule 3 — every class here is a class Tailwind can find in this file. The tag
- * is not in it: the compiler emits `<h1>`–`<h3>` from a literal `aria-level`, so {@link Heading}
- * spells each one out.
+ * `row` is the floor under the title row, so `contentSlot` starts at the same place on every
+ * page. `bar` is the height of one line of `title`, so a loading header is as tall as the header
+ * it becomes. The tag is not in the map: {@link Heading} spells each one out for the compiler.
  */
-const LEVELS = {
-  1: {
+const SIZES = {
+  lg: {
     title: 'text-xl',
     icon: '[&_svg]:size-5',
     row: 'min-h-14',
     bar: 'h-7',
   },
-  2: {
+  md: {
     title: 'text-lg',
     icon: '[&_svg]:size-5',
     row: 'min-h-12',
     bar: 'h-7',
   },
-  3: {
+  sm: {
     title: 'text-base',
     icon: '[&_svg]:size-4',
     row: 'min-h-10',
@@ -44,7 +31,13 @@ const LEVELS = {
 } as const;
 
 /** The heading levels a {@link PageHeader} can be. */
-export type PageHeaderLevel = keyof typeof LEVELS;
+export type PageHeaderLevel = 1 | 2 | 3;
+
+/** The sizes a {@link PageHeader}'s title can be drawn at. */
+export type PageHeaderSize = keyof typeof SIZES;
+
+/** The size each level is drawn at unless told otherwise: the bigger the heading, the larger. */
+const LEVEL_SIZE: Record<PageHeaderLevel, PageHeaderSize> = { 1: 'lg', 2: 'md', 3: 'sm' };
 
 /** Off the screen and still read. `sr-only` is a clip, which the device does not have. */
 const SR_ONLY = 'sr-only';
@@ -64,7 +57,7 @@ const INK = 'text-foreground';
 const SLOT = 'block';
 
 /** A bar standing in for text that has not arrived — `Skeleton`'s look, on both platforms. */
-const BAR = cn('max-w-full rounded-md bg-hover', 'animate-pulse');
+const BAR = cn('max-w-full rounded-md bg-foreground/10', 'animate-pulse');
 
 export type PageHeaderProps = {
   /**
@@ -101,7 +94,7 @@ export type PageHeaderProps = {
    */
   description?: ReactNode | undefined;
   /**
-   * Sits before the title. On the web it is sized from the level — pass a bare `<Users />`, not a
+   * Sits before the title. On the web it is sized with the title — pass a bare `<Users />`, not a
    * sized one. On device an icon cannot be sized from outside it, so pass it at the size you want.
    *
    * Also where a status dot goes. Four of these apps put a coloured dot, a live indicator or a
@@ -119,17 +112,15 @@ export type PageHeaderProps = {
    */
   actionSlot?: SlotNode | undefined;
   /**
-   * The line above the title: a breadcrumb trail, or a back link, which is a one-step trail.
+   * The way back, on the line above the title: a back link, or a breadcrumb trail, which is a
+   * back link with more steps.
    *
-   * A slot rather than the caller's own node above the header, because that node would not carry
-   * the header's inset, and a trail starting 16px left of the title it belongs to is exactly the
-   * drift this set exists to stop.
-   *
-   * Above the title, not beside it. Both placements are in use; above is the one that also holds
-   * a trail, and a back button beside the title competes with `iconSlot` for the same spot and
-   * takes width from the page's name for a control that is not part of it. It is a node, not a
-   * route — no shell routes.
+   * Above the title, not beside it. A back button beside the title takes `iconSlot`'s place,
+   * which is the page's own icon, and width from the page's name for a control that is not part
+   * of it. It is a node, not a route — no shell routes.
    */
+  backSlot?: SlotNode | undefined;
+  /** @deprecated Renamed `backSlot`. Read when `backSlot` is not passed. */
   breadcrumbsSlot?: SlotNode | undefined;
   /**
    * Whether the title is still being fetched. On, a bar of the title's own height stands in for
@@ -153,9 +144,17 @@ export type PageHeaderProps = {
   loading?: boolean | undefined;
   /**
    * Which heading this is. `1` names a page; `2` names a section, a pane in a split, or a card
-   * that already sits under a page title; `3` goes a level below that. See {@link LEVELS}.
+   * that already sits under a page title; `3` goes a level below that. The size follows it unless
+   * `size` says otherwise.
    */
   level?: PageHeaderLevel | undefined;
+  /**
+   * How large the title is drawn, apart from which heading it is: `lg`, `md` or `sm`. Left out,
+   * it follows `level` — `lg` at 1, `md` at 2, `sm` at 3. A page whose header is mostly controls
+   * (a chat with its model picker) keeps `level={1}` and passes `size="sm"`, rather than taking a
+   * lower heading to get a smaller title. The rule under the header follows `level`, not this.
+   */
+  size?: PageHeaderSize | undefined;
   className?: string | undefined;
   titleClassName?: string | undefined;
   contentClassName?: string | undefined;
@@ -191,41 +190,14 @@ function Heading({ level, className, children }: { level: PageHeaderLevel; class
 }
 
 /**
- * The title block a page wears in a header slot.
+ * The title block a page wears in a header slot: a name, a line under it, the page's buttons at
+ * the far end, and `contentSlot` beneath.
  *
- * Every list page in these apps writes this out: a name, a line under it, the page's buttons at
- * the far end, and a search or filter row beneath. Written out each time, they disagree about
- * all of it — the same `<h1>` is four different sizes across four projects and two different
- * sizes inside one of them, it is `font-semibold` in three and `font-bold` in the fourth, the
- * description truncates on the detail pages and wraps everywhere else, and "what happens to a
- * long title next to three buttons" has four answers, one of which is "nothing".
- *
- * **The padding seam.** `HeaderContentFooter` deliberately leaves its header slot unpadded
- * and gives the body `px-4`, because the page header carries its own inset — this component is
- * the one that comment means. So the inset lives here, exactly once, and the two edges line up
- * beneath a `width="page"` chassis.
- *
- * The other model, where a `<main>` owns the inset and the header inherits it, is what the rest
- * of these apps do, and it is why one route in one of them is inset 12px while every other page
- * is 16px: the page shell merged a caller's `className` over its own padding and nobody saw.
- * Dropped into a chassis that already pads, this header passes `className="px-0"` and the seam
- * stays owned by exactly one of the two.
- *
- * The *cap* does not live here. The prior art applied `PAGE_COLUMN` in both places so a header
- * dropped somewhere else still read as a page header, but that makes a header inside a
- * `width="full"` chassis cap itself while the body under it does not — the header contradicting
- * the chassis it was handed. The chassis owns the column, the header owns the inset, and each
- * seam is decided in one file.
- *
- * **Narrow widths.** The title row wraps rather than stacking at a breakpoint: the title block
- * asks for 16rem, and when that plus the action will not fit on one line, the action drops to
- * its own. A breakpoint is the wrong instrument, because the variable is how wide the *action*
- * is, not how wide the window is — one header here has a search field and two buttons in its
- * action and was squeezing its title at 1100px, which no phone breakpoint would have caught,
- * and another is a pane inside a split, narrow on a wide screen.
- *
- * The title wraps; it does not truncate. A card title truncates because it is one of many on a
- * screen that gives it context — a page title *is* the context, and half of one names nothing.
+ * The header owns its inset and the chassis owns the column cap, so each is decided in one file.
+ * `HeaderContentFooter` leaves its header slot unpadded for this; inside a chassis that already
+ * pads, pass `className="px-0"`. The title row wraps when the title and the action do not fit on
+ * one line, because the variable is how wide the action is, not the window. The title wraps and
+ * never truncates.
  */
 export function PageHeader({
   contentSlot,
@@ -233,14 +205,17 @@ export function PageHeader({
   description,
   iconSlot,
   actionSlot,
+  backSlot,
   breadcrumbsSlot,
   loading = false,
   level = 1,
+  size,
   className,
   titleClassName,
   contentClassName,
 }: PageHeaderProps) {
-  const { title: titleSize, icon: iconSize, row: rowFloor, bar: barHeight } = LEVELS[level];
+  const { title: titleSize, icon: iconSize, row: rowFloor, bar: barHeight } = SIZES[size ?? LEVEL_SIZE[level]];
+  const back = backSlot ?? breadcrumbsSlot;
 
   // The rule these apps already follow without having named it: a page header draws a line under
   // itself exactly when nothing else separates it from the body. The list headers, which all
@@ -253,6 +228,15 @@ export function PageHeader({
   // and not one of the section headings in these apps draws a second line.
   const rule = level === 1 && !contentSlot ? 'border-b border-foreground/10' : undefined;
 
+  const descriptionLine = loading ? (
+    <div data-slot="page-header-description" aria-hidden className={cn('cube-rn-view', BAR, 'h-5 w-72')} />
+  ) : (
+    // `max-w-prose`: under a page-wide header a description could run to 200 characters a line.
+    <p data-slot="page-header-description" className="cube-rn-text max-w-prose text-foreground/60 text-sm">
+      {description}
+    </p>
+  );
+
   return (
     // `px-4` is the seam: the body of a `width="page"` chassis carries the same, and nothing else
     // in this tree adds to it, so the title sits above the body's first column.
@@ -261,9 +245,10 @@ export function PageHeader({
       aria-busy={loading || undefined}
       className={cn('cube-rn-view', 'min-w-0 flex-col gap-3 px-4 py-4', rule, className)}
     >
-      {breadcrumbsSlot ? (
+      {back ? (
+        // The slot keeps its old name: a `data-slot` is public, and a selector on it still matches.
         <div data-slot="page-header-breadcrumbs" className={cn('cube-rn-view', SLOT, 'min-w-0')}>
-          {breadcrumbsSlot}
+          {back}
         </div>
       ) : null}
 
@@ -271,21 +256,25 @@ export function PageHeader({
         data-slot="page-header-title-row"
         // `content-center`: a wrapping row packs its lines at the start on device and under
         // react-native-web, so the floor was left as an empty band under a lone title (#248).
+        // `items-start`: the action lines up with the title, as CardLayout's does, rather than
+        // floating between the title and the description under it.
         className={cn(
           'cube-rn-view',
-          'flex-row flex-wrap content-center items-center justify-between gap-x-4 gap-y-2',
+          'flex-row flex-wrap content-center items-start justify-between gap-x-4 gap-y-2',
           rowFloor,
         )}
       >
-        {/* `basis-64` is the threshold, and the only number here that is a judgement rather than
-            a measurement: the title keeps at least 16rem or the action wraps under it. `min-w-0`
-            is what then lets the block shrink below its longest word. */}
-        <div data-slot="page-header-titles" className="cube-rn-view min-w-0 flex-1 basis-64 flex-col gap-1">
+        {/* `basis-40` is the threshold, and the only number here that is a judgement rather than
+            a measurement: the title keeps at least 10rem or the action wraps under it. At 16rem
+            any action wider than about 70px dropped under even a one-word title on a phone; 10rem
+            is the floor CardLayout's header already uses. `min-w-0` is what then lets the block
+            shrink below its longest word. */}
+        <div data-slot="page-header-titles" className="cube-rn-view min-w-0 flex-1 basis-40 flex-col gap-1">
           <div className="cube-rn-view min-w-0 flex-row items-center gap-2">
             {iconSlot ? (
               // Sized here on the web rather than by the caller, so an icon passed as `<Users />`
               // and one passed as `<Users className="size-6" />` land at the same size — and so the
-              // size follows the level instead of being guessed once per page.
+              // size follows the title instead of being guessed once per page.
               <div className={cn('cube-rn-view', 'shrink-0 text-foreground/60', iconSize)}>{iconSlot}</div>
             ) : null}
             {loading ? (
@@ -315,15 +304,7 @@ export function PageHeader({
             )}
           </div>
 
-          {description ? (
-            loading ? (
-              <div data-slot="page-header-description" aria-hidden className={cn('cube-rn-view', BAR, 'h-5 w-72')} />
-            ) : (
-              <p data-slot="page-header-description" className="cube-rn-text text-foreground/60 text-sm">
-                {description}
-              </p>
-            )
-          ) : null}
+          {description ? descriptionLine : null}
         </div>
 
         {actionSlot ? (

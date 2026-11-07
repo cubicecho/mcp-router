@@ -24,18 +24,23 @@ function useOverflowsX() {
   const [overflows, setOverflows] = React.useState(false);
   React.useEffect(() => {
     const node = ref.current;
-    if (!node || typeof ResizeObserver === 'undefined') return;
+    if (!node || typeof ResizeObserver === 'undefined') {
+      return;
+    }
     const measure = () => setOverflows(node.scrollWidth > node.clientWidth);
     const observer = new ResizeObserver(measure);
     observer.observe(node);
     // The container keeps its width when a column grows, so the table is watched as well.
-    if (node.firstElementChild) observer.observe(node.firstElementChild);
+    if (node.firstElementChild) {
+      observer.observe(node.firstElementChild);
+    }
     measure();
     return () => observer.disconnect();
   }, []);
   return [ref, overflows] as const;
 }
 
+/** A table inside a container that scrolls sideways when it is too wide. */
 function Table({ className, ...props }: React.ComponentProps<'table'>) {
   const [ref, overflows] = useOverflowsX();
   return (
@@ -45,7 +50,14 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
       tabIndex={overflows ? 0 : undefined}
       className="relative w-full overflow-x-auto"
     >
-      <table data-slot="table" className={cn('w-full caption-bottom text-sm', className)} {...props} />
+      <table
+        data-slot="table"
+        // `border-collapse` here rather than trusting Tailwind's preflight to set it: without it
+        // a row's border does not paint, and an app that skips preflight drew no row rules.
+        // `tabular-nums` so a column of figures lines up by digit.
+        className={cn('w-full caption-bottom border-collapse text-sm tabular-nums', className)}
+        {...props}
+      />
     </div>
   );
 }
@@ -53,6 +65,7 @@ function Table({ className, ...props }: React.ComponentProps<'table'>) {
 // Every border below names `border-foreground/10` beside its width. Upstream leans on the app's base
 // layer to colour a bare `border-b`, and the cubeui stylesheet sets no such rule, so without it
 // the rules between rows are `currentColor` — black lines in a light theme.
+/** The table's header row group. */
 function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
   return (
     <InTableHeader.Provider value={true}>
@@ -65,26 +78,29 @@ function TableHeader({ className, ...props }: React.ComponentProps<'thead'>) {
   );
 }
 
+/** The table's body row group. */
 function TableBody({ className, ...props }: React.ComponentProps<'tbody'>) {
   return <tbody data-slot="table-body" className={cn('[&_tr:last-child]:border-0', className)} {...props} />;
 }
 
+/** The table's footer row group, for totals. */
 function TableFooter({ className, ...props }: React.ComponentProps<'tfoot'>) {
   return (
     <tfoot
       data-slot="table-footer"
-      className={cn('border-foreground/10 border-t bg-foreground/10 font-medium [&>tr]:last:border-b-0', className)}
+      className={cn('border-foreground/10 border-t bg-foreground/10 font-semibold [&>tr]:last:border-b-0', className)}
       {...props}
     />
   );
 }
 
+/** One row. */
 function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
   return (
     <tr
       data-slot="table-row"
       className={cn(
-        'border-foreground/10 border-b transition-colors hover:bg-hover has-aria-expanded:bg-foreground/10 data-[state=selected]:bg-active/40',
+        'border-foreground/10 border-b transition-colors hover:bg-hover has-aria-expanded:bg-foreground/10 data-[state=selected]:bg-active/40 data-[state=selected]:hover:bg-active/60',
         className,
       )}
       {...props}
@@ -92,6 +108,7 @@ function TableRow({ className, ...props }: React.ComponentProps<'tr'>) {
   );
 }
 
+/** A header cell, scoped to its column in the header and to its row in the body. */
 function TableHead({ className, scope, ...props }: React.ComponentProps<'th'>) {
   const inHeader = React.useContext(InTableHeader);
   return (
@@ -99,7 +116,9 @@ function TableHead({ className, scope, ...props }: React.ComponentProps<'th'>) {
       data-slot="table-head"
       scope={scope ?? (inHeader ? 'col' : 'row')}
       className={cn(
-        'h-10 whitespace-nowrap px-2 text-left align-middle font-medium text-foreground [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
+        // A label quieter than the data under it: weight says it is a header, the grey that it is
+        // not the content. It was the loudest text in the table.
+        'h-10 whitespace-nowrap px-2 text-left align-middle font-semibold text-foreground/60 [&:has([role=checkbox])]:pr-0 [&>[role=checkbox]]:translate-y-[2px]',
         className,
       )}
       {...props}
@@ -107,6 +126,7 @@ function TableHead({ className, scope, ...props }: React.ComponentProps<'th'>) {
   );
 }
 
+/** A data cell. */
 function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   return (
     <td
@@ -120,6 +140,7 @@ function TableCell({ className, ...props }: React.ComponentProps<'td'>) {
   );
 }
 
+/** The table's caption, which is also its accessible name. */
 function TableCaption({ className, ...props }: React.ComponentProps<'caption'>) {
   return <caption data-slot="table-caption" className={cn('mt-4 text-foreground/60 text-sm', className)} {...props} />;
 }
