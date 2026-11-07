@@ -208,9 +208,7 @@ export const WithNoCallsYet: Story = {
       ),
     ).toBeVisible();
     const clear = canvas.getByRole('button', { name: 'Clear activity' });
-    await expect(clear).toHaveAttribute('aria-disabled', 'true');
-    await userEvent.click(clear);
-    await expect(within(canvasElement.ownerDocument.body).queryByRole('alertdialog')).not.toBeInTheDocument();
+    await expect(clear).toBeDisabled();
     await expect(canvas.queryByRole('combobox')).not.toBeInTheDocument();
   },
 };

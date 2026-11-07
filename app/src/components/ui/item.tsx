@@ -29,6 +29,7 @@ function ItemGroup({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="item-group" className={cn('group/item-group flex flex-col', className)} {...props} />;
 }
 
+/** A rule between two items. */
 function ItemSeparator({
   className,
   orientation = 'horizontal',
@@ -54,6 +55,7 @@ function ItemSeparator({
 const ITEM_WEB =
   'group/item flex text-sm transition-colors duration-100 outline-none [a]:transition-colors [a]:hover:bg-hover [a]:focus-visible:bg-hover';
 
+/** One row: media, content and actions side by side. */
 function Item({
   className,
   variant = 'default',
@@ -65,8 +67,8 @@ function Item({
   VariantProps<typeof itemVariants> & {
     asChild?: boolean;
     /**
-     * The chosen row: the one open beside the list. Tinted in `active`, and it stays that under
-     * the pointer. Set `aria-current` or `aria-selected` on the row or the link inside as well.
+     * The chosen row: the one open beside the list. Tinted in `active`, a step further under the
+     * pointer. Set `aria-current` or `aria-selected` on the row or the link inside as well.
      */
     selected?: boolean | undefined;
   }) {
@@ -81,7 +83,7 @@ function Item({
         ITEM_WEB,
         itemVariants({ variant, size }),
         selected && ITEM_SELECTED_CLASS,
-        selected && '[a]:hover:bg-active/40 [a]:focus-visible:bg-active/40',
+        selected && '[a]:hover:bg-active/60 [a]:focus-visible:bg-active/60',
         className,
       )}
       {...props}
@@ -96,6 +98,7 @@ const ITEM_MEDIA_WEB = {
   image: '[&_img]:size-full [&_img]:object-cover',
 } as const;
 
+/** The icon or image at the start of an item. */
 function ItemMedia({
   className,
   variant = 'default',
@@ -116,6 +119,7 @@ function ItemMedia({
   );
 }
 
+/** The middle of an item, holding its title and description. */
 function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div
@@ -126,18 +130,23 @@ function ItemContent({ className, ...props }: React.ComponentProps<'div'>) {
   );
 }
 
+/** The item's title. */
 function ItemTitle({ className, ...props }: React.ComponentProps<'div'>) {
   return (
     <div data-slot="item-title" className={cn('flex w-fit', ITEM_TITLE_CLASS, ITEM_TITLE_TEXT, className)} {...props} />
   );
 }
 
+/** The muted line under the item's title. */
 function ItemDescription({ className, ...props }: React.ComponentProps<'p'>) {
   return (
     <p
       data-slot="item-description"
       className={cn(
         ITEM_DESCRIPTION_CLASS,
+        // ITEM_SELECTED_DESCRIPTION_CLASS on the chosen row, which says so with `data-selected`:
+        // read here rather than through context so the part stays a plain `<p>`.
+        'in-data-selected:text-foreground',
         'text-balance [&>a]:underline [&>a]:underline-offset-4 [&>a:hover]:text-info',
         className,
       )}
@@ -146,14 +155,17 @@ function ItemDescription({ className, ...props }: React.ComponentProps<'p'>) {
   );
 }
 
+/** The buttons at the far end of an item. */
 function ItemActions({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="item-actions" className={cn('flex', ITEM_ACTIONS_CLASS, className)} {...props} />;
 }
 
+/** A full-width line above the item's row. */
 function ItemHeader({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="item-header" className={cn('flex basis-full', ITEM_HEADER_CLASS, className)} {...props} />;
 }
 
+/** A full-width line below the item's row. */
 function ItemFooter({ className, ...props }: React.ComponentProps<'div'>) {
   return <div data-slot="item-footer" className={cn('flex basis-full', ITEM_FOOTER_CLASS, className)} {...props} />;
 }

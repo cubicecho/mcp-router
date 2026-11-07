@@ -3,11 +3,11 @@ import { Link, useNavigate } from '@tanstack/react-router';
 import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
+import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
 import { Ellipsis, Pencil, Trash2 } from '@/components/ui/icons';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
@@ -127,10 +127,10 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
       <TableCell className="text-right">
         <Menu>
           <MenuTrigger asChild>
-            <ActionButton
+            <Button
               variant="ghost"
               size="icon-sm"
-              label={`Actions for ${config.name}`}
+              aria-label={`Actions for ${config.name}`}
               loading={test.isPending || restart.isPending || remove.isPending}
               iconSlot={<Ellipsis />}
             />

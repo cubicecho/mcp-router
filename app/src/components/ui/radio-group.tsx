@@ -25,16 +25,26 @@ const RadioGroupContext = React.createContext<RadioGroupContextValue | null>(nul
 
 function useRadioGroup() {
   const context = React.useContext(RadioGroupContext);
-  if (!context) throw new Error('RadioGroupItem must be used within <RadioGroup>');
+  if (!context) {
+    throw new Error('RadioGroupItem must be used within <RadioGroup>');
+  }
   return context;
+}
+
+/** The one DOM method the ordering needs, which a device's node does not have. */
+type Positioned = { compareDocumentPosition: (other: unknown) => number };
+
+function isPositioned(node: unknown): node is Positioned {
+  return typeof node === 'object' && node !== null && 'compareDocumentPosition' in node;
 }
 
 /** DOM order, where there is a DOM. On device there is no keyboard to need it. */
 function byDocumentPosition(a: Focusable | null, b: Focusable | null) {
-  const node = a as unknown as { compareDocumentPosition?: (other: unknown) => number } | null;
-  if (!node?.compareDocumentPosition || !b) return 0;
+  if (isPositioned(a) === false || !b) {
+    return 0;
+  }
   // `Node.DOCUMENT_POSITION_FOLLOWING`, spelled out: `Node` is not a global on device.
-  return node.compareDocumentPosition(b) & 4 ? -1 : 1;
+  return a.compareDocumentPosition(b) & 4 ? -1 : 1;
 }
 
 type RadioGroupProps = {
@@ -47,8 +57,10 @@ type RadioGroupProps = {
   /**
    * `row` (the default): a circle, a label and an optional description per option, stacked.
    * `card`: a bordered tile per option, icon over label, sharing a row.
-   * `segmented`: one framed, input-height row of equal segments, full width. Each segment shows
-   * its `iconSlot`, its `label`, or both; an icon-only segment is named by its `aria-label`.
+   * `segmented`: one framed, input-height row of equal segments. Each segment shows its
+   * `iconSlot`, its `label`, or both; an icon-only segment is named by its `aria-label`. It is as
+   * wide as a column it is stacked in, and as wide as its segments in a row of other things — a
+   * header bar — where `className="flex-1"` makes it take what the row has left.
    */
   variant?: RadioGroupVariant | undefined;
   /**
@@ -69,6 +81,7 @@ type RadioGroupProps = {
   'aria-required'?: boolean | undefined;
 };
 
+/** A set of options of which one is chosen, with one tab stop and arrow keys. */
 function RadioGroup({
   value: valueProp,
   defaultValue,
@@ -98,7 +111,9 @@ function RadioGroup({
     (option: string, ref: React.RefObject<Focusable | null>, optionDisabled: boolean) => {
       refs.current.set(option, ref);
       setOptions((prev) => {
-        if (prev.get(option) === optionDisabled) return prev;
+        if (prev.get(option) === optionDisabled) {
+          return prev;
+        }
         const next = new Map(prev);
         next.set(option, optionDisabled);
         return next;
@@ -109,7 +124,9 @@ function RadioGroup({
   const unregister = React.useCallback((option: string) => {
     refs.current.delete(option);
     setOptions((prev) => {
-      if (!prev.has(option)) return prev;
+      if (prev.has(option) === false) {
+        return prev;
+      }
       const next = new Map(prev);
       next.delete(option);
       return next;
@@ -120,26 +137,33 @@ function RadioGroup({
     disabled
       ? []
       : [...options]
-          .filter(([, optionDisabled]) => !optionDisabled)
+          .filter(([, optionDisabled]) => optionDisabled === false)
           .map(([option]) => option)
           .sort((a, b) =>
             byDocumentPosition(refs.current.get(a)?.current ?? null, refs.current.get(b)?.current ?? null),
           );
 
   const select = (next: string) => {
-    if (valueProp === undefined) setUncontrolled(next);
-    if (next !== value) onValueChange?.(next);
+    if (valueProp === undefined) {
+      setUncontrolled(next);
+    }
+    if (next !== value) {
+      onValueChange?.(next);
+    }
   };
 
   const move = (from: string, event: KeyEvent) => {
     const order = enabled();
     const at = order.indexOf(from);
     const last = order.length - 1;
+    // Where a step past either end lands: round to the other end, or nowhere.
+    const pastLast = loop ? 0 : at;
+    const pastFirst = loop ? last : at;
     let to: number;
     if (event.key === 'ArrowDown' || event.key === 'ArrowRight') {
-      to = at < last ? at + 1 : loop ? 0 : at;
+      to = at < last ? at + 1 : pastLast;
     } else if (event.key === 'ArrowUp' || event.key === 'ArrowLeft') {
-      to = at > 0 ? at - 1 : loop ? last : at;
+      to = at > 0 ? at - 1 : pastFirst;
     } else if (event.key === 'Home') {
       to = 0;
     } else if (event.key === 'End') {
@@ -151,7 +175,9 @@ function RadioGroup({
     // scroll the page.
     event.preventDefault();
     const target = order[to];
-    if (target === undefined || target === from) return;
+    if (target === undefined || target === from) {
+      return;
+    }
     refs.current.get(target)?.current?.focus();
     select(target);
   };
@@ -159,15 +185,17 @@ function RadioGroup({
   const order = enabled();
   const tabStop = value !== undefined && order.includes(value) ? value : order[0];
   const horizontal = (orientation ?? (variant === 'card' ? 'horizontal' : 'vertical')) === 'horizontal';
+  const stacked = horizontal ? 'flex-row flex-wrap gap-3' : 'gap-3';
   const layout =
     variant === 'segmented'
       ? cn(
-          'h-10 w-full flex-row gap-1 rounded-md border bg-background p-1',
-          ariaInvalid === true ? 'border-negative' : 'border-foreground/15',
+          // `self-stretch`, not `w-full`: in a row that is sized by its content, a browser
+          // measures a percentage width as the content's and then resolves it against the total,
+          // which pushed the group's neighbours out of the row by their own width.
+          'h-10 self-stretch flex-row gap-1 rounded-md border bg-background p-1',
+          ariaInvalid === true ? 'border-negative' : 'border-foreground/50',
         )
-      : horizontal
-        ? 'flex-row flex-wrap gap-3'
-        : 'gap-3';
+      : stacked;
 
   return (
     <RadioGroupContext.Provider
@@ -211,7 +239,7 @@ type RadioGroupItemProps = {
   /**
    * The picture over the label in a `card` tile, or the segment's face in `segmented`. Ignored by
    * `row`. On device an icon has no `currentColor` to inherit, so in `segmented` give it the
-   * checked segment's `text-active-foreground` and the others' `text-foreground/60` yourself.
+   * checked segment's `text-foreground` and the others' `text-foreground/60` yourself.
    */
   iconSlot?: SlotNode | undefined;
   /**
@@ -233,6 +261,7 @@ type RadioGroupItemProps = {
   'aria-describedby'?: string | undefined;
 };
 
+/** One option in a `RadioGroup`. */
 function RadioGroupItem({
   value,
   label,
@@ -264,25 +293,120 @@ function RadioGroupItem({
   const card = group.variant === 'card';
   const segmented = group.variant === 'segmented';
   // The bare circle is for a caller's own `<Label>`; a segment is never one.
-  const bare = label === undefined && !segmented;
+  const bare = label === undefined && segmented === false;
   const tooltip = hint ?? (segmented && label === undefined ? ariaLabel : undefined);
   // A segment has no room for a description and draws none, so it points at none either.
   const describedBy =
-    [description && !segmented ? descriptionId : null, ariaDescribedByProp ?? null].filter(Boolean).join(' ') ||
-    undefined;
+    [description && segmented === false ? descriptionId : null, ariaDescribedByProp ?? null]
+      .filter(Boolean)
+      .join(' ') || undefined;
 
+  // Checked, the circle is the chosen tint, edged in `active` because the tint is not 3:1 from the
+  // surface, and its dot is `foreground`, 3:1 or more on the tint and around it.
   const circle = (
     <div
       className={cn(
         'cube-rn-view',
         'h-4 w-4 shrink-0 items-center justify-center rounded-full border',
-        checked ? 'border-active' : 'border-foreground/15',
+        checked ? 'border-active bg-active/40' : 'border-foreground/50',
         group.invalid && 'border-negative',
       )}
     >
-      {checked ? <div className="cube-rn-view h-2 w-2 rounded-full bg-active" /> : null}
+      {checked ? <div className="cube-rn-view h-2 w-2 rounded-full bg-foreground" /> : null}
     </div>
   );
+
+  // The item's box, one shape per variant.
+  const look = () => {
+    if (bare) {
+      return 'rounded-full focus-visible:bg-hover';
+    }
+    if (segmented) {
+      return cn(
+        'min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-sm px-3',
+        // The checked segment is the chosen tint, a step further under the pointer and focused.
+        checked
+          ? 'bg-active/40 text-foreground hover:bg-active/60 focus-visible:bg-active/60'
+          : 'text-foreground/60 hover:bg-hover hover:text-foreground focus-visible:bg-hover focus-visible:text-foreground',
+      );
+    }
+    if (card) {
+      return cn(
+        'min-w-0 flex-1 items-center gap-1.5 rounded-lg border p-3',
+        // Checked is the chosen tint inside an `active` edge, a step further under the pointer and
+        // focused; its description turns `foreground`, as muted text on the tint is under 4.5:1.
+        checked
+          ? 'border-active bg-active/40 hover:bg-active/60 focus-visible:bg-active/60'
+          : 'border-foreground/50 bg-background hover:bg-hover focus-visible:bg-hover',
+        group.invalid && 'border-negative',
+      );
+    }
+    return 'flex-row items-start gap-3 rounded-sm focus-visible:bg-hover';
+  };
+
+  // What the box holds, in the same order.
+  const content = () => {
+    if (bare) {
+      return circle;
+    }
+    if (segmented) {
+      return (
+        <>
+          {iconSlot ? <div className="cube-rn-view items-center justify-center">{iconSlot}</div> : null}
+          {label !== undefined ? (
+            <span
+              id={labelId}
+              className={cn(
+                'cube-rn-text',
+                'truncate text-sm font-semibold',
+                checked ? 'text-foreground' : 'text-foreground/60',
+              )}
+            >
+              {label}
+            </span>
+          ) : null}
+        </>
+      );
+    }
+    if (card) {
+      return (
+        <>
+          {iconSlot ? <div className="cube-rn-view items-center justify-center">{iconSlot}</div> : null}
+          {/* The radio's own dot beside the label: a 1px edge in another colour was the only
+              thing that said which card was chosen, and colour is not to be the only signal. */}
+          <div className="cube-rn-view min-w-0 flex-row items-center justify-center gap-2">
+            {circle}
+            <span id={labelId} className="cube-rn-text text-center text-foreground text-sm font-semibold">
+              {label}
+            </span>
+          </div>
+          {description ? (
+            <span
+              id={descriptionId}
+              className={cn('cube-rn-text', 'text-center text-xs', checked ? 'text-foreground' : 'text-foreground/60')}
+            >
+              {description}
+            </span>
+          ) : null}
+        </>
+      );
+    }
+    return (
+      <>
+        <div className="cube-rn-view mt-0.5">{circle}</div>
+        <div className="cube-rn-view min-w-0 flex-1 gap-1">
+          <span id={labelId} className="cube-rn-text text-foreground text-sm">
+            {label}
+          </span>
+          {description ? (
+            <span id={descriptionId} className="cube-rn-text text-foreground/60 text-sm">
+              {description}
+            </span>
+          ) : null}
+        </div>
+      </>
+    );
+  };
 
   return (
     <button
@@ -304,73 +428,12 @@ function RadioGroupItem({
       className={cn(
         'cube-rn-view cube-rn-pressable',
         'focus-visible:outline-none',
-        bare
-          ? 'rounded-full focus-visible:bg-hover'
-          : segmented
-            ? cn(
-                'min-w-0 flex-1 flex-row items-center justify-center gap-1.5 rounded-sm px-3',
-                checked
-                  ? 'bg-active text-active-foreground focus-visible:bg-active/90'
-                  : 'text-foreground/60 hover:bg-hover hover:text-foreground focus-visible:bg-hover focus-visible:text-foreground',
-              )
-            : card
-              ? cn(
-                  'min-w-0 flex-1 items-center gap-1.5 rounded-lg border p-3',
-                  // The border alone says checked: a tinted fill takes the muted description under 4.5:1.
-                  checked ? 'border-active bg-background' : 'border-foreground/15 bg-background',
-                  'focus-visible:bg-hover',
-                  group.invalid && 'border-negative',
-                )
-              : 'flex-row items-start gap-3 rounded-sm focus-visible:bg-hover',
+        look(),
         disabled && 'opacity-50',
         className,
       )}
     >
-      {bare ? (
-        circle
-      ) : segmented ? (
-        <>
-          {iconSlot ? <div className="cube-rn-view items-center justify-center">{iconSlot}</div> : null}
-          {label !== undefined ? (
-            <span
-              id={labelId}
-              className={cn(
-                'cube-rn-text',
-                'truncate text-sm font-medium',
-                checked ? 'text-active-foreground' : 'text-foreground/60',
-              )}
-            >
-              {label}
-            </span>
-          ) : null}
-        </>
-      ) : card ? (
-        <>
-          {iconSlot ? <div className="cube-rn-view items-center justify-center">{iconSlot}</div> : null}
-          <span id={labelId} className="cube-rn-text text-center text-foreground text-sm font-medium">
-            {label}
-          </span>
-          {description ? (
-            <span id={descriptionId} className="cube-rn-text text-center text-foreground/60 text-xs">
-              {description}
-            </span>
-          ) : null}
-        </>
-      ) : (
-        <>
-          <div className="cube-rn-view mt-0.5">{circle}</div>
-          <div className="cube-rn-view min-w-0 flex-1 gap-1">
-            <span id={labelId} className="cube-rn-text text-foreground text-sm">
-              {label}
-            </span>
-            {description ? (
-              <span id={descriptionId} className="cube-rn-text text-foreground/60 text-sm">
-                {description}
-              </span>
-            ) : null}
-          </div>
-        </>
-      )}
+      {content()}
     </button>
   );
 }

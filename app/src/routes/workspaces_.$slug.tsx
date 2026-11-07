@@ -1,15 +1,14 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
-import { DescriptionList, PropertyRow } from '@/components/description-list';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
 import { MembersCard } from '@/components/domain/workspace/members-card';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
+import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -55,12 +54,11 @@ function WorkspaceDetailPage() {
 
   return (
     <PageLayout
-      iconSlot={
-        <ActionButton
+      backSlot={
+        <Button
           variant="ghost"
           size="icon-sm"
-          label="Back to workspaces"
-          tooltip={false}
+          aria-label="Back to workspaces"
           linkSlot={<Link to="/workspaces" />}
           iconSlot={<ArrowLeft />}
         />
@@ -70,7 +68,14 @@ function WorkspaceDetailPage() {
       loading={query.isPending}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <QueryState query={query} what="workspace" count={workspace ? 1 : 0} rows={1} />
+          <LoadState
+            query={query}
+            what="workspace"
+            record={workspace}
+            notFoundLabel="Workspace not found"
+            level={2}
+            rows={1}
+          />
           {workspace && (
             <>
               <CardLayout
@@ -88,8 +93,7 @@ function WorkspaceDetailPage() {
                     <ConfirmButton
                       variant="outline"
                       size="sm"
-                      label={`Delete ${workspace.name}`}
-                      tooltip={false}
+                      aria-label={`Delete ${workspace.name}`}
                       loading={remove.isPending}
                       title={`Delete workspace ${workspace.name}?`}
                       description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
@@ -102,7 +106,7 @@ function WorkspaceDetailPage() {
                 contentClassName="gap-4"
                 contentSlot={
                   <>
-                    <DescriptionList
+                    <PropertyList
                       contentSlot={
                         <>
                           <PropertyRow

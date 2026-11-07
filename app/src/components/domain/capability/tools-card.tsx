@@ -1,6 +1,6 @@
 import type { ServerTool } from '@mcp-router/shared';
 import { TextareaField, useAppForm } from '@/components/app-form';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';

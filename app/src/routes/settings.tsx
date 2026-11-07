@@ -4,9 +4,9 @@ import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
-import { DescriptionList, PropertyRow } from '@/components/description-list';
+import { LoadError } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryError } from '@/components/query-state';
+import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -290,11 +290,11 @@ function SettingsPage() {
             contentClassName="gap-4"
             contentSlot={
               status.error ? (
-                <QueryError error={status.error} onRetry={() => status.refetch()} what="status" />
+                <LoadError error={status.error} onRetry={() => status.refetch()} what="status" />
               ) : (
                 data && (
                   <>
-                    <DescriptionList
+                    <PropertyList
                       contentSlot={
                         <>
                           <PropertyRow label="Version" value={data.version} />

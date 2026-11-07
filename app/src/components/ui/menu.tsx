@@ -1,28 +1,3 @@
-/**
- * Copied from `registry/ui/menu.web.tsx` by `scripts/rn2web`.
- * Do not edit — edit the source and re-run `npm run compile`.
- *
- * This is level 4 of the plan: the item has a hand-written web half, so nothing was generated. The
- * same passes still ran over it, and for a file already written against the DOM they find nothing
- * to do beyond pointing its sibling imports at the web tree. That is deliberate — running one
- * pipeline over the whole output tree is what guarantees a hand-written half and a compiled one
- * speak the same prop vocabulary, instead of the two drifting where nobody is looking.
- */
-
-/**
- * The web menu: radix `DropdownMenu`, anchored to its trigger. `menu.tsx` is the native
- * counterpart and `menu-base.ts` holds the contract they share.
- *
- * Radix is the reason this half is hand-written rather than compiled: `role="menu"` with the
- * trigger as its name, arrow keys and Home/End between the rows (skipping disabled ones),
- * typeahead on each row's label, focus moved into the menu on open and back to the trigger on
- * close (unless the row chosen is `focusesElsewhere`), and the menu closing when a row is
- * chosen. None of that is layout, so none of it could come out of the React Native source.
- *
- * Each part also takes the props of the radix part it renders — `side`, `sideOffset`, `modal`,
- * `onCloseAutoFocus` — on top of the contract. Those extras are web only.
- */
-
 import { DropdownMenu as MenuPrimitive } from 'radix-ui';
 import type * as React from 'react';
 import { cloneElement, createContext, type RefObject, useContext, useRef, useState } from 'react';
@@ -45,6 +20,7 @@ import {
   type MenuSeparatorProps,
   type MenuTriggerProps,
 } from '@/components/ui/menu-base';
+import { FrameFocusGuard } from '@/lib/frame-focus-guard';
 import { cn } from '@/lib/utils';
 
 /** The shared contract, widened to what the radix part underneath accepts. */
@@ -65,6 +41,7 @@ const MenuContext = createContext<MenuState>({
   skipReturnRef: { current: false },
 });
 
+/** The root of a menu of actions: it holds the open state. */
 function Menu({
   open,
   onOpenChange,
@@ -77,7 +54,9 @@ function Menu({
   const [uncontrolled, setUncontrolled] = useState(defaultOpen);
   const isOpen = open ?? uncontrolled;
   const setOpen = (next: boolean) => {
-    if (open === undefined) setUncontrolled(next);
+    if (open === undefined) {
+      setUncontrolled(next);
+    }
     onOpenChange?.(next);
   };
   const skipReturnRef = useRef(false);
@@ -88,6 +67,7 @@ function Menu({
   );
 }
 
+/** The element that opens the menu. */
 function MenuTrigger({
   asChild,
   ...props
@@ -95,11 +75,13 @@ function MenuTrigger({
   return <MenuPrimitive.Trigger data-slot="menu-trigger" asChild={asChild ?? false} {...props} />;
 }
 
+/** The menu's list of rows. */
 function MenuContent({
   className,
   align = 'center',
   sideOffset = 4,
   onCloseAutoFocus,
+  children,
   ...props
 }: Wide<MenuContentProps, React.ComponentProps<typeof MenuPrimitive.Content>>) {
   const { skipReturnRef } = useContext(MenuContext);
@@ -111,7 +93,7 @@ function MenuContent({
         sideOffset={sideOffset}
         className={cn(
           MENU_CONTENT_CLASS,
-          'z-50 max-h-(--radix-dropdown-menu-content-available-height) origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto rounded-md border bg-secondary text-foreground shadow-md data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
+          'z-50 max-h-(--radix-dropdown-menu-content-available-height) origin-(--radix-dropdown-menu-content-transform-origin) overflow-x-hidden overflow-y-auto text-foreground data-[state=open]:animate-in data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:fade-in-0 data-[state=closed]:zoom-out-95 data-[state=open]:zoom-in-95',
           className,
         )}
         {...props}
@@ -119,14 +101,21 @@ function MenuContent({
           onCloseAutoFocus?.(event);
           // Radix focuses the trigger unless the event is prevented. A `focusesElsewhere` row
           // has already focused its target by now, and the trigger would take it back.
-          if (skipReturnRef.current) event.preventDefault();
+          if (skipReturnRef.current) {
+            event.preventDefault();
+          }
           skipReturnRef.current = false;
         }}
-      />
+      >
+        {children}
+        {/* A framed app focusing itself would blur the window, which closes a menu at once. */}
+        <FrameFocusGuard />
+      </MenuPrimitive.Content>
     </MenuPrimitive.Portal>
   );
 }
 
+/** One action in the menu, which closes it when chosen. */
 function MenuItem({
   iconSlot,
   label,
@@ -143,13 +132,13 @@ function MenuItem({
   const { setOpen, skipReturnRef } = useContext(MenuContext);
   const row = (
     <>
-      {iconSlot}
+      {/* The icon quieter than the label, except on a destructive row, where it follows the
+          row's `negative` through currentColor. */}
+      {iconSlot ? (
+        <span className={cn('flex shrink-0', destructive === false && 'text-foreground/60')}>{iconSlot}</span>
+      ) : null}
       <span className={cn(MENU_ITEM_TEXT_CLASS, 'truncate')}>{label}</span>
-      {typeof trailing === 'string' ? (
-        <span className={cn(MENU_TRAILING_CLASS, 'tracking-widest')}>{trailing}</span>
-      ) : (
-        trailing
-      )}
+      {typeof trailing === 'string' ? <span className={MENU_TRAILING_CLASS}>{trailing}</span> : trailing}
     </>
   );
   // A link row is radix's item rendered *as* the anchor, not an anchor inside the item: the `<a>`
@@ -159,11 +148,9 @@ function MenuItem({
   // which every router's click does — so a menu handed the router's click would never close.
   // Cloned the other way, the router link is handed radix's click and runs it first. A disabled
   // row is no link at all, so nothing can follow it.
-  const anchor = disabled ? undefined : linkSlot ? (
-    cloneElement(linkSlot, undefined, row)
-  ) : href !== undefined ? (
-    <a href={href}>{row}</a>
-  ) : undefined;
+  const plainAnchor = href !== undefined ? <a href={href}>{row}</a> : undefined;
+  const liveAnchor = linkSlot ? cloneElement(linkSlot, undefined, row) : plainAnchor;
+  const anchor = disabled ? undefined : liveAnchor;
   return (
     <MenuPrimitive.Item
       data-slot="menu-item"
@@ -197,6 +184,7 @@ function MenuItem({
   );
 }
 
+/** A rule between groups of rows. */
 function MenuSeparator({
   className,
   ...props
@@ -212,15 +200,17 @@ function MenuSeparator({
 
 /**
  * A toggle row's inside: `MenuItem`'s icon, label and trailing node, then the ✓ slot at the far
- * edge. `ItemIndicator` renders only while its row is on; the slot around it stays.
+ * edge. `ItemIndicator` renders only while its row is on; the slot around it stays. On a row that
+ * is on, the quiet icon and trailing text turn `foreground`: muted on the chosen tint is under
+ * 4.5:1.
  */
 function ToggleRowBody({ iconSlot, label, trailing }: Pick<MenuCheckboxItemProps, 'iconSlot' | 'label' | 'trailing'>) {
   return (
     <>
-      {iconSlot}
+      {iconSlot ? <span className={cn('flex shrink-0 text-foreground/60', ON_CHECKED_INK)}>{iconSlot}</span> : null}
       <span className={cn(MENU_ITEM_TEXT_CLASS, 'truncate')}>{label}</span>
       {typeof trailing === 'string' ? (
-        <span className={cn(MENU_TRAILING_CLASS, 'tracking-widest')}>{trailing}</span>
+        <span className={cn(MENU_TRAILING_CLASS, ON_CHECKED_INK)}>{trailing}</span>
       ) : (
         trailing
       )}
@@ -233,8 +223,19 @@ function ToggleRowBody({ iconSlot, label, trailing }: Pick<MenuCheckboxItemProps
   );
 }
 
-const TOGGLE_ROW_CLASS = cn(MENU_ITEM_CLASS, MENU_ITEM_WEB_CLASS, 'text-foreground focus:bg-hover');
+/**
+ * A toggle row is `MenuItem`'s row, and while it is on, the chosen tint, a step further when
+ * highlighted — radix highlights the row under the pointer by focusing it.
+ */
+const TOGGLE_ROW_CLASS = cn(
+  MENU_ITEM_CLASS,
+  MENU_ITEM_WEB_CLASS,
+  'group/toggle text-foreground focus:bg-hover data-[state=checked]:bg-active/40 data-[state=checked]:focus:bg-active/60',
+);
+/** The quiet ink inside a toggle row, lifted to `foreground` while the row is on. */
+const ON_CHECKED_INK = 'group-data-[state=checked]/toggle:text-foreground';
 
+/** A row that is checked or not, and toggles when chosen. */
 function MenuCheckboxItem({
   iconSlot,
   label,
@@ -266,6 +267,7 @@ function MenuCheckboxItem({
   );
 }
 
+/** A set of `MenuRadioItem`s of which one is chosen. */
 function MenuRadioGroup({
   value,
   onValueChange,

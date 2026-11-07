@@ -1,6 +1,6 @@
 import type { ServerResource, ServerResourceTemplate } from '@mcp-router/shared';
 import { InputField, useAppForm } from '@/components/app-form';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
 import { Badge } from '@/components/ui/badge';
 import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';

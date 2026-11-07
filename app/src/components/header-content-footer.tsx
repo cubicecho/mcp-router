@@ -25,7 +25,11 @@ export const PAGE_COLUMN = 'mx-auto w-full max-w-(--breakpoint-2xl)';
  */
 export const PROSE_COLUMN = 'mx-auto w-full max-w-3xl';
 
-const COLUMNS = {
+/**
+ * The class each `width` holds a slot to. Exported for a shell that holds one part of its header
+ * to the body's column while the rest of the header runs the full width.
+ */
+export const COLUMNS = {
   full: undefined,
   page: PAGE_COLUMN,
   prose: PROSE_COLUMN,
@@ -93,6 +97,13 @@ export type HeaderContentFooterProps = {
    */
   width?: HeaderContentFooterWidth | undefined;
   /**
+   * The header's own column, when it is not the body's: `full` lets a rule under the header, and
+   * a bar in it, run the full width over a body held to `page` or `prose`. What in the header
+   * should still sit over the body's column holds itself to it, with `COLUMNS[width]`. Absent,
+   * the header shares `width`.
+   */
+  headerWidth?: HeaderContentFooterWidth | undefined;
+  /**
    * The scrolling body, for a caller that has to reach it — restoring a scroll position. A
    * `<div>` on the web and, while `scroll` is on, the `ScrollView` on device.
    */
@@ -140,8 +151,11 @@ function toEnd(scroller: unknown, animated: boolean) {
 
 /** Hands a node to a caller's ref, whichever kind of ref it is. */
 function assign<T>(ref: Ref<T> | undefined, node: T | null) {
-  if (typeof ref === 'function') ref(node);
-  else if (ref) ref.current = node;
+  if (typeof ref === 'function') {
+    ref(node);
+  } else if (ref) {
+    ref.current = node;
+  }
 }
 
 /**
@@ -166,7 +180,9 @@ function Body({ contentSlot, scroll, column, contentRef, scrollRef, onScroll, cl
   const scroller = useRef<unknown>(null);
   useImperativeHandle<ScrollHandle, ScrollHandle>(scrollRef, () => ({
     scrollToEnd: ({ animated = true } = {}) => {
-      if (scroll && scroller.current) toEnd(scroller.current, animated);
+      if (scroll && scroller.current) {
+        toEnd(scroller.current, animated);
+      }
     },
   }));
   return (
@@ -175,7 +191,7 @@ function Body({ contentSlot, scroll, column, contentRef, scrollRef, onScroll, cl
       // The chassis's own ref type is the device's scroller; on the web both are a `<div>`.
       ref={(node) => {
         scroller.current = node;
-        assign(contentRef as unknown as Ref<HTMLDivElement>, node);
+        assign(contentRef as Ref<HTMLDivElement>, node);
       }}
       // A scrolling region a keyboard cannot reach is a region a keyboard user cannot read:
       // the mouse wheel moves it and nothing else does, which axe reports as
@@ -221,6 +237,7 @@ export function HeaderContentFooter({
   footerSlot,
   scroll = false,
   width = 'full',
+  headerWidth,
   contentRef,
   scrollRef,
   onScroll,
@@ -240,7 +257,7 @@ export function HeaderContentFooter({
       {headerSlot ? (
         <div
           data-slot="header-content-footer-header"
-          className={cn('cube-rn-view', 'min-w-0 shrink-0', column, headerClassName)}
+          className={cn('cube-rn-view', 'min-w-0 shrink-0', COLUMNS[headerWidth ?? width], headerClassName)}
         >
           {headerSlot}
         </div>
@@ -266,14 +283,4 @@ export function HeaderContentFooter({
       ) : null}
     </div>
   );
-}
-
-/**
- * The same chassis with the body scrolling and the chrome pinned — a list page, a pane inside a
- * split, anything whose header should not leave with the rows.
- *
- * It needs a height to divide, so it defaults to filling its parent.
- */
-export function StickyHeaderContentFooter({ className, ...props }: Omit<HeaderContentFooterProps, 'scroll'>) {
-  return <HeaderContentFooter scroll {...props} className={cn('h-full', className)} />;
 }
