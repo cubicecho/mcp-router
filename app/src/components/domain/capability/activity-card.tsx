@@ -7,6 +7,7 @@ import { CollapsibleRow } from '@/components/collapsible-row';
 import { Combobox } from '@/components/combobox';
 import { ConfirmButton } from '@/components/confirm-button';
 import { EmptyState } from '@/components/empty-state';
+import { List } from '@/components/list';
 import { LoadError } from '@/components/load-state';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
@@ -164,11 +165,10 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
               {filtered.length === 0 ? (
                 <EmptyState compact title="No entries match the current filters." />
               ) : (
-                <div className="flex flex-col gap-2">
-                  {filtered.map((entry) => (
-                    <ActivityRow key={entry.id} entry={entry} />
-                  ))}
-                </div>
+                <List
+                  label="Activity"
+                  contentSlot={filtered.map((entry) => <ActivityRow key={entry.id} entry={entry} />)}
+                />
               )}
             </>
           )}

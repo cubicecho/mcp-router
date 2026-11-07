@@ -88,7 +88,7 @@ function ServerDetailPage() {
 
   return (
     <PageLayout
-      iconSlot={
+      backSlot={
         <Button
           variant="ghost"
           size="icon-sm"
@@ -102,7 +102,7 @@ function ServerDetailPage() {
       loading={query.isPending}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <LoadState query={query} what="server" count={server ? 1 : 0} rows={1} />
+          <LoadState query={query} what="server" record={server} notFoundLabel="Server not found" level={2} rows={1} />
           {server && (
             <>
               <CardLayout

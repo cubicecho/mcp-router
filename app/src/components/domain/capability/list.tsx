@@ -2,6 +2,7 @@ import type { UseMutationResult } from '@tanstack/react-query';
 import { type ReactElement, type ReactNode, useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
 import { CollapsibleRow } from '@/components/collapsible-row';
+import { List } from '@/components/list';
 import { LoadError } from '@/components/load-state';
 import { Play } from '@/components/ui/icons';
 import { toastApiError } from '@/lib/toast';
@@ -52,9 +53,14 @@ export function CapabilityList({ title, description, query, what, emptySlot, con
       emptySlot={emptySlot}
       contentClassName="gap-2"
       contentSlot={
-        query.error
-          ? [<LoadError key="error" error={query.error} onRetry={query.refetch} what={what} />, ...contentSlot]
-          : contentSlot
+        query.error ? (
+          [
+            <LoadError key="error" error={query.error} onRetry={query.refetch} what={what} />,
+            <List key="rows" contentSlot={contentSlot} />,
+          ]
+        ) : (
+          <List contentSlot={contentSlot} />
+        )
       }
     />
   );

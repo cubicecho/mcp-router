@@ -54,7 +54,7 @@ function WorkspaceDetailPage() {
 
   return (
     <PageLayout
-      iconSlot={
+      backSlot={
         <Button
           variant="ghost"
           size="icon-sm"
@@ -68,7 +68,14 @@ function WorkspaceDetailPage() {
       loading={query.isPending}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <LoadState query={query} what="workspace" count={workspace ? 1 : 0} rows={1} />
+          <LoadState
+            query={query}
+            what="workspace"
+            record={workspace}
+            notFoundLabel="Workspace not found"
+            level={2}
+            rows={1}
+          />
           {workspace && (
             <>
               <CardLayout
