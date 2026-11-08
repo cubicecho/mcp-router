@@ -28,7 +28,7 @@ export function FoundServersCard({ servers }: FoundServersCardProps) {
       {
         onSuccess: () =>
           toast.success(`Dismissed ${server.title ?? server.cardName}`, {
-            description: 'Offer it again from Settings.',
+            description: 'Offer it again from Settings, on the Network tab.',
           }),
         onError: toastApiError,
       },

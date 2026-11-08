@@ -4,6 +4,7 @@ import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
+import { DismissedServersCard } from '@/components/domain/discovery/dismissed-servers-card';
 import { LoadError } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
 import { PropertyList, PropertyRow } from '@/components/property-list';
@@ -13,8 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { formatUptime } from '@/lib/format';
-import { useDiscovery, useReloadConfig, useRouterStatus, useSetDismissed, useUpdateSettings } from '@/lib/queries';
+import { useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** The `/settings` route. */
@@ -166,19 +168,13 @@ function PublicUrlEditor({ current }: { current?: string }) {
 }
 
 /**
- * The switches for announcing the router on the local network and looking for servers there, and the found servers
- * the user dismissed.
+ * The switches for announcing the router on the local network and looking for servers there.
  *
  * @param props.status - The router status, which carries the two settings and the router's network name.
  * @returns The card.
  */
 function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
   const update = useUpdateSettings();
-  const discovery = useDiscovery();
-  const setDismissed = useSetDismissed();
-  const dismissed = (discovery.data?.servers ?? []).filter(
-    (server) => server.state === DiscoveredServerState.Dismissed,
-  );
 
   const toggle = (patch: { lanAdvertise: boolean } | { lanDiscovery: boolean }, message: string) => {
     update.mutate(patch, { onSuccess: () => toast.success(message), onError: toastApiError });
@@ -227,31 +223,6 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
               />
             )}
           />
-          {dismissed.map((server) => {
-            const title = server.title ?? server.cardName;
-            return (
-              <SettingRow
-                key={server.key}
-                title={`${title} (dismissed)`}
-                description={server.url}
-                actionSlot={
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`Offer ${title} again`}
-                    disabled={setDismissed.isPending}
-                    onClick={() =>
-                      setDismissed.mutate(
-                        { key: server.key, dismissed: false },
-                        { onSuccess: () => toast.success(`${title} is offered again`), onError: toastApiError },
-                      )
-                    }
-                    content="Offer again"
-                  />
-                }
-              />
-            );
-          })}
         </>
       }
     />
@@ -259,13 +230,18 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
 }
 
 /**
- * The Settings page: router status, the idle timeout and the config-file layout with a reload button.
+ * The Settings page, in three tabs: the router's status and settings, network discovery with the dismissed servers,
+ * and the config-file layout with a reload button.
  *
- * @returns The page.
+ * @returns The page, opened on General.
  */
 function SettingsPage() {
   const status = useRouterStatus();
   const { data } = status;
+  const discovery = useDiscovery();
+  const dismissed = (discovery.data?.servers ?? []).filter(
+    (server) => server.state === DiscoveredServerState.Dismissed,
+  );
   const reload = useReloadConfig();
   const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
 
@@ -282,91 +258,101 @@ function SettingsPage() {
       description="Router status and configuration."
       width="prose"
       contentSlot={
-        <div className="flex flex-col gap-6 py-4 md:py-6">
-          <CardLayout
-            level={2}
-            title="Router"
-            loading={status.isPending}
-            contentClassName="gap-4"
-            contentSlot={
-              status.error ? (
-                <LoadError error={status.error} onRetry={() => status.refetch()} what="status" />
-              ) : (
-                data && (
-                  <>
-                    <PropertyList
-                      contentSlot={
-                        <>
-                          <PropertyRow label="Version" value={data.version} />
-                          <PropertyRow label="Uptime" value={formatUptime(data.uptimeSeconds)} />
-                          <PropertyRow label="Port" value={port} />
-                          <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
-                          <PropertyRow
-                            label="Auth"
-                            value={
-                              data.authEnabled ? (
-                                <Badge variant="positive">enabled</Badge>
-                              ) : (
-                                <Badge variant="secondary">disabled</Badge>
-                              )
-                            }
-                            hint={
-                              <>
-                                The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable or{' '}
-                                <Code>settings.json</Code>; it protects <Code>/api/*</Code> and <Code>/mcp*</Code>.
-                              </>
-                            }
-                          />
-                        </>
-                      }
-                    />
-                    <SettingRow
-                      title="Idle timeout"
-                      description="How long an unused server keeps running before it is stopped."
-                      actionSlot={<IdleTimeoutEditor key={data.idleTimeoutMs} currentMs={data.idleTimeoutMs} />}
-                    />
-                    <SettingRow
-                      title="Public URL"
-                      description="The address a remote server's login sends you back to after you sign in, and that it fetches MCP Router's client details from. Leave it blank to use the address this page is open at; set it when the router sits behind a proxy or is reached by another name."
-                      actionSlot={<PublicUrlEditor key={data.publicUrl ?? ''} current={data.publicUrl} />}
-                    />
-                  </>
+        <Tabs defaultValue="general" className="py-4 md:py-6">
+          <TabsList>
+            <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="network">Network</TabsTrigger>
+            <TabsTrigger value="config">Configuration</TabsTrigger>
+          </TabsList>
+          <TabsContent value="general" className="pt-4">
+            <CardLayout
+              level={2}
+              title="Router"
+              loading={status.isPending}
+              contentClassName="gap-4"
+              contentSlot={
+                status.error ? (
+                  <LoadError error={status.error} onRetry={() => status.refetch()} what="status" />
+                ) : (
+                  data && (
+                    <>
+                      <PropertyList
+                        contentSlot={
+                          <>
+                            <PropertyRow label="Version" value={data.version} />
+                            <PropertyRow label="Uptime" value={formatUptime(data.uptimeSeconds)} />
+                            <PropertyRow label="Port" value={port} />
+                            <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
+                            <PropertyRow
+                              label="Auth"
+                              value={
+                                data.authEnabled ? (
+                                  <Badge variant="positive">enabled</Badge>
+                                ) : (
+                                  <Badge variant="secondary">disabled</Badge>
+                                )
+                              }
+                              hint={
+                                <>
+                                  The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable or{' '}
+                                  <Code>settings.json</Code>; it protects <Code>/api/*</Code> and <Code>/mcp*</Code>.
+                                </>
+                              }
+                            />
+                          </>
+                        }
+                      />
+                      <SettingRow
+                        title="Idle timeout"
+                        description="How long an unused server keeps running before it is stopped."
+                        actionSlot={<IdleTimeoutEditor key={data.idleTimeoutMs} currentMs={data.idleTimeoutMs} />}
+                      />
+                      <SettingRow
+                        title="Public URL"
+                        description="The address a remote server's login sends you back to after you sign in, and that it fetches MCP Router's client details from. Leave it blank to use the address this page is open at; set it when the router sits behind a proxy or is reached by another name."
+                        actionSlot={<PublicUrlEditor key={data.publicUrl ?? ''} current={data.publicUrl} />}
+                      />
+                    </>
+                  )
                 )
-              )
-            }
-          />
-
-          {data && <NetworkDiscoveryCard status={data} />}
-
-          <CardLayout
-            level={2}
-            title="Configuration files"
-            description={
-              <>
-                All configuration lives in flat, hand-editable JSON files under <Code>DATA_DIR/config</Code>:
-              </>
-            }
-            contentClassName="flex flex-col gap-4"
-            contentSlot={
-              <>
-                <CodeBlock content={CONFIG_TREE} />
-                <p className="text-sm text-foreground/60">
-                  Files are watched for changes automatically. After hand-editing you can also trigger an explicit
-                  reload — it re-reads everything from disk and reconciles running servers.
-                </p>
-                <div>
-                  <Button
-                    loading={reload.isPending}
-                    loadingLabel="Reloading…"
-                    onClick={handleReload}
-                    iconSlot={<RotateCwIcon />}
-                    content="Reload config"
-                  />
-                </div>
-              </>
-            }
-          />
-        </div>
+              }
+            />
+          </TabsContent>
+          <TabsContent value="network" className="flex flex-col gap-6 pt-4">
+            {data && <NetworkDiscoveryCard status={data} />}
+            <DismissedServersCard servers={dismissed} loading={discovery.isPending} />
+          </TabsContent>
+          <TabsContent value="config" className="pt-4">
+            <CardLayout
+              level={2}
+              title="Configuration files"
+              description={
+                <>
+                  All configuration lives in flat, hand-editable JSON files under <Code>DATA_DIR/config</Code>:
+                </>
+              }
+              contentClassName="flex flex-col gap-4"
+              contentSlot={
+                <>
+                  <CodeBlock content={CONFIG_TREE} />
+                  <p className="text-sm text-foreground/60">
+                    Files are watched for changes automatically. After hand-editing you can also trigger an explicit
+                    reload — it re-reads everything from disk and reconciles running servers.
+                  </p>
+                  <div>
+                    <Button
+                      loading={reload.isPending}
+                      loadingLabel="Reloading…"
+                      onClick={handleReload}
+                      iconSlot={<RotateCwIcon />}
+                      content="Reload config"
+                    />
+                  </div>
+                </>
+              }
+            />
+          </TabsContent>
+        </Tabs>
       }
     />
   );
