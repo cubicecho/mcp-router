@@ -70,7 +70,7 @@ export type CommandItemProps = {
   onSelect?: ((value: string) => void) | undefined;
   className?: string | undefined;
   'aria-label'?: string | undefined;
-  /** For a row that toggles — a multi-select's ✓. cmdk leaves it alone; see `MultiSelect`. */
+  /** For a row that toggles — a combobox's ✓. cmdk leaves it alone; see `Combobox`. */
   'aria-checked'?: boolean | undefined;
   'aria-describedby'?: string | undefined;
   children?: ReactNode;
@@ -93,16 +93,19 @@ export type CommandShortcutProps = {
 };
 
 /** A `Command` in a `Dialog`: the palette. `title` and `description` name it and are not drawn. */
-export type CommandDialogProps = DialogProps & {
-  title?: string | undefined;
-  description?: string | undefined;
-  className?: string | undefined;
-  showCloseButton?: boolean | undefined;
-};
+export type CommandDialogProps = DialogProps &
+  Pick<CommandProps, 'label' | 'filter' | 'shouldFilter'> & {
+    title?: string | undefined;
+    description?: string | undefined;
+    className?: string | undefined;
+    showCloseButton?: boolean | undefined;
+  };
 
 /** cmdk's own default name for its list. */
 export const COMMAND_LIST_LABEL = 'Suggestions';
+/** The accessible name `CommandDialog` has unless it is given one. */
 export const COMMAND_DIALOG_TITLE = 'Command Palette';
+/** The accessible description `CommandDialog` has unless it is given one. */
 export const COMMAND_DIALOG_DESCRIPTION = 'Search for a command to run...';
 
 /**
@@ -110,11 +113,13 @@ export const COMMAND_DIALOG_DESCRIPTION = 'Search for a command to run...';
  * somewhere in the value or the keywords, ignoring case. `1` or `0`, because the native list is
  * not re-sorted — the order is the caller's.
  *
- * The same test `MultiSelect` hands cmdk, so a multi-select filters alike on both halves.
+ * The same test `Combobox` hands cmdk, so its search filters alike on both halves.
  */
 export function matchesEveryWord(value: string, search: string, keywords?: string[]): number {
   const words = search.trim().toLocaleLowerCase().split(/\s+/).filter(Boolean);
-  if (words.length === 0) return 1;
+  if (words.length === 0) {
+    return 1;
+  }
   const target = [value, ...(keywords ?? [])].join(' ').toLocaleLowerCase();
   return words.every((word) => target.includes(word)) ? 1 : 0;
 }
@@ -128,8 +133,11 @@ export function commandItemText(children: ReactNode): string {
   const parts: string[] = [];
   const walk = (node: ReactNode) => {
     for (const child of Children.toArray(node)) {
-      if (typeof child === 'string' || typeof child === 'number') parts.push(String(child));
-      else if (isValidElement<{ children?: ReactNode }>(child)) walk(child.props.children);
+      if (typeof child === 'string' || typeof child === 'number') {
+        parts.push(String(child));
+      } else if (isValidElement<{ children?: ReactNode }>(child)) {
+        walk(child.props.children);
+      }
     }
   };
   walk(children);

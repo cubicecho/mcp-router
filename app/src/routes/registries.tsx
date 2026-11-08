@@ -4,8 +4,8 @@ import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
 import { Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCreateRegistry, useDeleteRegistry, useRegistries } from '@/lib/queries';
@@ -103,7 +103,7 @@ function RegistriesPage() {
       description="Sources to browse and install MCP servers from."
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <QueryState query={registries} what="registries" count={data ? 1 : 0} />
+          <LoadState query={registries} what="registries" count={data ? 1 : 0} />
 
           {data && (
             <Table>
@@ -130,7 +130,7 @@ function RegistriesPage() {
                       <ConfirmButton
                         variant="ghost"
                         size="icon-sm"
-                        label={`Delete ${registry.name}`}
+                        aria-label={`Delete ${registry.name}`}
                         title={`Delete registry ${registry.name}?`}
                         description={
                           <>

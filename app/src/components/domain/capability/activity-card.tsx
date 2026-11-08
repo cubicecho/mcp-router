@@ -3,11 +3,12 @@ import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
+import { CollapsibleRow } from '@/components/collapsible-row';
+import { Combobox } from '@/components/combobox';
 import { ConfirmButton } from '@/components/confirm-button';
-import { DisclosureRow } from '@/components/disclosure-row';
-import { OptionSelect } from '@/components/option-select';
-import { EmptyState } from '@/components/page';
-import { QueryError } from '@/components/query-state';
+import { EmptyState } from '@/components/empty-state';
+import { List } from '@/components/list';
+import { LoadError } from '@/components/load-state';
 import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -30,7 +31,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const hasDetail = entry.params !== undefined || entry.result !== undefined || entry.error !== undefined;
 
   return (
-    <DisclosureRow
+    <CollapsibleRow
       open={open}
       onOpenChange={setOpen}
       title={<span className="font-mono">{entry.method}</span>}
@@ -103,7 +104,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
             size="sm"
             loading={clear.isPending}
             disabled={entries.length === 0}
-            label="Clear activity"
+            aria-label="Clear activity"
             title="Clear the activity log?"
             description={
               scope.kind === SCOPE_SERVER
@@ -125,7 +126,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
       loading={isPending}
       contentSlot={
         <>
-          {error && <QueryError error={error} onRetry={() => refetch()} what="activity" />}
+          {error && <LoadError error={error} onRetry={() => refetch()} what="activity" />}
           {data && entries.length === 0 && (
             <EmptyState
               compact
@@ -137,7 +138,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
           {entries.length > 0 && (
             <>
               <div className="mb-3 flex flex-wrap gap-2">
-                <OptionSelect
+                <Combobox
                   data-size="sm"
                   className="w-28"
                   aria-label="Filter by outcome"
@@ -149,7 +150,7 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
                   value={outcome}
                   onValueChange={(value) => setOutcome(value as typeof outcome)}
                 />
-                <OptionSelect
+                <Combobox
                   data-size="sm"
                   className="w-52"
                   aria-label="Filter by method"
@@ -164,11 +165,10 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
               {filtered.length === 0 ? (
                 <EmptyState compact title="No entries match the current filters." />
               ) : (
-                <div className="flex flex-col gap-2">
-                  {filtered.map((entry) => (
-                    <ActivityRow key={entry.id} entry={entry} />
-                  ))}
-                </div>
+                <List
+                  label="Activity"
+                  contentSlot={filtered.map((entry) => <ActivityRow key={entry.id} entry={entry} />)}
+                />
               )}
             </>
           )}

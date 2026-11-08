@@ -1,10 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createLink, createRootRoute, Outlet, useLocation } from '@tanstack/react-router';
 import { CompassIcon, LayersIcon, ServerIcon } from 'lucide-react';
-import { ActionButton } from '@/components/action-button';
 import { TokenForm } from '@/components/domain/auth/token-form';
 import { AppLayout } from '@/components/layouts/app-layout';
-import { BarNavItem, SidebarNavItem } from '@/components/sidebar';
+import { AppBarItem, SidebarItem } from '@/components/sidebar';
+import { Button } from '@/components/ui/button';
 import { Library, Lock, Settings } from '@/components/ui/icons';
 import { Toaster } from '@/components/ui/sonner';
 import { useThemePreference } from '@/components/ui/theme-preference';
@@ -32,8 +32,8 @@ const NAV_ITEMS = [
 const MAIN_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'main');
 const FOOTER_ITEMS = NAV_ITEMS.filter((item) => item.placement === 'footer');
 
-const SidebarLink = createLink(SidebarNavItem);
-const BarLink = createLink(BarNavItem);
+const SidebarLink = createLink(SidebarItem);
+const BarLink = createLink(AppBarItem);
 
 /**
  * The root of every screen: the token screen while the router wants a token, else the app frame.
@@ -99,10 +99,10 @@ function AppFrame() {
       status={status}
       actionSlot={
         data?.authEnabled === true && (
-          <ActionButton
+          <Button
             variant="ghost"
             size="icon-sm"
-            label="Lock (forget the stored token)"
+            aria-label="Lock (forget the stored token)"
             hint="Lock — forget the stored token"
             onClick={lock}
             iconSlot={<Lock />}

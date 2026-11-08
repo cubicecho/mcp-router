@@ -9,10 +9,10 @@ import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
+import { Combobox } from '@/components/combobox';
 import { DialogLayout } from '@/components/dialog-layout';
 import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { FormField } from '@/components/form-field';
-import { OptionSelect } from '@/components/option-select';
 import { Button } from '@/components/ui/button';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
@@ -125,7 +125,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
             <FormField
               label="Package"
               controlSlot={
-                <OptionSelect
+                <Combobox
                   options={options.map((option) => ({ value: option.selector, label: option.label }))}
                   value={selector}
                   placeholder="Select a package"

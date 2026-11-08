@@ -1,5 +1,5 @@
 import { useAppForm } from '@/components/app-form';
-import { CenteredLayout } from '@/components/centered-layout';
+import { CenteredCardLayout } from '@/components/centered-card-layout';
 import { PasswordField } from '@/components/password-field';
 import { Code } from '@/components/ui/code';
 import { KeyRound } from '@/components/ui/icons';
@@ -24,7 +24,7 @@ export function TokenForm({ onUnlock }: { onUnlock: (token: string) => void }) {
   });
 
   return (
-    <CenteredLayout
+    <CenteredCardLayout
       iconSlot={<KeyRound />}
       title="Authentication required"
       description={

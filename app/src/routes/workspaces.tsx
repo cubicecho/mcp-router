@@ -3,12 +3,11 @@ import { createFileRoute, Link } from '@tanstack/react-router';
 import { LayersIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
-import { ActionButton } from '@/components/action-button';
 import { ConfirmButton } from '@/components/confirm-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
-import { EmptyState } from '@/components/page';
+import { EmptyState } from '@/components/empty-state';
+import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
-import { QueryState } from '@/components/query-state';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
@@ -44,13 +43,13 @@ function WorkspacesPage() {
       actionSlot={<Button onClick={() => setDialog({ mode: 'create' })} iconSlot={<Plus />} content="New workspace" />}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <QueryState
+          <LoadState
             query={workspaces}
             what="workspaces"
             count={data?.length ?? 0}
             emptySlot={
               <EmptyState
-                icon={LayersIcon}
+                iconSlot={<LayersIcon />}
                 title="No workspaces yet"
                 description="Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace."
                 actionSlot={
@@ -106,17 +105,17 @@ function WorkspacesPage() {
                         )}
                       </TableCell>
                       <TableCell className="text-right">
-                        <ActionButton
+                        <Button
                           variant="ghost"
                           size="icon-sm"
-                          label={`Edit ${workspace.name}`}
+                          aria-label={`Edit ${workspace.name}`}
                           onClick={() => setDialog({ mode: 'edit', workspace })}
                           iconSlot={<Pencil />}
                         />
                         <ConfirmButton
                           variant="ghost"
                           size="icon-sm"
-                          label={`Delete ${workspace.name}`}
+                          aria-label={`Delete ${workspace.name}`}
                           title={`Delete workspace ${workspace.name}?`}
                           description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                           onConfirm={() =>

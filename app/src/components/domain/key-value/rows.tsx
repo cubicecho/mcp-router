@@ -1,4 +1,3 @@
-import { ActionButton } from '@/components/action-button';
 import { Button } from '@/components/ui/button';
 import { Plus, X } from '@/components/ui/icons';
 import { Input } from '@/components/ui/input';
@@ -65,11 +64,11 @@ export function KeyValueRows({
             className="flex-1 font-mono"
             onChange={(event) => patch(index, { value: event.target.value })}
           />
-          <ActionButton
+          <Button
             type="button"
             variant="ghost"
             size="icon-sm"
-            label={`Remove ${row.key || unnamed}`}
+            aria-label={`Remove ${row.key || unnamed}`}
             onClick={() => onValueChange(value.filter((_, i) => i !== index))}
             iconSlot={<X />}
           />

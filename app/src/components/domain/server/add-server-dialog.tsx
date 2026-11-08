@@ -12,8 +12,8 @@ import { useStore } from '@tanstack/react-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { InputField, TextareaField, useAppForm } from '@/components/app-form';
+import { Collapsible } from '@/components/collapsible';
 import { DialogLayout } from '@/components/dialog-layout';
-import { Disclosure } from '@/components/disclosure';
 import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { FormField } from '@/components/form-field';
@@ -389,7 +389,7 @@ export function AddServerDialog({
                   />
                 )}
               </form.Field>
-              <Disclosure
+              <Collapsible
                 title="OAuth client (optional)"
                 description="Most servers that ask for a login register MCP Router on their own. Fill these in only for one that needs a client set up in advance."
                 defaultOpen={Boolean(server?.oauth?.clientId)}
