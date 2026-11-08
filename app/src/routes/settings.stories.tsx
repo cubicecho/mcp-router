@@ -15,6 +15,16 @@ const TIMEOUT_LABEL = 'Idle timeout in minutes';
 const NEW_TIMEOUT_MINUTES = 10;
 const NEW_TIMEOUT_MS = NEW_TIMEOUT_MINUTES * MS_PER_MINUTE;
 
+/**
+ * Opens one of the page's tabs.
+ *
+ * @param canvasElement - The story's root.
+ * @param name - The tab's name.
+ */
+async function openTab(canvasElement: HTMLElement, name: string) {
+  await userEvent.click(await within(canvasElement).findByRole('tab', { name }));
+}
+
 const meta = {
   title: 'routes/settings',
   parameters: { route: '/settings', api: appRoutes() },
@@ -33,6 +43,9 @@ export const ShowsTheRouterStatus: Story = {
     // Nothing to save until the timeout changes.
     await expect(canvas.getByRole('button', { name: 'Save' })).toBeDisabled();
     await expect(canvas.getByRole('link', { name: 'Settings', current: 'page' })).toBeVisible();
+    // Opens on General; the other settings wait behind their tabs.
+    await expect(canvas.getByRole('tab', { name: 'General', selected: true })).toBeVisible();
+    await expect(canvas.queryByRole('heading', { name: 'Network discovery' })).not.toBeInTheDocument();
     await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
   },
 };
@@ -54,6 +67,7 @@ export const WhileLoading: Story = {
     await expect(canvas.queryByText('Version')).not.toBeInTheDocument();
     await expect(canvas.queryByRole('textbox', { name: TIMEOUT_LABEL })).not.toBeInTheDocument();
     // The part that needs no status is there already.
+    await openTab(canvasElement, 'Configuration');
     await expect(canvas.getByRole('button', { name: 'Reload config' })).toBeVisible();
   },
 };
@@ -130,6 +144,7 @@ export const ReloadsTheConfig: Story = {
   parameters: { api: { ...appRoutes(), 'POST /api/reload': reloadResult() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvasElement, 'Configuration');
     await userEvent.click(await canvas.findByRole('button', { name: 'Reload config' }));
 
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('POST /api/reload', undefined));
@@ -170,6 +185,7 @@ export const TurnsOnTheNetworkAnnouncement: Story = {
   parameters: { api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ lanAdvertise: true }) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
+    await openTab(canvasElement, 'Network');
     const announce = await canvas.findByRole('switch', { name: 'Announce this router' });
     await expect(announce).not.toBeChecked();
     await expect(canvas.getByRole('switch', { name: 'Look for servers on the network' })).toBeChecked();
@@ -191,13 +207,24 @@ export const OffersADismissedServerAgain: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole('button', { name: 'Offer MCP Skills on nas again' }));
+    await openTab(canvasElement, 'Network');
+    await expect(await canvas.findByRole('heading', { name: 'Dismissed servers' })).toBeVisible();
+    await userEvent.click(await canvas.findByRole('button', { name: 'Offer again: MCP Skills on nas' }));
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith('POST /api/discovery/dismissed', {
         key: discoveredServer().key,
         dismissed: false,
       }),
     );
-    await waitFor(() => expect(canvas.queryByRole('button', { name: 'Offer MCP Skills on nas again' })).toBeNull());
+    await waitFor(() => expect(canvas.queryByRole('button', { name: 'Offer again: MCP Skills on nas' })).toBeNull());
+  },
+};
+
+export const SaysWhenNoServerIsDismissed: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvasElement, 'Network');
+    await expect(await canvas.findByText('No dismissed servers.')).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
   },
 };
