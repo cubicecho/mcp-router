@@ -70,7 +70,7 @@ function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArg
             )}
           </form.Subscribe>
           <form.AppForm>
-            <form.SubmitButton {...RUN_SUBMIT} content="Run" pendingLabel="Running…" />
+            <form.SubmitButton {...RUN_SUBMIT} createLabel="Run" loadingLabel="Running…" />
           </form.AppForm>
         </>
       }

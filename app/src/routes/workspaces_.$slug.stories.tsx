@@ -34,7 +34,8 @@ export const WhileLoading: Story = {
   parameters: { api: { ...appRoutes(), [`GET ${WORKSPACE_ROUTE}`]: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole('status', { name: 'Loading' })).toBeVisible();
+    // The title's bar is the only loading state: the body draws no placeholder rows under it.
+    await expect(await canvas.findByRole('heading', { level: 1, name: 'Loading…' })).toBeInTheDocument();
     await expect(canvas.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
     // The way back does not wait for the answer.
     await expect(canvas.getByRole('link', { name: 'Back to workspaces' })).toBeVisible();

@@ -1,10 +1,10 @@
 import type { DiscoveredServer } from '@mcp-router/shared';
-import { EyeOffIcon } from 'lucide-react';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { EmptyState } from '@/components/empty-state';
 import { ListItem } from '@/components/list-item';
 import { Button } from '@/components/ui/button';
+import { EyeOff } from '@/components/ui/icons';
 import { useSetDismissed } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
@@ -30,7 +30,7 @@ export function DismissedServersCard({ servers, loading }: DismissedServersCardP
   return (
     <CardLayout
       level={2}
-      iconSlot={<EyeOffIcon />}
+      iconSlot={<EyeOff />}
       title="Dismissed servers"
       description="Servers found on your network that you dismissed. Offer one again to see it on the Servers page."
       loading={loading}

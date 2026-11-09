@@ -61,7 +61,7 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
                   />
                 ))}
                 <form.AppForm>
-                  <form.SubmitButton {...RUN_SUBMIT} content="Get" pendingLabel="Getting…" />
+                  <form.SubmitButton {...RUN_SUBMIT} createLabel="Get" loadingLabel="Getting…" />
                 </form.AppForm>
               </>
             }

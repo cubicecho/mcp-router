@@ -268,8 +268,9 @@ export function AddServerDialog({
             <form.SubmitButton
               form={FORM_ID}
               disabled={ready === false}
-              pendingLabel={isEdit ? 'Saving…' : 'Adding…'}
-              content={isEdit ? 'Save changes' : 'Add server'}
+              loadingLabel={isEdit ? 'Saving…' : 'Adding…'}
+              isEdit={isEdit}
+              createLabel="Add server"
             />
           </form.AppForm>
         </>

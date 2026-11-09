@@ -1,9 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
-import { LayersIcon, ServerIcon } from 'lucide-react';
 import { expect, fn, userEvent, within } from 'storybook/test';
 import { AppBarItem, SidebarItem } from '@/components/sidebar';
 import { Button } from '@/components/ui/button';
-import { Lock, Settings } from '@/components/ui/icons';
+import { Layers, Lock, Server, Settings } from '@/components/ui/icons';
 import { AppLayout } from './app-layout.tsx';
 
 const STATUS = '1/2 servers running';
@@ -20,14 +19,14 @@ const meta = {
   args: {
     sidebarNavSlot: (
       <>
-        <SidebarItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
-        <SidebarItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
+        <SidebarItem href="/" label="Servers" iconSlot={<Server />} active />
+        <SidebarItem href="/workspaces" label="Workspaces" iconSlot={<Layers />} />
       </>
     ),
     barNavSlot: (
       <>
-        <AppBarItem href="/" label="Servers" iconSlot={<ServerIcon />} active />
-        <AppBarItem href="/workspaces" label="Workspaces" iconSlot={<LayersIcon />} />
+        <AppBarItem href="/" label="Servers" iconSlot={<Server />} active />
+        <AppBarItem href="/workspaces" label="Workspaces" iconSlot={<Layers />} />
       </>
     ),
     status: STATUS,

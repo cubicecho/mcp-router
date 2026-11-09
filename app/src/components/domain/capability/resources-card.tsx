@@ -66,7 +66,7 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
                   }}
                 />
                 <form.AppForm>
-                  <form.SubmitButton {...RUN_SUBMIT} content="Read" pendingLabel="Reading…" />
+                  <form.SubmitButton {...RUN_SUBMIT} createLabel="Read" loadingLabel="Reading…" />
                 </form.AppForm>
               </>
             }

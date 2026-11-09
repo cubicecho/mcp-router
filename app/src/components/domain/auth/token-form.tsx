@@ -52,7 +52,7 @@ export function TokenForm({ onUnlock }: { onUnlock: (token: string) => void }) {
           <form.Subscribe selector={(state) => state.values.token.trim().length === 0}>
             {(empty) => (
               <form.AppForm>
-                <form.SubmitButton disabled={empty} pendingLabel="Unlocking…" content="Unlock" />
+                <form.SubmitButton disabled={empty} loadingLabel="Unlocking…" createLabel="Unlock" />
               </form.AppForm>
             )}
           </form.Subscribe>

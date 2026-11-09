@@ -1,6 +1,6 @@
 import { DiscoveredServerState } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { CompassIcon, ServerIcon } from 'lucide-react';
+import { CompassIcon } from 'lucide-react';
 import { useState } from 'react';
 import { FoundServersCard } from '@/components/domain/discovery/found-servers-card';
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
@@ -10,7 +10,7 @@ import { EmptyState } from '@/components/empty-state';
 import { LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
 import { Button } from '@/components/ui/button';
-import { Plus } from '@/components/ui/icons';
+import { Plus, Server } from '@/components/ui/icons';
 import { AGGREGATE_ENDPOINT_PATH, endpointUrl } from '@/lib/endpoint';
 import { useDiscovery, useServers } from '@/lib/queries';
 
@@ -47,7 +47,7 @@ function ServersPage() {
             count={data?.length ?? 0}
             emptySlot={
               <EmptyState
-                iconSlot={<ServerIcon />}
+                iconSlot={<Server />}
                 title="No servers installed yet"
                 description="Add one by hand, or install one from a registry."
                 actionSlot={

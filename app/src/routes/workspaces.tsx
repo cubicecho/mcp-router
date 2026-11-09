@@ -1,6 +1,5 @@
 import type { WorkspaceStatus } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
-import { LayersIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -11,7 +10,7 @@ import { PageLayout } from '@/components/page-layout';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
-import { Pencil, Plus, Trash2 } from '@/components/ui/icons';
+import { Layers, Pencil, Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
@@ -49,7 +48,7 @@ function WorkspacesPage() {
             count={data?.length ?? 0}
             emptySlot={
               <EmptyState
-                iconSlot={<LayersIcon />}
+                iconSlot={<Layers />}
                 title="No workspaces yet"
                 description="Create a workspace to expose a tailored aggregate endpoint for a specific client or workspace."
                 actionSlot={

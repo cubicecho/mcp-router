@@ -79,7 +79,7 @@ function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
       <form.Subscribe selector={(state) => isChanged(state.values.minutes)}>
         {(changed) => (
           <form.AppForm>
-            <form.SubmitButton size="sm" variant="outline" disabled={changed === false} content="Save" />
+            <form.SubmitButton size="sm" variant="outline" disabled={changed === false} createLabel="Save" />
           </form.AppForm>
         )}
       </form.Subscribe>
@@ -158,7 +158,7 @@ function PublicUrlEditor({ current }: { current?: string }) {
               variant="outline"
               disabled={changed === false}
               aria-label="Save public URL"
-              content="Save"
+              createLabel="Save"
             />
           </form.AppForm>
         )}
@@ -269,7 +269,6 @@ function SettingsPage() {
               level={2}
               title="Router"
               loading={status.isPending}
-              contentClassName="gap-4"
               contentSlot={
                 status.error ? (
                   <LoadError error={status.error} onRetry={() => status.refetch()} what="status" />

@@ -95,7 +95,7 @@ export function AddFoundServerDialog({ server, open, onOpenChange }: AddFoundSer
         <>
           <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
-            <form.SubmitButton form={FORM_ID} content="Add server" pendingLabel="Adding…" />
+            <form.SubmitButton form={FORM_ID} createLabel="Add server" loadingLabel="Adding…" />
           </form.AppForm>
         </>
       )}

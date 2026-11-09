@@ -119,7 +119,11 @@ export function PackageInstallCard({
               </form.Field>
             </div>
             <form.AppForm>
-              <form.SubmitButton pendingLabel="Installing…" disabled={!pkg.trim() || !nameValid} content="Install" />
+              <form.SubmitButton
+                loadingLabel="Installing…"
+                disabled={!pkg.trim() || !nameValid}
+                createLabel="Install"
+              />
             </form.AppForm>
           </div>
         </form>
