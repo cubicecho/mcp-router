@@ -102,7 +102,15 @@ function ServerDetailPage() {
       loading={query.isPending}
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <LoadState query={query} what="server" record={server} notFoundLabel="Server not found" level={2} rows={1} />
+          <LoadState
+            query={query}
+            what="server"
+            record={server}
+            notFoundLabel="Server not found"
+            description="It may have been removed, or the link is old."
+            actionSlot={<Button variant="outline" content="Back to servers" linkSlot={<Link to="/" />} />}
+            level={2}
+          />
           {server && (
             <>
               <CardLayout
@@ -138,7 +146,6 @@ function ServerDetailPage() {
                     />
                   </span>
                 }
-                contentClassName="gap-4"
                 contentSlot={
                   <>
                     <PropertyList

@@ -79,7 +79,7 @@ function AddRegistryForm() {
             validators={{ onSubmit: ({ value }) => registryFieldError('url', value) }}
           />
           <form.AppForm>
-            <form.SubmitButton className="mt-[1.375rem]" pendingLabel="Adding…" iconSlot={<Plus />} content="Add" />
+            <form.SubmitButton className="mt-[1.375rem]" loadingLabel="Adding…" iconSlot={<Plus />} createLabel="Add" />
           </form.AppForm>
         </form>
       }
@@ -103,7 +103,7 @@ function RegistriesPage() {
       description="Sources to browse and install MCP servers from."
       contentSlot={
         <div className="flex flex-col gap-6 py-4 md:py-6">
-          <LoadState query={registries} what="registries" count={data ? 1 : 0} />
+          <LoadState query={registries} what="registries" record={data} notFoundLabel="No registries" level={2} />
 
           {data && (
             <Table>

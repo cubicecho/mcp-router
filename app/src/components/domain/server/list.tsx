@@ -1,6 +1,6 @@
 import { ServerRuntimeState, type ServerStatus } from '@mcp-router/shared';
 import { Link, useNavigate } from '@tanstack/react-router';
-import { PlugZapIcon, RotateCwIcon } from 'lucide-react';
+import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
@@ -9,7 +9,7 @@ import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { EmptyState } from '@/components/empty-state';
 import { Button } from '@/components/ui/button';
 import { ConfirmDialog } from '@/components/ui/confirm-dialog';
-import { Ellipsis, Pencil, Trash2 } from '@/components/ui/icons';
+import { Ellipsis, Pencil, PlugZap, Trash2 } from '@/components/ui/icons';
 import { Menu, MenuContent, MenuItem, MenuSeparator, MenuTrigger } from '@/components/ui/menu';
 import { SearchInput } from '@/components/ui/search-input';
 import { Switch } from '@/components/ui/switch';
@@ -136,7 +136,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             />
           </MenuTrigger>
           <MenuContent align="end">
-            <MenuItem iconSlot={<PlugZapIcon />} label="Test connection" onSelect={handleTest} />
+            <MenuItem iconSlot={<PlugZap />} label="Test connection" onSelect={handleTest} />
             <MenuItem iconSlot={<Pencil />} label="Edit" onSelect={() => onEdit(server)} />
             <MenuItem
               iconSlot={<RotateCwIcon />}

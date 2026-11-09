@@ -1,11 +1,11 @@
 import { useQueryClient } from '@tanstack/react-query';
 import { createLink, createRootRoute, Outlet, useLocation } from '@tanstack/react-router';
-import { CompassIcon, LayersIcon, ServerIcon } from 'lucide-react';
+import { CompassIcon } from 'lucide-react';
 import { TokenForm } from '@/components/domain/auth/token-form';
 import { AppLayout } from '@/components/layouts/app-layout';
 import { AppBarItem, SidebarItem } from '@/components/sidebar';
 import { Button } from '@/components/ui/button';
-import { Library, Lock, Settings } from '@/components/ui/icons';
+import { Layers, Library, Lock, Server, Settings } from '@/components/ui/icons';
 import { Toaster } from '@/components/ui/sonner';
 import { useThemePreference } from '@/components/ui/theme-preference';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -22,9 +22,9 @@ export const Route = createRootRoute({
  * narrow-screen bar has no foot, so it shows every place.
  */
 const NAV_ITEMS = [
-  { to: '/', label: 'Servers', icon: ServerIcon, placement: 'main' },
+  { to: '/', label: 'Servers', icon: Server, placement: 'main' },
   { to: '/browse', label: 'Browse', icon: CompassIcon, placement: 'main' },
-  { to: '/workspaces', label: 'Workspaces', icon: LayersIcon, placement: 'main' },
+  { to: '/workspaces', label: 'Workspaces', icon: Layers, placement: 'main' },
   { to: '/registries', label: 'Registries', icon: Library, placement: 'main' },
   { to: '/settings', label: 'Settings', icon: Settings, placement: 'footer' },
 ] as const;

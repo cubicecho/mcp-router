@@ -100,7 +100,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
         <>
           <Button type="button" variant="outline" onClick={close} content="Cancel" />
           <form.AppForm>
-            <form.SubmitButton form={FORM_ID} pendingLabel="Installing…" content="Install" />
+            <form.SubmitButton form={FORM_ID} loadingLabel="Installing…" createLabel="Install" />
           </form.AppForm>
         </>
       )}
