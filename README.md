@@ -154,6 +154,10 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   // download the package before it says anything. Takes effect on the next
   // connect after a reload; a running child is not bounced for it.
   "connectTimeoutMs": 60000,
+  // How long one proxied tools/call may run before the router gives up on it,
+  // in milliseconds. Per-server callTimeoutMs overrides this. Long by default:
+  // the client's own timeout and its cancellation both reach the server.
+  "callTimeoutMs": 600000,
   // The router's address as your browser and a remote server's login reach it.
   // Used for OAuth sign-in (see "Remote servers that need a login"). Omit to use
   // the address the web UI is open at; set it behind a proxy that rewrites hosts.
@@ -250,7 +254,9 @@ A local stdio server installed from a registry:
     }
   },
   // Optional override of the global stdio idle shutdown (ms).
-  "idleTimeoutMs": 600000
+  "idleTimeoutMs": 600000,
+  // Optional override of the global proxied tools/call timeout (ms).
+  "callTimeoutMs": 1800000
 }
 ```
 

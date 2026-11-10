@@ -40,13 +40,13 @@ mcp-router/
 ### Flat config files (`DATA_DIR/config`, default `./data/config`)
 
 - `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
-  connectTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
+  connectTimeoutMs, default callTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
   callbacks; the UI's origin when unset)
 - `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
 - `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
   command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
-  from the registry), idleTimeoutMs, oauth (a remote's sign-in: typed-in
+  from the registry), idleTimeoutMs, callTimeoutMs, oauth (a remote's sign-in: typed-in
   clientId/clientSecret/scope, and the router-written clientInformation,
   redirectUri, tokens, tokensSavedAt — plaintext, never sent to the UI). npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
@@ -118,10 +118,11 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   forwarded 1:1; downstream `list_changed` / `resources/updated` / log
   notifications relayed back
 - `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tools,
-  resources, resource templates, and prompts namespaced `<server>__`; calls,
-  completions, and subscriptions strip the prefix and route to the owning
-  downstream client; `logging/setLevel` fans out to every member; relayed
-  notifications are re-namespaced
+  resources, resource templates, and prompts namespaced `<server>__`, and so are
+  the `resource_link` and embedded-resource URIs in a tool result, so a link
+  reads back through the aggregate; calls, completions, and subscriptions strip
+  the prefix and route to the owning downstream client; `logging/setLevel` fans
+  out to every member; relayed notifications are re-namespaced
 - `POST/GET/DELETE /mcp/w/<slug>` — a workspace's custom aggregate: same
   `<server>__` namespacing, but only over that workspace's enabled members, each
   served by its own isolated (override-applied) downstream instance
@@ -151,6 +152,29 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   session's requests and its GET SSE stream (which carries relayed
   notifications); a non-initialize request with no session id → 400, an
   unknown/expired session id → 404
+- **A proxied `tools/call` carries the caller's request options.** The upstream
+  request's abort signal goes downstream, so a client that cancels stops the
+  call there too; the timeout is the server's `callTimeoutMs`, else
+  `settings.callTimeoutMs` (default 10 min) — the value written onto its pool row
+  too — rather than the SDK's 60s, which cut long tools off only when called
+  through the router. A caller that sent a `progressToken` gets the downstream's
+  progress re-sent under its own token. It goes out on the session's GET stream,
+  not tied to the request, because sessions answer in JSON and a JSON-mode
+  transport drops a request-tied notification; the SDK client matches progress
+  by token, so it arrives — when that stream is open, like every relayed
+  notification
+- **Subscriptions are counted per downstream URI.** Every session reaching an
+  instance shares its one connection, and so its subscriptions: forwarded as-is,
+  the second session to unsubscribe ended the first one's too.
+  `SubscriptionLedger` (`gateway/subscriptions.ts`), held by the manager so the
+  1:1 and aggregate endpoints count together, forwards an unsubscribe only when
+  the last session holding the URI lets go, and a closing session lets go of
+  everything it held (unsubscribing only an instance that is still connected). A
+  subscribe is forwarded every time: the ledger cannot see a respawn, and a
+  repeat subscribe is harmless where a skipped one is lost
+- `logging/setLevel` is still per downstream connection (the last session to
+  set it wins for all) and `notifications/message` still goes to every session
+  on the endpoint; per-call attribution waits on cubicecho/agent-mcp-pool#109
 - Reverse-direction capabilities (sampling / elicitation / roots) are **not**
   offered downstream — see Phase 4 F7 for the shared-client blocker
 - Disabled servers 404. Disabled or unknown workspaces 404. Auth failures 401

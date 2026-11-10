@@ -596,6 +596,97 @@ describe('MCP session lifecycle', () => {
     }
   });
 
+  describe('relaying a downstream through the aggregate', () => {
+    let httpServer: ReturnType<typeof createServer>;
+    let port: number;
+
+    beforeEach(async () => {
+      await store.saveServer(
+        serverConfigSchema.parse({
+          name: 'relay',
+          source: { type: 'npm', package: 'none' },
+          transport: {
+            type: 'stdio',
+            command: process.execPath,
+            args: [path.join(import.meta.dirname, '../../gateway/__tests__/fixtures/relay-server.ts')],
+          },
+        }),
+      );
+      await manager.reconcile(store.getServers(), store.getWorkspaces());
+      httpServer = createServer(app);
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      port = (httpServer.address() as AddressInfo).port;
+    });
+
+    afterEach(async () => {
+      httpServer.closeAllConnections();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    const open = async () => {
+      const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      });
+      const client = new Client({ name: 'test-client', version: '1.0.0' });
+      await client.connect(transport);
+      return { client, transport };
+    };
+
+    /** What the downstream's one connection is subscribed to, asked of the child itself. */
+    const subscriptions = async (client: Client): Promise<string[]> => {
+      const result = await client.callTool({ name: 'relay__subscriptions', arguments: {} });
+      const [block] = result.content as Array<{ text: string }>;
+      return JSON.parse(block?.text ?? '[]');
+    };
+
+    it("relays the downstream's progress to the caller, under the caller's token", async () => {
+      const { client } = await open();
+      try {
+        // Asked again until the session's GET stream, which progress arrives on, is open: progress sent
+        // before a client's GET lands is dropped, as any relayed notification is.
+        await vi.waitFor(async () => {
+          const seen: number[] = [];
+          const result = await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+            onprogress: ({ progress }) => seen.push(progress),
+          });
+          expect(result.content).toEqual([{ type: 'text', text: 'done' }]);
+          expect(seen).toEqual([1, 2]);
+        });
+      } finally {
+        await client.close();
+      }
+    });
+
+    it('hands out resource links the aggregate can read back', async () => {
+      const { client } = await open();
+      try {
+        const result = await client.callTool({ name: 'relay__link', arguments: {} });
+        expect(result.content).toEqual([{ type: 'resource_link', uri: 'relay__relay://note', name: 'note' }]);
+        const read = await client.readResource({ uri: 'relay__relay://note' });
+        expect(read.contents).toEqual([{ uri: 'relay://note', text: 'hello' }]);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("keeps one session's subscription when another unsubscribes, and ends it when the last one closes", async () => {
+      const first = await open();
+      const second = await open();
+      try {
+        await first.client.subscribeResource({ uri: 'relay__relay://note' });
+        await second.client.subscribeResource({ uri: 'relay__relay://note' });
+        await first.client.unsubscribeResource({ uri: 'relay__relay://note' });
+        expect(await subscriptions(first.client)).toEqual(['relay://note']);
+
+        // Ending the session is letting go: the downstream is told once nobody is left.
+        await second.transport.terminateSession();
+        await vi.waitFor(async () => expect(await subscriptions(first.client)).toEqual([]));
+      } finally {
+        await Promise.all([first.client.close(), second.client.close()]);
+      }
+    });
+  });
+
   it('rejects a non-initialize request that carries no session id', async () => {
     const res = await asEventStream(authed(request(app).post('/mcp'))).send({
       jsonrpc: '2.0',
