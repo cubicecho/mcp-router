@@ -115,6 +115,26 @@ describe('GatewayManager activity log', () => {
   });
 });
 
+describe('GatewayManager call timeout', () => {
+  it("resolves a server's own call timeout over the router's, and a workspace instance's from its base", async () => {
+    const current = settingsFileSchema.parse({ callTimeoutMs: 120_000 });
+    const manager = new GatewayManager(() => current);
+    await manager.reconcile(
+      [remoteConfig('plain'), serverConfigSchema.parse({ ...remoteConfig('slow'), callTimeoutMs: 900_000 })],
+      [workspaceConfigSchema.parse({ name: 'Acme', slug: 'acme', members: { slow: {} } })],
+    );
+
+    expect(manager.callTimeoutMs('plain')).toBe(120_000);
+    expect(manager.callTimeoutMs('slow')).toBe(900_000);
+    expect(manager.callTimeoutMs(workspaceInstanceKey('acme', 'slow'))).toBe(900_000);
+    await manager.stopAll();
+  });
+
+  it('defaults to well past the SDK 60s that cut long tools off', () => {
+    expect(settingsFileSchema.parse({}).callTimeoutMs).toBeGreaterThan(60_000);
+  });
+});
+
 describe('GatewayManager workspaces', () => {
   const stdioConfig = (name: string) =>
     serverConfigSchema.parse({

@@ -46,6 +46,10 @@ export function scopedDeps(manager: GatewayManager, scope: EndpointScope): Aggre
     withClient: (name, run) => manager.withClient(scope.keyFor(name), run),
     recordToolCount: (name, count) => manager.recordToolCount(scope.keyFor(name), count),
     recordActivity: (name, record) => manager.recordActivity(scope.keyFor(name), record),
+    callTimeoutMs: (name) => manager.callTimeoutMs(scope.keyFor(name)),
+    holdSubscription: (name, uri, session) => manager.holdSubscription(scope.keyFor(name), uri, session),
+    releaseSubscription: (name, uri, session) => manager.releaseSubscription(scope.keyFor(name), uri, session),
+    releaseSubscriptions: (session) => manager.releaseSubscriptions(session),
     serverNames: () => scope.names(),
   };
 }

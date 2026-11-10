@@ -2,13 +2,15 @@ import type { ActivityEntry } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { InMemoryTransport } from '@modelcontextprotocol/sdk/inMemory.js';
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
-import { ErrorCode, McpError } from '@modelcontextprotocol/sdk/types.js';
-import { describe, expect, it } from 'vitest';
+import type { RequestOptions } from '@modelcontextprotocol/sdk/shared/protocol.js';
+import { ErrorCode, McpError, type Progress } from '@modelcontextprotocol/sdk/types.js';
+import { describe, expect, it, vi } from 'vitest';
 import { upstreamFailed } from '../../core/errors.ts';
 import { type AggregateDeps, createAggregateServer } from '../aggregate-proxy.ts';
 import { proxyCapabilities } from '../capability.ts';
 import { createProxyServer } from '../direct-proxy.ts';
 import { mergeInstructions } from '../instructions.ts';
+import { SubscriptionLedger } from '../subscriptions.ts';
 import type { ProxyDeps } from '../track.ts';
 
 type RecordedActivity = ActivityEntry & { name: string };
@@ -35,10 +37,18 @@ function collector() {
 
 /** Minimal ProxyDeps over a stubbed downstream client; override pieces per test. */
 function stubDeps(fakeClient: unknown, overrides: Partial<ProxyDeps> = {}): ProxyDeps {
+  // A ledger of its own, so the sessions of one test count against each other and no other test's.
+  const ledger = new SubscriptionLedger();
   return {
     withClient: async (_name, run) => run(fakeClient as Client),
     recordToolCount: () => {},
     recordActivity: () => {},
+    callTimeoutMs: () => 60_000,
+    holdSubscription: (name, uri, session) => ledger.hold(name, uri, session),
+    releaseSubscription: (name, uri, session) => ledger.release(name, uri, session),
+    releaseSubscriptions: (session) => {
+      ledger.releaseAll(session);
+    },
     ...overrides,
   };
 }
@@ -399,6 +409,211 @@ describe('resource subscriptions', () => {
     await close();
 
     expect(seen).toBe('file:///x');
+  });
+  it('keeps a subscription another session still holds when one session unsubscribes', async () => {
+    const calls: Array<[string, string]> = [];
+    const fakeClient = {
+      subscribeResource: async (p: { uri: string }) => {
+        calls.push(['sub', p.uri]);
+        return {};
+      },
+      unsubscribeResource: async (p: { uri: string }) => {
+        calls.push(['unsub', p.uri]);
+        return {};
+      },
+    };
+    // One deps for both sessions: they share a downstream connection, as two clients of /mcp do.
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['alpha'] };
+    const first = await connectAggregate(deps);
+    const second = await connectAggregate(deps);
+
+    await first.client.subscribeResource({ uri: 'alpha__file:///x' });
+    await second.client.subscribeResource({ uri: 'alpha__file:///x' });
+    await first.client.unsubscribeResource({ uri: 'alpha__file:///x' });
+    // The second session is still subscribed, so the downstream has not been told.
+    expect(calls).toEqual([
+      ['sub', 'file:///x'],
+      ['sub', 'file:///x'],
+    ]);
+
+    await second.client.unsubscribeResource({ uri: 'alpha__file:///x' });
+    await Promise.all([first.close(), second.close()]);
+
+    expect(calls.at(-1)).toEqual(['unsub', 'file:///x']);
+  });
+
+  it('counts the per-server endpoint and the aggregate against one another', async () => {
+    const calls: string[] = [];
+    const fakeClient = {
+      subscribeResource: async () => {
+        calls.push('sub');
+        return {};
+      },
+      unsubscribeResource: async () => {
+        calls.push('unsub');
+        return {};
+      },
+    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['demo'] };
+    const direct = await connectProxy(deps);
+    const aggregate = await connectAggregate(deps);
+
+    await direct.client.subscribeResource({ uri: 'file:///x' });
+    await aggregate.client.subscribeResource({ uri: 'demo__file:///x' });
+    await direct.client.unsubscribeResource({ uri: 'file:///x' });
+    await Promise.all([direct.close(), aggregate.close()]);
+
+    expect(calls).toEqual(['sub', 'sub']);
+  });
+
+  it("lets go of a closed session's subscriptions, so the last holder's unsubscribe reaches the downstream", async () => {
+    const calls: string[] = [];
+    const fakeClient = {
+      subscribeResource: async () => {
+        calls.push('sub');
+        return {};
+      },
+      unsubscribeResource: async () => {
+        calls.push('unsub');
+        return {};
+      },
+    };
+    const released: object[] = [];
+    const base = stubDeps(fakeClient);
+    const deps: AggregateDeps = {
+      ...base,
+      releaseSubscriptions: (session) => {
+        released.push(session);
+        base.releaseSubscriptions(session);
+      },
+      serverNames: () => ['alpha'],
+    };
+    const gone = await connectAggregate(deps);
+    const staying = await connectAggregate(deps);
+
+    await gone.client.subscribeResource({ uri: 'alpha__file:///x' });
+    await staying.client.subscribeResource({ uri: 'alpha__file:///x' });
+    await gone.close();
+    await staying.client.unsubscribeResource({ uri: 'alpha__file:///x' });
+    await staying.close();
+
+    // Each session let go of what it held as it closed (the in-memory pair reports a close from both ends).
+    expect(new Set(released).size).toBe(2);
+    expect(calls).toEqual(['sub', 'sub', 'unsub']);
+  });
+});
+
+describe('proxied tool calls', () => {
+  it("sends the call downstream with the caller's abort signal and the server's call timeout", async () => {
+    let options: RequestOptions | undefined;
+    const fakeClient = {
+      callTool: async (_params: unknown, _schema: unknown, opts: RequestOptions) => {
+        options = opts;
+        return { content: [] };
+      },
+    };
+    const deps: AggregateDeps = {
+      ...stubDeps(fakeClient, { callTimeoutMs: (name) => (name === 'alpha' ? 900_000 : 1) }),
+      serverNames: () => ['alpha'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    await client.callTool({ name: 'alpha__slow' });
+    await close();
+
+    expect(options?.timeout).toBe(900_000);
+    expect(options?.signal).toBeInstanceOf(AbortSignal);
+    // The caller asked for no progress, so none is asked of the downstream.
+    expect(options?.onprogress).toBeUndefined();
+  });
+
+  it('cancels the downstream call when the caller cancels', async () => {
+    let downstream: AbortSignal | undefined;
+    let started: () => void = () => {};
+    const running = new Promise<void>((resolve) => {
+      started = resolve;
+    });
+    const fakeClient = {
+      callTool: (_params: unknown, _schema: unknown, opts: RequestOptions) =>
+        new Promise((_resolve, reject) => {
+          downstream = opts.signal;
+          opts.signal?.addEventListener('abort', () => reject(new Error('aborted')));
+          started();
+        }),
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    const caller = new AbortController();
+    const call = client.callTool({ name: 'slow' }, undefined, { signal: caller.signal });
+    await running;
+    caller.abort();
+
+    await expect(call).rejects.toThrow();
+    await vi.waitFor(() => expect(downstream?.aborted).toBe(true));
+    await close();
+  });
+
+  it("relays the downstream's progress to the caller", async () => {
+    const fakeClient = {
+      callTool: async (_params: unknown, _schema: unknown, opts: RequestOptions) => {
+        opts.onprogress?.({ progress: 1, total: 2, message: 'half' });
+        opts.onprogress?.({ progress: 2, total: 2 });
+        return { content: [{ type: 'text', text: 'done' }] };
+      },
+    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['alpha'] };
+    const { client, close } = await connectAggregate(deps);
+
+    const seen: Progress[] = [];
+    await client.callTool({ name: 'alpha__slow' }, undefined, { onprogress: (progress) => seen.push(progress) });
+    await vi.waitFor(() => expect(seen).toHaveLength(2));
+    await close();
+
+    expect(seen).toEqual([
+      { progress: 1, total: 2, message: 'half' },
+      { progress: 2, total: 2 },
+    ]);
+  });
+
+  it('namespaces the resource links in a tool result on the aggregate, so reading one routes back', async () => {
+    let read: string | undefined;
+    const fakeClient = {
+      callTool: async () => ({
+        content: [
+          { type: 'text', text: 'wrote two notes' },
+          { type: 'resource_link', uri: 'file:///a', name: 'a' },
+          { type: 'resource', resource: { uri: 'file:///b', text: 'b' } },
+        ],
+      }),
+      readResource: async (p: { uri: string }) => {
+        read = p.uri;
+        return { contents: [{ uri: p.uri, text: 'a' }] };
+      },
+    };
+    const deps: AggregateDeps = { ...stubDeps(fakeClient), serverNames: () => ['alpha'] };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.callTool({ name: 'alpha__write' });
+    const [text, link, embedded] = result.content as Array<Record<string, unknown>>;
+    expect(text).toEqual({ type: 'text', text: 'wrote two notes' });
+    expect(link).toEqual({ type: 'resource_link', uri: 'alpha__file:///a', name: 'a' });
+    expect(embedded).toEqual({ type: 'resource', resource: { uri: 'alpha__file:///b', text: 'b' } });
+
+    await client.readResource({ uri: String(link?.uri) });
+    await close();
+    expect(read).toBe('file:///a');
+  });
+
+  it("leaves resource links alone on the per-server endpoint, whose URIs are the server's own", async () => {
+    const fakeClient = {
+      callTool: async () => ({ content: [{ type: 'resource_link', uri: 'file:///a', name: 'a' }] }),
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient));
+
+    const result = await client.callTool({ name: 'write' });
+    await close();
+
+    expect(result.content).toEqual([{ type: 'resource_link', uri: 'file:///a', name: 'a' }]);
   });
 });
 

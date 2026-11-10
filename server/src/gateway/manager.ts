@@ -22,13 +22,14 @@ import {
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
-import { notFound, unavailable, upstreamFailed } from '../core/errors.ts';
+import { errorMessage, notFound, unavailable, upstreamFailed } from '../core/errors.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 import { outboundFetch } from '../http/tuning.ts';
 import type { RemoteAuth } from '../oauth/service.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
 import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './instance-key.ts';
+import { SubscriptionLedger } from './subscriptions.ts';
 
 /**
  * What the router keeps per managed instance, beside what the pool holds.
@@ -157,7 +158,21 @@ function toPoolConfig(
     // Bounds spawn plus the initialize handshake, so a server that starts and
     // never speaks fails the request that woke it.
     connectTimeoutMs: settings.connectTimeoutMs,
+    // Never read by the pool here, since the proxies call through `use()`; set so
+    // the row says what the proxies send (see `GatewayManager.callTimeoutMs`).
+    callTimeoutMs: callTimeoutFor(config, settings),
   };
+}
+
+/**
+ * Resolves how long one proxied `tools/call` to an instance may take.
+ *
+ * @param config - The instance's effective config; a workspace instance carries its base server's override.
+ * @param settings - Supplies the default.
+ * @returns The server's own `callTimeoutMs`, else the router's, in ms.
+ */
+function callTimeoutFor(config: ServerConfig, settings: SettingsFile): number {
+  return config.callTimeoutMs ?? settings.callTimeoutMs;
 }
 
 /**
@@ -206,6 +221,7 @@ export class GatewayManager {
   private readonly getSettings: () => SettingsFile;
   private readonly meta = new Map<InstanceKey, ServerMeta>();
   private readonly activity = new ActivityLog();
+  private readonly subscriptions = new SubscriptionLedger();
   private readonly remoteAuth?: RemoteAuth;
 
   /**
@@ -265,6 +281,7 @@ export class GatewayManager {
       if (!next) {
         this.meta.delete(key);
         this.activity.clear(key);
+        this.subscriptions.forget(key);
         continue;
       }
       if (needsRestart(meta.config, next)) {
@@ -346,6 +363,72 @@ export class GatewayManager {
     } catch (cause) {
       // Only the pool's own refusals are rewritten; whatever `run` rejected with is the caller's.
       this.fail(key, cause);
+    }
+  }
+
+  /**
+   * Resolves how long one proxied `tools/call` to an instance may take.
+   *
+   * @param key - The instance.
+   * @returns Its server's `callTimeoutMs`, else the router's; the router's for an unknown instance.
+   *
+   * @remarks
+   * Read at call time, from the settings as they stand, so an edited timeout applies to the next call.
+   */
+  callTimeoutMs(key: InstanceKey): number {
+    const settings = this.getSettings();
+    const meta = this.meta.get(key);
+    return meta ? callTimeoutFor(meta.config, settings) : settings.callTimeoutMs;
+  }
+
+  /**
+   * Notes that a session holds a subscription on an instance.
+   *
+   * @param key - The instance subscribed on.
+   * @param uri - The URI as the downstream knows it.
+   * @param session - The holder, for as long as the session lives.
+   */
+  holdSubscription(key: InstanceKey, uri: string, session: object): void {
+    this.subscriptions.hold(key, uri, session);
+  }
+
+  /**
+   * Lets go of a session's subscription on an instance.
+   *
+   * @param key - The instance.
+   * @param uri - The URI as the downstream knows it.
+   * @param session - The holder.
+   * @returns True when no session holds the URI any longer, so the unsubscribe should be forwarded.
+   */
+  releaseSubscription(key: InstanceKey, uri: string, session: object): boolean {
+    return this.subscriptions.release(key, uri, session);
+  }
+
+  /**
+   * Lets go of everything a closing session held, unsubscribing downstream from what it was the last holder of.
+   *
+   * @param session - The holder.
+   *
+   * @remarks
+   * Best-effort and not awaited: the session is already gone, so a failure has nobody to answer and is logged. An
+   * instance that is not connected is left alone, since spawning a child to unsubscribe it from what a respawn
+   * already forgot would be a cost for nothing.
+   */
+  releaseSubscriptions(session: object): void {
+    const freed = this.subscriptions.releaseAll(session);
+    if (freed.length === 0) {
+      return;
+    }
+    const state = this.connectionState();
+    for (const { key, uri } of freed) {
+      if (state.get(key)?.status !== 'ready') {
+        continue;
+      }
+      this.pool
+        .use(key, (client) => client.unsubscribeResource({ uri }))
+        .catch((err: unknown) => {
+          console.warn(`[gateway] failed to unsubscribe "${key}" from "${uri}": ${errorMessage(err)}`);
+        });
     }
   }
 

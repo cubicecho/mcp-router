@@ -15,6 +15,7 @@ import {
   UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { SERVER_VERSION } from '../core/version.ts';
+import { callOptions } from './call-options.ts';
 import { emptyOnMissing, proxyCapabilities } from './capability.ts';
 import type { Handshake } from './handshake.ts';
 import { McpMethod } from './mcp-method.ts';
@@ -83,8 +84,10 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
       ),
     );
 
-    server.setRequestHandler(CallToolRequestSchema, async (req) =>
-      targetedCall(McpMethod.ToolsCall, req.params.name, req.params, (c) => c.callTool(req.params)),
+    server.setRequestHandler(CallToolRequestSchema, async (req, extra) =>
+      targetedCall(McpMethod.ToolsCall, req.params.name, req.params, (c) =>
+        c.callTool(req.params, undefined, callOptions(server, extra, deps.callTimeoutMs(name))),
+      ),
     );
   }
 
@@ -107,15 +110,21 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
   // Only where the downstream said it can: a subscribe to a server that cannot
   // is a request that exists to fail.
   if (advertised.resources?.subscribe) {
+    // Counted with the aggregate's: both reach the same downstream connection.
     server.setRequestHandler(SubscribeRequestSchema, async (req) =>
-      targetedCall(McpMethod.ResourcesSubscribe, req.params.uri, req.params, (c) => c.subscribeResource(req.params)),
+      targetedCall(McpMethod.ResourcesSubscribe, req.params.uri, req.params, async (c) => {
+        const result = await c.subscribeResource(req.params);
+        deps.holdSubscription(name, req.params.uri, server);
+        return result;
+      }),
     );
 
     server.setRequestHandler(UnsubscribeRequestSchema, async (req) =>
-      targetedCall(McpMethod.ResourcesUnsubscribe, req.params.uri, req.params, (c) =>
-        c.unsubscribeResource(req.params),
+      targetedCall(McpMethod.ResourcesUnsubscribe, req.params.uri, req.params, async (c) =>
+        deps.releaseSubscription(name, req.params.uri, server) ? c.unsubscribeResource(req.params) : {},
       ),
     );
+    server.onclose = () => deps.releaseSubscriptions(server);
   }
 
   if (advertised.prompts) {

@@ -27,6 +27,14 @@ export interface ProxyDeps {
   recordToolCount: (name: string, count: number) => void;
   /** Writes an entry to the named server's activity log. */
   recordActivity: (name: string, entry: ActivityRecord) => void;
+  /** How long one `tools/call` to the named server may take, in ms. */
+  callTimeoutMs: (name: string) => number;
+  /** Notes that `session` holds a subscription to `uri` on the named server (see `SubscriptionLedger`). */
+  holdSubscription: (name: string, uri: string, session: object) => void;
+  /** Lets go of one; true when nobody holds `uri` any longer, which is when the downstream should be told. */
+  releaseSubscription: (name: string, uri: string, session: object) => boolean;
+  /** Lets go of everything `session` holds as it closes, unsubscribing downstream from what nobody else does. */
+  releaseSubscriptions: (session: object) => void;
 }
 
 /**

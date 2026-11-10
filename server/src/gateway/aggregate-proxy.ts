@@ -18,11 +18,13 @@ import {
   UnsubscribeRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import { SERVER_VERSION } from '../core/version.ts';
+import { callOptions } from './call-options.ts';
 import { emptyOnMissing, PROXY_CAPABILITIES } from './capability.ts';
 import { collectFrom } from './fan-out.ts';
 import { McpMethod } from './mcp-method.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
 import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
+import { namespaceResultLinks } from './tool-result.ts';
 import { EMPTY_COMPLETION, type ProxyDeps, track } from './track.ts';
 
 /** What an aggregate proxy needs: the proxy deps, plus which servers it merges. */
@@ -39,8 +41,9 @@ export interface AggregateDeps extends ProxyDeps {
  * @returns The server, not yet connected to a transport.
  *
  * @remarks
- * Tool/prompt names and resource URIs are prefixed `<server>__`; calls strip the prefix and route to the owning
- * client. In a listing, a member that fails to connect or lacks the capability is skipped, not fatal.
+ * Tool/prompt names and resource URIs are prefixed `<server>__`, the resource links in a tool result included; calls
+ * strip the prefix and route to the owning client. In a listing, a member that fails to connect or lacks the
+ * capability is skipped, not fatal.
  */
 export function createAggregateServer(deps: AggregateDeps, instructions?: string): Server {
   const server = new Server(
@@ -71,7 +74,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
    * @param kind - What is being named ("tool", "resource", "prompt"), for the error message.
    * @param full - The namespaced name or URI as the client sent it.
    * @param strip - Rebuilds the request params around the un-prefixed name.
-   * @param run - The call, given the owning client and the rebuilt params.
+   * @param run - The call, given the owning client, the rebuilt params and the owning server's name.
    * @returns What `run` resolved to. Throws InvalidParams, unrecorded, when no exposed server owns the name.
    *
    * @remarks
@@ -83,14 +86,17 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     kind: string,
     full: string,
     strip: (name: string) => P,
-    run: (client: Client, params: P) => Promise<R>,
+    run: (client: Client, params: P, serverName: string) => Promise<R>,
   ): Promise<R> => {
     const { serverName, name } = route(full, kind);
     const params = strip(name);
     return track(deps, serverName, { via: CallVia.Aggregate, method, target: name, params }, () =>
-      deps.withClient(serverName, (client) => run(client, params)),
+      deps.withClient(serverName, (client) => run(client, params, serverName)),
     );
   };
+
+  // The session is the holder of its subscriptions; when it ends, so do they.
+  server.onclose = () => deps.releaseSubscriptions(server);
 
   server.setRequestHandler(ListToolsRequestSchema, async () => {
     const tools = await collect(McpMethod.ToolsList, async (client, name) => {
@@ -104,13 +110,17 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     return { tools };
   });
 
-  server.setRequestHandler(CallToolRequestSchema, async (req) =>
+  server.setRequestHandler(CallToolRequestSchema, async (req, extra) =>
     routedCall(
       McpMethod.ToolsCall,
       'tool',
       req.params.name,
       (name) => ({ ...req.params, name }),
-      (client, params) => client.callTool(params),
+      async (client, params, serverName) =>
+        namespaceResultLinks(
+          serverName,
+          await client.callTool(params, undefined, callOptions(server, extra, deps.callTimeoutMs(serverName))),
+        ),
     ),
   );
 
@@ -196,7 +206,11 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
       'resource',
       req.params.uri,
       (uri) => ({ ...req.params, uri }),
-      (client, params) => client.subscribeResource(params),
+      async (client, params, serverName) => {
+        const result = await client.subscribeResource(params);
+        deps.holdSubscription(serverName, params.uri, server);
+        return result;
+      },
     ),
   );
 
@@ -206,7 +220,10 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
       'resource',
       req.params.uri,
       (uri) => ({ ...req.params, uri }),
-      (client, params) => client.unsubscribeResource(params),
+      // Answered here while another session still holds the URI: the downstream
+      // connection is shared, and its subscription is theirs too.
+      async (client, params, serverName) =>
+        deps.releaseSubscription(serverName, params.uri, server) ? client.unsubscribeResource(params) : {},
     ),
   );
 
