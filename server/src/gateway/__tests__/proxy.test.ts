@@ -148,6 +148,20 @@ describe('proxy activity recording', () => {
     expect(activity[0]?.error).toContain('boom');
   });
 
+  it('records a failed tool that answered only in structuredContent with that content as its error', async () => {
+    const { activity, record } = collector();
+    const fakeClient = {
+      callTool: async () => ({ content: [], structuredContent: { reason: 'quota exceeded' }, isError: true }),
+    };
+    const { client, close } = await connectProxy(stubDeps(fakeClient, { recordActivity: record }));
+
+    await client.callTool({ name: 'echo', arguments: {} });
+    await close();
+
+    expect(activity[0]).toMatchObject({ method: 'tools/call', ok: false });
+    expect(activity[0]?.error).toContain('quota exceeded');
+  });
+
   it('serves a capability-less list as an empty result, resetting the tool count, without recording it', async () => {
     const { activity, record } = collector();
     const toolCounts: Record<string, number> = {};
@@ -281,6 +295,26 @@ describe('aggregate activity recording', () => {
     expect(activity).toHaveLength(1);
     expect(activity[0]).toMatchObject({ name: 'alpha', method: 'tools/list', via: 'aggregate', ok: false });
     expect(activity[0]?.error).toContain('repeated the tools/list cursor');
+  });
+
+  it('skips and records a downstream that repeats a resources/list cursor, rather than truncating it', async () => {
+    const { activity, record } = collector();
+    const loopingClient = {
+      listResources: async () => ({ resources: [{ uri: 'file:///again', name: 'again' }], nextCursor: 'same' }),
+    };
+    const deps: AggregateDeps = {
+      ...stubDeps(loopingClient, { recordActivity: record }),
+      serverNames: () => ['alpha'],
+    };
+    const { client, close } = await connectAggregate(deps);
+
+    const result = await client.listResources();
+    await close();
+
+    expect(result.resources).toEqual([]);
+    expect(activity).toHaveLength(1);
+    expect(activity[0]).toMatchObject({ name: 'alpha', method: 'resources/list', via: 'aggregate', ok: false });
+    expect(activity[0]?.error).toContain('repeated the resources/list cursor');
   });
 
   it('records a server that errors during the aggregate list fan-out, and still serves the rest', async () => {

@@ -26,7 +26,8 @@ Highlights:
   completions, logging, and resource subscriptions, plus downstream
   `list_changed` / resource-update / log notifications relayed over a stateful
   session; a dropped SSE stream resumes gap-free via `Last-Event-ID`
-  (reverse-direction sampling/elicitation/roots are not yet proxied)
+  (a downstream's elicitation is put to the session whose call asked; sampling
+  and roots are not yet proxied)
 - Single bearer token guards the management API and all MCP endpoints
 - Config is plain JSON under `DATA_DIR/config` — watched for changes, plus an
   explicit `POST /api/reload`

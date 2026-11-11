@@ -1,4 +1,4 @@
-import { listAllTools } from '@cubicecho/agent-mcp-pool';
+import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '@cubicecho/agent-mcp-pool';
 import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { Server } from '@modelcontextprotocol/sdk/server/index.js';
@@ -23,7 +23,6 @@ import { emptyOnMissing, PROXY_CAPABILITIES } from './capability.ts';
 import { collectFrom } from './fan-out.ts';
 import { McpMethod } from './mcp-method.ts';
 import { namespaceName, splitNamespacedName } from './naming.ts';
-import { listAllPrompts, listAllResources, listAllResourceTemplates } from './pagination.ts';
 import { namespaceResultLinks } from './tool-result.ts';
 import { EMPTY_COMPLETION, type ProxyDeps, track } from './track.ts';
 
@@ -57,7 +56,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
   // (re)connect and list_changed; see collectFrom for what that does and does
   // not record.
   const collect = <T>(method: string, fn: (client: Client, name: string) => Promise<T[]>): Promise<T[]> =>
-    collectFrom(deps.serverNames(), method, deps, fn);
+    collectFrom(deps.serverNames(), method, { ...deps, session: server }, fn);
 
   const route = (full: string, kind: string) => {
     const split = splitNamespacedName(full, deps.serverNames());
@@ -91,7 +90,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
     const { serverName, name } = route(full, kind);
     const params = strip(name);
     return track(deps, serverName, { via: CallVia.Aggregate, method, target: name, params }, () =>
-      deps.withClient(serverName, (client) => run(client, params, serverName)),
+      deps.withClient(serverName, (client) => run(client, params, serverName), server),
     );
   };
 
@@ -193,7 +192,7 @@ export function createAggregateServer(deps: AggregateDeps, instructions?: string
       { via: CallVia.Aggregate, method: McpMethod.CompletionComplete, target: full, params, failuresOnly: true },
       async () => {
         return (
-          (await emptyOnMissing(() => deps.withClient(serverName, (client) => client.complete(params)))) ??
+          (await emptyOnMissing(() => deps.withClient(serverName, (client) => client.complete(params), server))) ??
           EMPTY_COMPLETION
         );
       },

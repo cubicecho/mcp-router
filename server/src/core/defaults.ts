@@ -55,8 +55,6 @@ export interface GatewaySettings {
   maxBufferedEvents: number;
   /** Delay before TCP keepalive probes start on a held GET SSE stream, in ms. */
   streamKeepAliveMs: number;
-  /** Pages read from one paginated listing, against a downstream that never stops returning cursors. */
-  maxListPages: number;
 }
 
 /** The fixed gateway settings this build ships with. */
@@ -64,7 +62,6 @@ export const GATEWAY_DEFAULTS: Readonly<GatewaySettings> = Object.freeze({
   crashBackoffMs: 5_000,
   maxBufferedEvents: 256,
   streamKeepAliveMs: 60_000,
-  maxListPages: 100,
 });
 
 /** Settings for the in-memory activity log. */

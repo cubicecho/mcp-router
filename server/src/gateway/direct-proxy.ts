@@ -35,7 +35,7 @@ export function createProxyServer(name: string, deps: ProxyDeps, downstream: Han
     { name: `mcp-router/${name}`, version: SERVER_VERSION },
     { capabilities: advertised, instructions: downstream.instructions },
   );
-  const withClient = <R>(run: (client: Client) => Promise<R>) => deps.withClient(name, run);
+  const withClient = <R>(run: (client: Client) => Promise<R>) => deps.withClient(name, run, server);
 
   /**
    * Makes a call that names what it acts on: always recorded, under that target.

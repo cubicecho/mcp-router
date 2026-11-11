@@ -43,7 +43,7 @@ export function workspaceScope(slug: string, members: () => string[]): EndpointS
  */
 export function scopedDeps(manager: GatewayManager, scope: EndpointScope): AggregateDeps {
   return {
-    withClient: (name, run) => manager.withClient(scope.keyFor(name), run),
+    withClient: (name, run, session) => manager.withClient(scope.keyFor(name), run, session),
     recordToolCount: (name, count) => manager.recordToolCount(scope.keyFor(name), count),
     recordActivity: (name, record) => manager.recordActivity(scope.keyFor(name), record),
     callTimeoutMs: (name) => manager.callTimeoutMs(scope.keyFor(name)),
@@ -83,5 +83,5 @@ export function relayNotifications(manager: GatewayManager, scope: EndpointScope
     if (name !== undefined) {
       pushNotification(server, namespaceNotification(notification, name));
     }
-  });
+  }, server);
 }

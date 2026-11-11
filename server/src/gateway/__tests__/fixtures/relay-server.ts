@@ -1,5 +1,6 @@
 /**
- * A stdio MCP server for what a proxy relays beyond the request itself: progress, resource links, subscriptions.
+ * A stdio MCP server for what a proxy relays beyond the request itself: progress, resource links, subscriptions, log
+ * lines, and questions put back to the caller.
  *
  * Spawned as a real child, like `echo-server.ts`. It reports which URIs its one connection is subscribed to, which is
  * the only way a test can see what the router forwarded and what it kept back.
@@ -31,9 +32,22 @@ server.tool('subscriptions', 'Lists the URIs this connection is subscribed to.',
   content: [{ type: 'text' as const, text: JSON.stringify([...subscribed].sort()) }],
 }));
 
+server.tool('log', 'Logs one line, then finishes.', {}, async () => {
+  await server.server.sendLoggingMessage({ level: 'info', data: 'working' });
+  return { content: [{ type: 'text' as const, text: 'logged' }] };
+});
+
+server.tool('ask', 'Asks the caller for a name and answers with what came back.', {}, async () => {
+  const answer = await server.server.elicitInput({
+    message: 'Who is asking?',
+    requestedSchema: { type: 'object', properties: { name: { type: 'string' } }, required: ['name'] },
+  });
+  return { content: [{ type: 'text' as const, text: JSON.stringify(answer) }] };
+});
+
 server.resource('note', NOTE_URI, async (uri) => ({ contents: [{ uri: uri.href, text: 'hello' }] }));
 
-server.server.registerCapabilities({ resources: { subscribe: true } });
+server.server.registerCapabilities({ resources: { subscribe: true }, logging: {} });
 server.server.setRequestHandler(SubscribeRequestSchema, async (req) => {
   subscribed.add(req.params.uri);
   return {};

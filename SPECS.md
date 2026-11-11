@@ -173,10 +173,26 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   subscribe is forwarded every time: the ledger cannot see a respawn, and a
   repeat subscribe is harmless where a skipped one is lost
 - `logging/setLevel` is still per downstream connection (the last session to
-  set it wins for all) and `notifications/message` still goes to every session
-  on the endpoint; per-call attribution waits on cubicecho/agent-mcp-pool#109
-- Reverse-direction capabilities (sampling / elicitation / roots) are **not**
-  offered downstream — see Phase 4 F7 for the shared-client blocker
+  set it wins for all). A `notifications/message` goes to the session whose
+  request caused it, where one can be named, and to every session on the
+  endpoint where not — see the next point for how it is named
+- **Elicitation is forwarded to the session whose call asked.** The downstream
+  connection is shared, and SDK 1.30 tells a client nothing of which request a
+  server→client message belongs to, so the router names it by elimination, as
+  the pool does for its own `call()`: `InFlightLedger` (`gateway/in-flight.ts`)
+  counts every request the router has running on each instance, and a question
+  or a log line is a request's when it is the only one in flight there. The
+  pool's per-call `onElicit`/`onLog` are not reachable from the router — they
+  hang off `call()`, which needs the tool index `indexTools: false` turns off,
+  and `use()` takes no options — so the router counts its own `use()`s and
+  answers through the pool-wide `onElicit`. Every downstream connection
+  declares form elicitation, since it is shared by sessions that differ and is
+  fixed at a handshake before most of them; a question is put to the session's
+  client with `elicitInput` on its GET stream when that client declared the
+  mode, and answered `decline` when no one session can be named or its client
+  cannot answer, and `cancel` when the call settles first. A person answering
+  is on the call's own clock (`callTimeoutMs`, ten minutes by default)
+- Sampling and roots are **not** offered downstream — see Phase 4 F7
 - Disabled servers 404. Disabled or unknown workspaces 404. Auth failures 401
   before any MCP handling.
 
@@ -344,9 +360,17 @@ dialled by the pool on the row's own patience — and `indexTools: false` means
 there was no `tools/list` drain on a connect to multiply. `connectTimeoutMs`
 here bounds spawn plus `initialize` and nothing else, which is what the setting
 claims, and after `2.4.3` that is what it would bound even with the drain on.
-The paginated walk the router *does* do is its own `gateway/pagination.ts`, on a
-proxied request rather than on a connect, so the pool's export is not in that
-path either. `2.4.4`'s fix to `resultText` — embedded resources and resource
+The paginated walk the router *does* do is on a proxied request rather than on a
+connect, so the budget is not in that path either. It is the pool's own walk
+since `3.16.0` (`listAllPrompts`/`listAllResources`/`listAllResourceTemplates`,
+[#108](https://github.com/cubicecho/agent-mcp-pool/issues/108), beside
+`listAllTools`), which replaced `gateway/pagination.ts`: a downstream that
+repeats a cursor or sends more than 1000 pages fails the listing — skipped and
+recorded on an aggregate, an error on a per-server listing — where the local
+walk looped on a repeated cursor to a 100-page cap and returned the short list
+with a console warning. A gateway that hands a client a truncated list has told
+it something false that looks true; a failure lands in the server's activity
+log, where it can be seen. `2.4.4`'s fix to `resultText` — embedded resources and resource
 links reaching a model as `[resource content]` — is likewise out of reach: that
 helper flattens a tool result into a string for an agent loop, and this repo
 forwards `CallToolResult` untouched.
@@ -499,8 +523,9 @@ blocked by the shared-downstream-client architecture and is documented below.
 - [x] F6 Logging passthrough: advertises the `logging` capability; `logging/setLevel`
   forwards to the downstream client (per-server) or fans out to every member
   (aggregate); downstream `notifications/message` is relayed over the same bus as F4
-- [ ] F7 Reverse-direction (server→client) capabilities — **blocked by the
-  shared-client model.** Sampling / elicitation / roots require forwarding a
+- [ ] F7 Reverse-direction (server→client) capabilities — elicitation is
+  forwarded by elimination (see the MCP-endpoints section); sampling and roots
+  are still **blocked by the shared-client model.** Sampling / elicitation / roots require forwarding a
   *downstream→router* request out to a specific *upstream* MCP client. But one
   downstream `Client` is shared across all sessions (lazy-spawned, idle-killed), and
   an incoming server→client request carries no correlation to whichever upstream

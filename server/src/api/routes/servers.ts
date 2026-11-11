@@ -1,4 +1,4 @@
-import { listAllTools } from '@cubicecho/agent-mcp-pool';
+import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '@cubicecho/agent-mcp-pool';
 import {
   activityResponseSchema,
   HttpStatus,
@@ -12,7 +12,6 @@ import {
 import { Router } from 'express';
 import { conflict, errorMessage, notFound } from '../../core/errors.ts';
 import { emptyOnMissing } from '../../gateway/capability.ts';
-import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
 import { applyOAuthClient, dropSignInOnMove } from '../../oauth/service.ts';
 import { registerUiCallRoutes } from '../calls.ts';
