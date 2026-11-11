@@ -6,6 +6,7 @@ import path from 'node:path';
 import { ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
 import {
   type ClientCapabilities,
   ElicitRequestSchema,
@@ -628,9 +629,10 @@ describe('MCP session lifecycle', () => {
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     });
 
-    const open = async (capabilities: ClientCapabilities = {}) => {
+    const open = async (capabilities: ClientCapabilities = {}, fetchVia?: FetchLike) => {
       const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
         requestInit: { headers: { Authorization: `Bearer ${token}` } },
+        fetch: fetchVia,
       });
       const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities });
       await client.connect(transport);
@@ -638,17 +640,24 @@ describe('MCP session lifecycle', () => {
     };
 
     /**
-     * Waits until the session's GET stream is open, by asking for progress until it arrives: what the router relays,
-     * and what it asks the client, goes out on that stream, and is lost when it is not there yet.
+     * Waits until the session's GET stream is open, by asking for progress until some arrives: what the router relays
+     * goes out on that stream, and is lost when it is not there yet.
+     *
+     * @remarks
+     * One report is proof enough, and waiting for both is a race: the result comes back on the call's own POST, so on
+     * a loaded machine it can beat the second report in, and the client stops listening for progress at the result.
      */
     const streamOpen = (client: Client) =>
-      vi.waitFor(async () => {
-        const seen: number[] = [];
-        await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
-          onprogress: ({ progress }) => seen.push(progress),
-        });
-        expect(seen).toEqual([1, 2]);
-      });
+      vi.waitFor(
+        async () => {
+          const seen: number[] = [];
+          await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+            onprogress: ({ progress }) => seen.push(progress),
+          });
+          expect(seen.length).toBeGreaterThan(0);
+        },
+        { timeout: 10_000 },
+      );
 
     /** The one text block a relay tool answers with, parsed. */
     const answerOf = (result: Awaited<ReturnType<Client['callTool']>>): unknown => {
@@ -667,15 +676,20 @@ describe('MCP session lifecycle', () => {
       const { client } = await open();
       try {
         // Asked again until the session's GET stream, which progress arrives on, is open: progress sent
-        // before a client's GET lands is dropped, as any relayed notification is.
-        await vi.waitFor(async () => {
-          const seen: number[] = [];
-          const result = await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
-            onprogress: ({ progress }) => seen.push(progress),
-          });
-          expect(result.content).toEqual([{ type: 'text', text: 'done' }]);
-          expect(seen).toEqual([1, 2]);
-        });
+        // before a client's GET lands is dropped, as any relayed notification is. What does arrive is the
+        // downstream's reports in order, though the last can trail the result in (see `streamOpen`).
+        await vi.waitFor(
+          async () => {
+            const seen: number[] = [];
+            const result = await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+              onprogress: ({ progress }) => seen.push(progress),
+            });
+            expect(result.content).toEqual([{ type: 'text', text: 'done' }]);
+            expect(seen.length).toBeGreaterThan(0);
+            expect(seen).toEqual([1, 2].slice(0, seen.length));
+          },
+          { timeout: 10_000 },
+        );
       } finally {
         await client.close();
       }
@@ -689,11 +703,39 @@ describe('MCP session lifecycle', () => {
         return { action: 'accept', content: { name: 'tester' } };
       });
       try {
-        await streamOpen(client);
+        // Straight after connect, with no wait for the GET stream the question goes out on: a question that
+        // gets there first is held for it.
         const result = await client.callTool({ name: 'relay__ask', arguments: {} });
         expect(answerOf(result)).toEqual({ action: 'accept', content: { name: 'tester' } });
         expect(asked).toEqual(['Who is asking?']);
       } finally {
+        await client.close();
+      }
+    });
+
+    it("holds a downstream's question back until the asking session's GET stream is open", async () => {
+      // The client's GET is kept from the router until the call is well under way, so the question is asked while
+      // the session has no stream to put it on — the order a slow network or a loaded machine gives a client whose
+      // first call races its stream. Dropped, it would leave the call waiting out its timeout.
+      let releaseStream = () => {};
+      const held = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+      const holdingGet: FetchLike = async (url, init) => {
+        if (init?.method === 'GET') {
+          await held;
+        }
+        return fetch(url, init);
+      };
+      const { client } = await open({ elicitation: {} }, holdingGet);
+      client.setRequestHandler(ElicitRequestSchema, async () => ({ action: 'accept', content: { name: 'tester' } }));
+      try {
+        const call = client.callTool({ name: 'relay__ask', arguments: {} });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        releaseStream();
+        expect(answerOf(await call)).toEqual({ action: 'accept', content: { name: 'tester' } });
+      } finally {
+        releaseStream();
         await client.close();
       }
     });

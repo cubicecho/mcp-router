@@ -1,5 +1,6 @@
 import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { InstanceKey } from './instance-key.ts';
+import { streamOf } from './standalone-stream.ts';
 
 /** One request the router has running on an instance, and the session it runs for. */
 export interface RunningRequest {
@@ -78,8 +79,9 @@ export class InFlightLedger {
  *
  * @remarks
  * Sent without a related request id, so it goes out on the session's GET stream: sessions answer in JSON, and a
- * JSON-mode transport has no stream to tie a request to. A client with no stream open never sees it, and the
- * question waits until the call it belongs to ends.
+ * JSON-mode transport has no stream to tie a request to. A question asked before the client holds that stream is
+ * held back until it does, since the SDK drops what it has no stream for and the call would then hang on an answer
+ * nobody was asked for. The wait is on the call's clock, like the question: it ends when the call settles.
  */
 export async function forwardElicitation(
   request: RunningRequest | undefined,
@@ -93,6 +95,10 @@ export async function forwardElicitation(
     return { action: 'decline' };
   }
   const gone = AbortSignal.any([signal, request.settled]);
+  const stream = streamOf(session);
+  if (stream && (await stream.whenOpen(gone)) === false) {
+    return { action: 'cancel' };
+  }
   try {
     return await session.elicitInput(params, { signal: gone, timeout: timeoutMs });
   } catch (cause) {
