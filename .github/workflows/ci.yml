@@ -4,6 +4,9 @@ on:
   push:
     branches: [main]
   pull_request:
+  # A run by hand, for when GitHub drops the push event and main is left with no
+  # CI run for the release to wait on.
+  workflow_dispatch:
 
 concurrency:
   group: ci-${{ github.ref }}
