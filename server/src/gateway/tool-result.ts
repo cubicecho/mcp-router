@@ -1,3 +1,4 @@
+import { resultText } from '@cubicecho/agent-mcp-pool';
 import { isRecord } from '../core/is-record.ts';
 import { namespaceName } from './naming.ts';
 
@@ -15,17 +16,11 @@ export function toolCallFailed(result: unknown): boolean {
  * Extracts a best-effort error message from a tool call that resolved with `isError: true`.
  *
  * @param result - What `tools/call` resolved to.
- * @returns The result's text content joined by newlines, or a fixed message when it has none.
+ * @returns The result as the pool's `resultText` reads it — text blocks, embedded text resources, link URIs, and
+ * `structuredContent` where the blocks come to nothing — or a fixed message when it says nothing at all.
  */
 export function toolErrorText(result: unknown): string {
-  const content = isRecord(result) ? result.content : undefined;
-  const text = Array.isArray(content)
-    ? content
-        .filter((item) => item.type === 'text')
-        .map((item) => item.text)
-        .join('\n')
-    : '';
-  return text || 'Tool reported an error (isError: true)';
+  return (isRecord(result) ? resultText(result) : '') || 'Tool reported an error (isError: true)';
 }
 
 /**

@@ -1,7 +1,11 @@
 import {
+  type ElicitRequestParams,
+  type ElicitResult,
+  httpStatusFor,
   type McpConnection,
   McpPool,
   McpPoolError,
+  type McpPoolErrorCode,
   type McpServerConfig,
   type McpServerState,
   type McpStatus,
@@ -20,14 +24,16 @@ import {
   type WorkspaceMember,
 } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { Notification } from '@modelcontextprotocol/sdk/types.js';
 import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
-import { errorMessage, notFound, unavailable, upstreamFailed } from '../core/errors.ts';
+import { errorForStatus, errorMessage, upstreamFailed } from '../core/errors.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 import { outboundFetch } from '../http/tuning.ts';
 import type { RemoteAuth } from '../oauth/service.ts';
 import { ActivityLog, type ActivityRecord } from './activity-log.ts';
 import type { Handshake } from './handshake.ts';
+import { forwardElicitation, InFlightLedger } from './in-flight.ts';
 import { type InstanceKey, isBaseServerKey, workspaceInstanceKey } from './instance-key.ts';
 import { SubscriptionLedger } from './subscriptions.ts';
 
@@ -199,6 +205,30 @@ function connectionRow(config: ServerConfig): McpServerConfig {
   return { id: '', label: '', enabled: config.enabled, ...toConnection(config) };
 }
 
+/**
+ * Words one of the pool's refusals of a connection, for the REST contract.
+ *
+ * @param code - The refusal; `client()` and `use()` throw only the first four, and anything else reads as a failed
+ * connect.
+ * @param name - The server, by its own name.
+ * @returns The one-line message.
+ */
+function refusalMessage(code: McpPoolErrorCode, name: string): string {
+  switch (code) {
+    case 'unknown-server':
+      return `Unknown server "${name}"`;
+    case 'disabled':
+      return `Server "${name}" is disabled`;
+    case 'backoff':
+      return `Server "${name}" crashed recently; retrying is backed off`;
+    default:
+      return `Failed to connect to server "${name}"`;
+  }
+}
+
+/** The notification a downstream logs with, which is relayed to the session that caused it where one can be named. */
+const LOG_MESSAGE = 'notifications/message';
+
 /** How the pool's connection status reads on this API. `disabled` and `idle` are both "no child, nothing wrong". */
 const RUNTIME_STATE: Record<McpStatus, ServerRuntimeState> = {
   disabled: ServerRuntimeState.Stopped,
@@ -222,6 +252,7 @@ export class GatewayManager {
   private readonly meta = new Map<InstanceKey, ServerMeta>();
   private readonly activity = new ActivityLog();
   private readonly subscriptions = new SubscriptionLedger();
+  private readonly inFlight = new InFlightLedger();
   private readonly remoteAuth?: RemoteAuth;
 
   /**
@@ -248,8 +279,19 @@ export class GatewayManager {
       // router's full process.env — an MCP server is third-party code.
       childEnv: MINIMAL_CHILD_ENV,
       crashBackoffMs: GATEWAY_DEFAULTS.crashBackoffMs,
+      // Every downstream connection is shared by every session, and its
+      // capabilities are fixed at a handshake that comes before most of them, so
+      // the declaration cannot follow any one session's client. Declared, and a
+      // question no session can answer is declined: a decline is an answer a
+      // server is written to handle, where an undeclared capability is one it
+      // never asks through.
+      onElicit: (key, params, { signal }) => this.elicit(key, params, signal),
       // The pool's own keep-alive, at the idle time HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS names.
       fetch: outboundFetch(),
+      // `refreshMs` re-lists an index this pool does not keep, so it is inert
+      // here. `pingAfterMs` keeps its default: five quiet minutes before a use
+      // costs one ping, which finds a remote session a proxy dropped without
+      // closing before a call spends its whole timeout on it.
     });
   }
 
@@ -346,6 +388,8 @@ export class GatewayManager {
    * @typeParam T - What the request resolves to.
    * @param key - The instance to reach.
    * @param run - The request. Called a second time, with the new client, after a redial.
+   * @param [session] - The upstream session the request is made for: while it is the only request in flight on the
+   * instance, the server's log lines and questions go to that session alone (see `InFlightLedger`).
    * @returns What `run` resolved to. A refusal by the pool is thrown as `getClient` throws it; what `run` rejects
    * with is rethrown untouched.
    *
@@ -354,16 +398,34 @@ export class GatewayManager {
    * request `404` or `400` without closing anything, so the row stays `ready` and is never reaped. Both are refusals
    * before dispatch, which is what makes the second attempt safe for a `tools/call`.
    */
-  async withClient<T>(key: InstanceKey, run: (client: Client) => Promise<T>): Promise<T> {
+  async withClient<T>(key: InstanceKey, run: (client: Client) => Promise<T>, session?: Server): Promise<T> {
     try {
-      return await this.pool.use(key, (client) => {
-        this.observe(key, client);
-        return run(client);
-      });
+      return await this.inFlight.track(key, session, () =>
+        this.pool.use(key, (client) => {
+          this.observe(key, client);
+          return run(client);
+        }),
+      );
     } catch (cause) {
       // Only the pool's own refusals are rewritten; whatever `run` rejected with is the caller's.
       this.fail(key, cause);
     }
+  }
+
+  /**
+   * Answers a downstream's `elicitation/create` through the session whose request caused it.
+   *
+   * @param key - The instance that asked.
+   * @param params - The question, forwarded untouched.
+   * @param signal - Aborts when the downstream gives up on it.
+   * @returns The session's answer; `decline` when no one session can be named, or its client cannot answer.
+   *
+   * @remarks
+   * Bounded by the instance's call timeout, the clock the call that caused it is on anyway: a person answering takes
+   * the time a tool would otherwise spend running.
+   */
+  private elicit(key: InstanceKey, params: ElicitRequestParams, signal: AbortSignal): Promise<ElicitResult> {
+    return forwardElicitation(this.inFlight.sole(key), params, signal, this.callTimeoutMs(key));
   }
 
   /**
@@ -424,8 +486,9 @@ export class GatewayManager {
       if (state.get(key)?.status !== 'ready') {
         continue;
       }
-      this.pool
-        .use(key, (client) => client.unsubscribeResource({ uri }))
+      // Counted like any request, so a question asked while it runs is not pinned on another session's call.
+      this.inFlight
+        .track(key, undefined, () => this.pool.use(key, (client) => client.unsubscribeResource({ uri })))
         .catch((err: unknown) => {
           console.warn(`[gateway] failed to unsubscribe "${key}" from "${uri}": ${errorMessage(err)}`);
         });
@@ -483,9 +546,10 @@ export class GatewayManager {
    * @param cause - What was caught; anything but an McpPoolError is rethrown untouched.
    *
    * @remarks
-   * The wording stays the router's own: these strings are part of the REST contract and are read by the UI. `backoff`
-   * (503) and `connect-failed` (502) are kept apart: the first means the pool declined to dial, the second that it
-   * dialled and could not.
+   * The status is the pool's `httpStatusFor`, so it cannot drift from what the other gateways answer. The wording
+   * stays the router's own: these strings are part of the REST contract and are read by the UI. `backoff` (503) and
+   * `connect-failed` (502) are kept apart: the first means the pool declined to dial, the second that it dialled and
+   * could not. A remote that wants a sign-in is a 502 either way, since the retry the 503 promises will not help it.
    */
   private fail(key: InstanceKey, cause: unknown): never {
     const isPoolError = cause instanceof McpPoolError;
@@ -500,16 +564,9 @@ export class GatewayManager {
         { cause },
       );
     }
-    switch (cause.code) {
-      case 'unknown-server':
-        throw notFound(`Unknown server "${name}"`, undefined, { cause });
-      case 'disabled':
-        throw notFound(`Server "${name}" is disabled`, undefined, { cause });
-      case 'backoff':
-        throw unavailable(`Server "${name}" crashed recently; retrying is backed off`, cause.detail, { cause });
-      default:
-        throw upstreamFailed(`Failed to connect to server "${name}"`, cause.detail, { cause });
-    }
+    // A server that does not exist or is off has no stderr worth showing.
+    const detail = cause.code === 'unknown-server' || cause.code === 'disabled' ? undefined : cause.detail;
+    throw errorForStatus(httpStatusFor(cause.code), refusalMessage(cause.code, name), detail, { cause });
   }
 
   /**
@@ -559,14 +616,25 @@ export class GatewayManager {
    * Subscribe to downstream server→client notifications.
    *
    * @param listener - Called with the instance key and the raw notification, for every instance.
+   * @param [session] - The session listening. A log message that arrives while another session's request is the only
+   * one in flight on its instance is that session's, and is kept from this one.
    * @returns An unsubscribe function.
    *
    * @remarks
    * Used by MCP sessions to relay list_changed / resources/updated / log messages to their upstream client. It
-   * survives downstream respawns because the pool re-installs the handler on every connect.
+   * survives downstream respawns because the pool re-installs the handler on every connect. A log message no one
+   * session's request can be named for goes to every session, as all of them did before.
    */
-  onNotification(listener: (key: InstanceKey, notification: Notification) => void): () => void {
-    return this.pool.onNotification(listener);
+  onNotification(listener: (key: InstanceKey, notification: Notification) => void, session?: Server): () => void {
+    return this.pool.onNotification((key, notification) => {
+      if (session && notification.method === LOG_MESSAGE) {
+        const owner = this.inFlight.sole(key)?.session;
+        if (owner && owner !== session) {
+          return;
+        }
+      }
+      listener(key, notification);
+    });
   }
 
   /**

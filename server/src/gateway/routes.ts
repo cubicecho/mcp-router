@@ -124,7 +124,7 @@ export function createMcpRouter(deps: McpRouterDeps): Router {
           if (key === name) {
             pushNotification(server, notification);
           }
-        }),
+        }, server),
     );
   });
 

@@ -6,6 +6,11 @@ import path from 'node:path';
 import { ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import {
+  type ClientCapabilities,
+  ElicitRequestSchema,
+  LoggingMessageNotificationSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../../config/store.ts';
@@ -623,13 +628,32 @@ describe('MCP session lifecycle', () => {
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     });
 
-    const open = async () => {
+    const open = async (capabilities: ClientCapabilities = {}) => {
       const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
         requestInit: { headers: { Authorization: `Bearer ${token}` } },
       });
-      const client = new Client({ name: 'test-client', version: '1.0.0' });
+      const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities });
       await client.connect(transport);
       return { client, transport };
+    };
+
+    /**
+     * Waits until the session's GET stream is open, by asking for progress until it arrives: what the router relays,
+     * and what it asks the client, goes out on that stream, and is lost when it is not there yet.
+     */
+    const streamOpen = (client: Client) =>
+      vi.waitFor(async () => {
+        const seen: number[] = [];
+        await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+          onprogress: ({ progress }) => seen.push(progress),
+        });
+        expect(seen).toEqual([1, 2]);
+      });
+
+    /** The one text block a relay tool answers with, parsed. */
+    const answerOf = (result: Awaited<ReturnType<Client['callTool']>>): unknown => {
+      const [block] = result.content as Array<{ text: string }>;
+      return JSON.parse(block?.text ?? 'null');
     };
 
     /** What the downstream's one connection is subscribed to, asked of the child itself. */
@@ -654,6 +678,56 @@ describe('MCP session lifecycle', () => {
         });
       } finally {
         await client.close();
+      }
+    });
+
+    it("puts a downstream's question to the session whose call asked it, and hands its answer back", async () => {
+      const { client } = await open({ elicitation: {} });
+      const asked: string[] = [];
+      client.setRequestHandler(ElicitRequestSchema, async (req) => {
+        asked.push(req.params.message);
+        return { action: 'accept', content: { name: 'tester' } };
+      });
+      try {
+        await streamOpen(client);
+        const result = await client.callTool({ name: 'relay__ask', arguments: {} });
+        expect(answerOf(result)).toEqual({ action: 'accept', content: { name: 'tester' } });
+        expect(asked).toEqual(['Who is asking?']);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("declines a downstream's question for a session whose client cannot answer one", async () => {
+      const { client } = await open();
+      try {
+        const result = await client.callTool({ name: 'relay__ask', arguments: {} });
+        expect(answerOf(result)).toEqual({ action: 'decline' });
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("relays a downstream's log line to the session whose call caused it, and to no other", async () => {
+      const first = await open();
+      const second = await open();
+      const heard: Record<'first' | 'second', unknown[]> = { first: [], second: [] };
+      first.client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        heard.first.push(n.params.data);
+      });
+      second.client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        heard.second.push(n.params.data);
+      });
+      try {
+        // Both streams open, so a line sent to every session would reach the second as surely as the first.
+        await streamOpen(first.client);
+        await streamOpen(second.client);
+        await first.client.callTool({ name: 'relay__log', arguments: {} });
+        await vi.waitFor(() => expect(heard.first).toEqual(['working']));
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(heard.second).toEqual([]);
+      } finally {
+        await Promise.all([first.client.close(), second.client.close()]);
       }
     });
 

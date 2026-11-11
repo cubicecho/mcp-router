@@ -1,5 +1,6 @@
 import { CallVia } from '@mcp-router/shared';
 import type { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import { errorDetailMessage } from '../core/errors.ts';
 import type { ActivityRecord } from './activity-log.ts';
 import { emptyOnMissing } from './capability.ts';
@@ -11,6 +12,8 @@ export interface FanOutDeps {
   withClient: WithClient;
   /** Writes an entry to the named server's activity log. */
   recordActivity: (name: string, entry: ActivityRecord) => void;
+  /** The upstream session the listing is for; absent for the REST API's. */
+  session?: Server;
 }
 
 /**
@@ -42,7 +45,7 @@ export async function collectFrom<T>(
         const listed = await recordedCall(
           (entry) => deps.recordActivity(name, entry),
           { via: CallVia.Aggregate, method, failuresOnly: true },
-          () => emptyOnMissing(() => deps.withClient(name, (client) => fn(client, name))),
+          () => emptyOnMissing(() => deps.withClient(name, (client) => fn(client, name), deps.session)),
         );
         return listed ?? [];
       } catch (err) {
