@@ -190,7 +190,11 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   fixed at a handshake before most of them; a question is put to the session's
   client with `elicitInput` on its GET stream when that client declared the
   mode, and answered `decline` when no one session can be named or its client
-  cannot answer, and `cancel` when the call settles first. A person answering
+  cannot answer, and `cancel` when the call settles first. A question that
+  arrives before the client holds its GET stream waits for it
+  (`gateway/standalone-stream.ts`) rather than going out to be dropped: an SDK
+  client opens the stream after `initialized` without waiting for it, so a
+  first call that asks straight away can get there first. A person answering
   is on the call's own clock (`callTimeoutMs`, ten minutes by default)
 - Sampling and roots are **not** offered downstream — see Phase 4 F7
 - Disabled servers 404. Disabled or unknown workspaces 404. Auth failures 401

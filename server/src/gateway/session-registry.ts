@@ -7,6 +7,7 @@ import type { Request, Response } from 'express';
 import { GATEWAY_DEFAULTS } from '../core/defaults.ts';
 import { badInput, notFound, sendError } from '../core/errors.ts';
 import { BoundedEventStore } from './event-store.ts';
+import { type StandaloneStream, watchStream } from './standalone-stream.ts';
 
 /** Wire a session's proxy Server to relay downstream notifications; returns an unsubscribe. */
 export type WireRelay = (server: Server) => () => void;
@@ -17,13 +18,14 @@ interface Session {
   /** When the session last saw a request or lost a stream, in ms since the epoch. */
   lastActivity: number;
   /**
-   * GET SSE streams the client is holding open on this session right now.
+   * Whether the client holds a GET SSE stream open on this session right now.
    *
    * @remarks
    * A held stream is the client saying it is still here: an SDK client opens one right after initialize and keeps it
-   * for the life of the connection, so a session in a long lull between tool calls is not abandoned.
+   * for the life of the connection, so a session in a long lull between tool calls is not abandoned. It is also where
+   * a question for the client goes, so one asked before it is held waits for it (see `forwardElicitation`).
    */
-  openStreams: number;
+  stream: StandaloneStream;
 }
 
 /**
@@ -84,7 +86,7 @@ export class SessionRegistry {
     const ttl = this.settings().sessionIdleTimeoutMs;
     const cutoff = Date.now() - ttl;
     for (const [id, session] of this.sessions) {
-      if (session.openStreams === 0 && session.lastActivity < cutoff) {
+      if (session.stream.open === false && session.lastActivity < cutoff) {
         this.drop(id);
       }
     }
@@ -122,18 +124,23 @@ export class SessionRegistry {
       return true;
     }
     session.lastActivity = Date.now();
-    if (req.method === 'GET') {
-      session.openStreams += 1;
-      // A client whose machine slept or dropped off the network never sends a FIN, and a quiet
-      // stream never writes to find out — keepalive is what eventually closes it.
-      req.socket.setKeepAlive(true, GATEWAY_DEFAULTS.streamKeepAliveMs);
-      res.on('close', () => {
-        session.openStreams -= 1;
-        // Idleness starts when the client stopped listening, not when it last spoke.
-        session.lastActivity = Date.now();
-      });
+    if (req.method !== 'GET') {
+      await session.transport.handleRequest(req, res, req.body);
+      return true;
     }
-    await session.transport.handleRequest(req, res, req.body);
+    // A client whose machine slept or dropped off the network never sends a FIN, and a quiet
+    // stream never writes to find out — keepalive is what eventually closes it.
+    req.socket.setKeepAlive(true, GATEWAY_DEFAULTS.streamKeepAliveMs);
+    res.on('close', () => {
+      session.stream.detached();
+      // Idleness starts when the client stopped listening, not when it last spoke.
+      session.lastActivity = Date.now();
+    });
+    const handled = session.transport.handleRequest(req, res, req.body);
+    // Noted after the call rather than before it: the SDK registers a fresh GET as the session's stream before its
+    // first await, so from here a message sent on it is written rather than dropped.
+    session.stream.attached();
+    await handled;
     return true;
   }
 
@@ -161,6 +168,7 @@ export class SessionRegistry {
     }
     this.enforceCap();
     const server = await buildServer();
+    const stream = watchStream(server);
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: () => randomUUID(),
       enableJsonResponse: true,
@@ -168,7 +176,7 @@ export class SessionRegistry {
       // with Last-Event-ID and replay missed notifications; reclaimed with the session.
       eventStore: new BoundedEventStore(),
       onsessioninitialized: (id) => {
-        this.sessions.set(id, { transport, lastActivity: Date.now(), openStreams: 0 });
+        this.sessions.set(id, { transport, lastActivity: Date.now(), stream });
       },
     });
     const unwire = wire(server);

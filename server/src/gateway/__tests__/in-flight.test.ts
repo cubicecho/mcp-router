@@ -2,6 +2,7 @@ import type { Server } from '@modelcontextprotocol/sdk/server/index.js';
 import type { ClientCapabilities } from '@modelcontextprotocol/sdk/types.js';
 import { describe, expect, it, vi } from 'vitest';
 import { forwardElicitation, InFlightLedger } from '../in-flight.ts';
+import { watchStream } from '../standalone-stream.ts';
 
 /** A session's server as far as a forwarded question touches it: what its client declared, and the ask itself. */
 function session(capabilities: ClientCapabilities, elicitInput: Server['elicitInput'] = vi.fn()) {
@@ -103,5 +104,48 @@ describe('forwardElicitation', () => {
     settled.abort();
 
     expect(await answer).toEqual({ action: 'cancel' });
+  });
+
+  it('holds a question back until the session holds its GET stream, then asks', async () => {
+    const elicitInput = vi.fn(async () => ({ action: 'accept' as const, content: { name: 'tester' } }));
+    const owner = session({ elicitation: { form: {} } }, elicitInput);
+    const stream = watchStream(owner);
+
+    const answer = forwardElicitation(running(owner), QUESTION, signal, 1_000);
+    await new Promise((resolve) => setImmediate(resolve));
+    expect(elicitInput).not.toHaveBeenCalled();
+
+    stream.attached();
+    expect(await answer).toEqual({ action: 'accept', content: { name: 'tester' } });
+  });
+
+  it('cancels a question still waiting for its stream once the call that asked has settled', async () => {
+    const elicitInput = vi.fn();
+    const owner = session({ elicitation: { form: {} } }, elicitInput);
+    watchStream(owner);
+    const settled = new AbortController();
+
+    const answer = forwardElicitation({ session: owner, settled: settled.signal }, QUESTION, signal, 1_000);
+    settled.abort();
+
+    expect(await answer).toEqual({ action: 'cancel' });
+    expect(elicitInput).not.toHaveBeenCalled();
+  });
+
+  it('asks straight away once a stream is held, and waits again after it is gone', async () => {
+    const elicitInput = vi.fn(async () => ({ action: 'decline' as const }));
+    const owner = session({ elicitation: { form: {} } }, elicitInput);
+    const stream = watchStream(owner);
+    stream.attached();
+
+    await forwardElicitation(running(owner), QUESTION, signal, 1_000);
+    expect(elicitInput).toHaveBeenCalledTimes(1);
+
+    stream.detached();
+    const settled = new AbortController();
+    const answer = forwardElicitation({ session: owner, settled: settled.signal }, QUESTION, signal, 1_000);
+    settled.abort();
+    expect(await answer).toEqual({ action: 'cancel' });
+    expect(elicitInput).toHaveBeenCalledTimes(1);
   });
 });
