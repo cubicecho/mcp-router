@@ -6,6 +6,12 @@ import path from 'node:path';
 import { ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+import type { FetchLike } from '@modelcontextprotocol/sdk/shared/transport.js';
+import {
+  type ClientCapabilities,
+  ElicitRequestSchema,
+  LoggingMessageNotificationSchema,
+} from '@modelcontextprotocol/sdk/types.js';
 import request from 'supertest';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { ConfigStore } from '../../config/store.ts';
@@ -594,6 +600,207 @@ describe('MCP session lifecycle', () => {
       await Promise.all([direct.close(), aggregate.close()]);
       await new Promise<void>((resolve) => httpServer.close(() => resolve()));
     }
+  });
+
+  describe('relaying a downstream through the aggregate', () => {
+    let httpServer: ReturnType<typeof createServer>;
+    let port: number;
+
+    beforeEach(async () => {
+      await store.saveServer(
+        serverConfigSchema.parse({
+          name: 'relay',
+          source: { type: 'npm', package: 'none' },
+          transport: {
+            type: 'stdio',
+            command: process.execPath,
+            args: [path.join(import.meta.dirname, '../../gateway/__tests__/fixtures/relay-server.ts')],
+          },
+        }),
+      );
+      await manager.reconcile(store.getServers(), store.getWorkspaces());
+      httpServer = createServer(app);
+      await new Promise<void>((resolve) => httpServer.listen(0, '127.0.0.1', resolve));
+      port = (httpServer.address() as AddressInfo).port;
+    });
+
+    afterEach(async () => {
+      httpServer.closeAllConnections();
+      await new Promise<void>((resolve) => httpServer.close(() => resolve()));
+    });
+
+    const open = async (capabilities: ClientCapabilities = {}, fetchVia?: FetchLike) => {
+      const transport = new StreamableHTTPClientTransport(new URL(`http://127.0.0.1:${port}/mcp`), {
+        requestInit: { headers: { Authorization: `Bearer ${token}` } },
+        fetch: fetchVia,
+      });
+      const client = new Client({ name: 'test-client', version: '1.0.0' }, { capabilities });
+      await client.connect(transport);
+      return { client, transport };
+    };
+
+    /**
+     * Waits until the session's GET stream is open, by asking for progress until some arrives: what the router relays
+     * goes out on that stream, and is lost when it is not there yet.
+     *
+     * @remarks
+     * One report is proof enough, and waiting for both is a race: the result comes back on the call's own POST, so on
+     * a loaded machine it can beat the second report in, and the client stops listening for progress at the result.
+     */
+    const streamOpen = (client: Client) =>
+      vi.waitFor(
+        async () => {
+          const seen: number[] = [];
+          await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+            onprogress: ({ progress }) => seen.push(progress),
+          });
+          expect(seen.length).toBeGreaterThan(0);
+        },
+        { timeout: 10_000 },
+      );
+
+    /** The one text block a relay tool answers with, parsed. */
+    const answerOf = (result: Awaited<ReturnType<Client['callTool']>>): unknown => {
+      const [block] = result.content as Array<{ text: string }>;
+      return JSON.parse(block?.text ?? 'null');
+    };
+
+    /** What the downstream's one connection is subscribed to, asked of the child itself. */
+    const subscriptions = async (client: Client): Promise<string[]> => {
+      const result = await client.callTool({ name: 'relay__subscriptions', arguments: {} });
+      const [block] = result.content as Array<{ text: string }>;
+      return JSON.parse(block?.text ?? '[]');
+    };
+
+    it("relays the downstream's progress to the caller, under the caller's token", async () => {
+      const { client } = await open();
+      try {
+        // Asked again until the session's GET stream, which progress arrives on, is open: progress sent
+        // before a client's GET lands is dropped, as any relayed notification is. What does arrive is the
+        // downstream's reports in order, though the last can trail the result in (see `streamOpen`).
+        await vi.waitFor(
+          async () => {
+            const seen: number[] = [];
+            const result = await client.callTool({ name: 'relay__progress', arguments: {} }, undefined, {
+              onprogress: ({ progress }) => seen.push(progress),
+            });
+            expect(result.content).toEqual([{ type: 'text', text: 'done' }]);
+            expect(seen.length).toBeGreaterThan(0);
+            expect(seen).toEqual([1, 2].slice(0, seen.length));
+          },
+          { timeout: 10_000 },
+        );
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("puts a downstream's question to the session whose call asked it, and hands its answer back", async () => {
+      const { client } = await open({ elicitation: {} });
+      const asked: string[] = [];
+      client.setRequestHandler(ElicitRequestSchema, async (req) => {
+        asked.push(req.params.message);
+        return { action: 'accept', content: { name: 'tester' } };
+      });
+      try {
+        // Straight after connect, with no wait for the GET stream the question goes out on: a question that
+        // gets there first is held for it.
+        const result = await client.callTool({ name: 'relay__ask', arguments: {} });
+        expect(answerOf(result)).toEqual({ action: 'accept', content: { name: 'tester' } });
+        expect(asked).toEqual(['Who is asking?']);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("holds a downstream's question back until the asking session's GET stream is open", async () => {
+      // The client's GET is kept from the router until the call is well under way, so the question is asked while
+      // the session has no stream to put it on — the order a slow network or a loaded machine gives a client whose
+      // first call races its stream. Dropped, it would leave the call waiting out its timeout.
+      let releaseStream = () => {};
+      const held = new Promise<void>((resolve) => {
+        releaseStream = resolve;
+      });
+      const holdingGet: FetchLike = async (url, init) => {
+        if (init?.method === 'GET') {
+          await held;
+        }
+        return fetch(url, init);
+      };
+      const { client } = await open({ elicitation: {} }, holdingGet);
+      client.setRequestHandler(ElicitRequestSchema, async () => ({ action: 'accept', content: { name: 'tester' } }));
+      try {
+        const call = client.callTool({ name: 'relay__ask', arguments: {} });
+        await new Promise((resolve) => setTimeout(resolve, 200));
+        releaseStream();
+        expect(answerOf(await call)).toEqual({ action: 'accept', content: { name: 'tester' } });
+      } finally {
+        releaseStream();
+        await client.close();
+      }
+    });
+
+    it("declines a downstream's question for a session whose client cannot answer one", async () => {
+      const { client } = await open();
+      try {
+        const result = await client.callTool({ name: 'relay__ask', arguments: {} });
+        expect(answerOf(result)).toEqual({ action: 'decline' });
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("relays a downstream's log line to the session whose call caused it, and to no other", async () => {
+      const first = await open();
+      const second = await open();
+      const heard: Record<'first' | 'second', unknown[]> = { first: [], second: [] };
+      first.client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        heard.first.push(n.params.data);
+      });
+      second.client.setNotificationHandler(LoggingMessageNotificationSchema, (n) => {
+        heard.second.push(n.params.data);
+      });
+      try {
+        // Both streams open, so a line sent to every session would reach the second as surely as the first.
+        await streamOpen(first.client);
+        await streamOpen(second.client);
+        await first.client.callTool({ name: 'relay__log', arguments: {} });
+        await vi.waitFor(() => expect(heard.first).toEqual(['working']));
+        await new Promise((resolve) => setTimeout(resolve, 100));
+        expect(heard.second).toEqual([]);
+      } finally {
+        await Promise.all([first.client.close(), second.client.close()]);
+      }
+    });
+
+    it('hands out resource links the aggregate can read back', async () => {
+      const { client } = await open();
+      try {
+        const result = await client.callTool({ name: 'relay__link', arguments: {} });
+        expect(result.content).toEqual([{ type: 'resource_link', uri: 'relay__relay://note', name: 'note' }]);
+        const read = await client.readResource({ uri: 'relay__relay://note' });
+        expect(read.contents).toEqual([{ uri: 'relay://note', text: 'hello' }]);
+      } finally {
+        await client.close();
+      }
+    });
+
+    it("keeps one session's subscription when another unsubscribes, and ends it when the last one closes", async () => {
+      const first = await open();
+      const second = await open();
+      try {
+        await first.client.subscribeResource({ uri: 'relay__relay://note' });
+        await second.client.subscribeResource({ uri: 'relay__relay://note' });
+        await first.client.unsubscribeResource({ uri: 'relay__relay://note' });
+        expect(await subscriptions(first.client)).toEqual(['relay://note']);
+
+        // Ending the session is letting go: the downstream is told once nobody is left.
+        await second.transport.terminateSession();
+        await vi.waitFor(async () => expect(await subscriptions(first.client)).toEqual([]));
+      } finally {
+        await Promise.all([first.client.close(), second.client.close()]);
+      }
+    });
   });
 
   it('rejects a non-initialize request that carries no session id', async () => {

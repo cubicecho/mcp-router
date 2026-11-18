@@ -73,6 +73,20 @@ export const unavailable = factoryFor(ErrorCode.Unavailable);
 export const upstreamTimeout = factoryFor(ErrorCode.UpstreamTimeout);
 
 /**
+ * Builds the error a status is answered with, for a status decided elsewhere.
+ *
+ * @param status - The HTTP status, e.g. from the pool's `httpStatusFor`.
+ * @param message - The envelope's `error`.
+ * @param [detail] - The envelope's `detail`.
+ * @param [options] - Carries the `cause`.
+ * @returns An HttpError whose code is the one sent with `status`; a status no code is sent with is a 500.
+ */
+export function errorForStatus(status: number, message: string, detail?: string, options?: ErrorOptions): HttpError {
+  const entry = Object.entries(STATUS_BY_CODE).find(([, candidate]) => candidate === status);
+  return new HttpError((entry?.[0] as ErrorCode | undefined) ?? ErrorCode.Internal, message, detail, options);
+}
+
+/**
  * Send an error as the JSON envelope, with the status its code maps to.
  *
  * @param res - The response to write.

@@ -40,13 +40,13 @@ mcp-router/
 ### Flat config files (`DATA_DIR/config`, default `./data/config`)
 
 - `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
-  connectTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
+  connectTimeoutMs, default callTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
   callbacks; the UI's origin when unset)
 - `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
 - `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
   command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
-  from the registry), idleTimeoutMs, oauth (a remote's sign-in: typed-in
+  from the registry), idleTimeoutMs, callTimeoutMs, oauth (a remote's sign-in: typed-in
   clientId/clientSecret/scope, and the router-written clientInformation,
   redirectUri, tokens, tokensSavedAt — plaintext, never sent to the UI). npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
@@ -118,10 +118,11 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   forwarded 1:1; downstream `list_changed` / `resources/updated` / log
   notifications relayed back
 - `POST/GET/DELETE /mcp` — aggregate: merges all *enabled* servers; tools,
-  resources, resource templates, and prompts namespaced `<server>__`; calls,
-  completions, and subscriptions strip the prefix and route to the owning
-  downstream client; `logging/setLevel` fans out to every member; relayed
-  notifications are re-namespaced
+  resources, resource templates, and prompts namespaced `<server>__`, and so are
+  the `resource_link` and embedded-resource URIs in a tool result, so a link
+  reads back through the aggregate; calls, completions, and subscriptions strip
+  the prefix and route to the owning downstream client; `logging/setLevel` fans
+  out to every member; relayed notifications are re-namespaced
 - `POST/GET/DELETE /mcp/w/<slug>` — a workspace's custom aggregate: same
   `<server>__` namespacing, but only over that workspace's enabled members, each
   served by its own isolated (override-applied) downstream instance
@@ -151,8 +152,51 @@ on it, never on the `error` text. Validation via the shared zod schemas.
   session's requests and its GET SSE stream (which carries relayed
   notifications); a non-initialize request with no session id → 400, an
   unknown/expired session id → 404
-- Reverse-direction capabilities (sampling / elicitation / roots) are **not**
-  offered downstream — see Phase 4 F7 for the shared-client blocker
+- **A proxied `tools/call` carries the caller's request options.** The upstream
+  request's abort signal goes downstream, so a client that cancels stops the
+  call there too; the timeout is the server's `callTimeoutMs`, else
+  `settings.callTimeoutMs` (default 10 min) — the value written onto its pool row
+  too — rather than the SDK's 60s, which cut long tools off only when called
+  through the router. A caller that sent a `progressToken` gets the downstream's
+  progress re-sent under its own token. It goes out on the session's GET stream,
+  not tied to the request, because sessions answer in JSON and a JSON-mode
+  transport drops a request-tied notification; the SDK client matches progress
+  by token, so it arrives — when that stream is open, like every relayed
+  notification
+- **Subscriptions are counted per downstream URI.** Every session reaching an
+  instance shares its one connection, and so its subscriptions: forwarded as-is,
+  the second session to unsubscribe ended the first one's too.
+  `SubscriptionLedger` (`gateway/subscriptions.ts`), held by the manager so the
+  1:1 and aggregate endpoints count together, forwards an unsubscribe only when
+  the last session holding the URI lets go, and a closing session lets go of
+  everything it held (unsubscribing only an instance that is still connected). A
+  subscribe is forwarded every time: the ledger cannot see a respawn, and a
+  repeat subscribe is harmless where a skipped one is lost
+- `logging/setLevel` is still per downstream connection (the last session to
+  set it wins for all). A `notifications/message` goes to the session whose
+  request caused it, where one can be named, and to every session on the
+  endpoint where not — see the next point for how it is named
+- **Elicitation is forwarded to the session whose call asked.** The downstream
+  connection is shared, and SDK 1.30 tells a client nothing of which request a
+  server→client message belongs to, so the router names it by elimination, as
+  the pool does for its own `call()`: `InFlightLedger` (`gateway/in-flight.ts`)
+  counts every request the router has running on each instance, and a question
+  or a log line is a request's when it is the only one in flight there. The
+  pool's per-call `onElicit`/`onLog` are not reachable from the router — they
+  hang off `call()`, which needs the tool index `indexTools: false` turns off,
+  and `use()` takes no options — so the router counts its own `use()`s and
+  answers through the pool-wide `onElicit`. Every downstream connection
+  declares form elicitation, since it is shared by sessions that differ and is
+  fixed at a handshake before most of them; a question is put to the session's
+  client with `elicitInput` on its GET stream when that client declared the
+  mode, and answered `decline` when no one session can be named or its client
+  cannot answer, and `cancel` when the call settles first. A question that
+  arrives before the client holds its GET stream waits for it
+  (`gateway/standalone-stream.ts`) rather than going out to be dropped: an SDK
+  client opens the stream after `initialized` without waiting for it, so a
+  first call that asks straight away can get there first. A person answering
+  is on the call's own clock (`callTimeoutMs`, ten minutes by default)
+- Sampling and roots are **not** offered downstream — see Phase 4 F7
 - Disabled servers 404. Disabled or unknown workspaces 404. Auth failures 401
   before any MCP handling.
 
@@ -320,9 +364,17 @@ dialled by the pool on the row's own patience — and `indexTools: false` means
 there was no `tools/list` drain on a connect to multiply. `connectTimeoutMs`
 here bounds spawn plus `initialize` and nothing else, which is what the setting
 claims, and after `2.4.3` that is what it would bound even with the drain on.
-The paginated walk the router *does* do is its own `gateway/pagination.ts`, on a
-proxied request rather than on a connect, so the pool's export is not in that
-path either. `2.4.4`'s fix to `resultText` — embedded resources and resource
+The paginated walk the router *does* do is on a proxied request rather than on a
+connect, so the budget is not in that path either. It is the pool's own walk
+since `3.16.0` (`listAllPrompts`/`listAllResources`/`listAllResourceTemplates`,
+[#108](https://github.com/cubicecho/agent-mcp-pool/issues/108), beside
+`listAllTools`), which replaced `gateway/pagination.ts`: a downstream that
+repeats a cursor or sends more than 1000 pages fails the listing — skipped and
+recorded on an aggregate, an error on a per-server listing — where the local
+walk looped on a repeated cursor to a 100-page cap and returned the short list
+with a console warning. A gateway that hands a client a truncated list has told
+it something false that looks true; a failure lands in the server's activity
+log, where it can be seen. `2.4.4`'s fix to `resultText` — embedded resources and resource
 links reaching a model as `[resource content]` — is likewise out of reach: that
 helper flattens a tool result into a string for an agent loop, and this repo
 forwards `CallToolResult` untouched.
@@ -475,8 +527,9 @@ blocked by the shared-downstream-client architecture and is documented below.
 - [x] F6 Logging passthrough: advertises the `logging` capability; `logging/setLevel`
   forwards to the downstream client (per-server) or fans out to every member
   (aggregate); downstream `notifications/message` is relayed over the same bus as F4
-- [ ] F7 Reverse-direction (server→client) capabilities — **blocked by the
-  shared-client model.** Sampling / elicitation / roots require forwarding a
+- [ ] F7 Reverse-direction (server→client) capabilities — elicitation is
+  forwarded by elimination (see the MCP-endpoints section); sampling and roots
+  are still **blocked by the shared-client model.** Sampling / elicitation / roots require forwarding a
   *downstream→router* request out to a specific *upstream* MCP client. But one
   downstream `Client` is shared across all sessions (lazy-spawned, idle-killed), and
   an incoming server→client request carries no correlation to whichever upstream

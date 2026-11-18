@@ -1,4 +1,4 @@
-import { listAllTools } from '@cubicecho/agent-mcp-pool';
+import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '@cubicecho/agent-mcp-pool';
 import {
   activityResponseSchema,
   createWorkspaceRequestSchema,
@@ -19,7 +19,6 @@ import { collectFrom } from '../../gateway/fan-out.ts';
 import { McpMethod } from '../../gateway/mcp-method.ts';
 import { enabledMembers, existingMembers } from '../../gateway/members.ts';
 import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
-import { listAllPrompts, listAllResources, listAllResourceTemplates } from '../../gateway/pagination.ts';
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 

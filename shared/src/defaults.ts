@@ -13,6 +13,8 @@ export interface RouterSettings {
   maxSessions: number;
   /** How long a spawn plus the MCP handshake may take, in ms. Long, because a first `uvx` or `npx` run downloads the package. */
   connectTimeoutMs: number;
+  /** How long one proxied `tools/call` may take, in ms. A server's own `callTimeoutMs` overrides it. */
+  callTimeoutMs: number;
 }
 
 /** The values `settings.json` falls back to, frozen. */
@@ -22,6 +24,7 @@ export const SETTINGS_DEFAULTS: Readonly<RouterSettings> = Object.freeze({
   sessionIdleTimeoutMs: 1_800_000,
   maxSessions: 1_000,
   connectTimeoutMs: 60_000,
+  callTimeoutMs: 600_000,
 });
 
 /** How long the names in config files may be. */

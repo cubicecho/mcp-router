@@ -120,8 +120,8 @@ process contributes nothing until it does, so reconnect after it wakes to pick t
   minutes, per-server override)
 - Full MCP passthrough: tools, resources, resource templates, prompts, completions, logging and resource
   subscriptions. Downstream `list_changed`, resource-update and log notifications are relayed over a stateful
-  session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. Sampling, elicitation and
-  roots (requests from the server back to the client) are not proxied yet
+  session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. A server's elicitation is put
+  to the session whose call asked for it. Sampling and roots are not proxied yet
 - One bearer token guards the management API and all MCP endpoints
 - Config is plain JSON under `DATA_DIR/config`. Changes are picked up when the files change, or on
   **Reload config** in Settings

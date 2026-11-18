@@ -84,6 +84,11 @@ export const settingsFileSchema = z
      *  re-read on every reconcile, and applies at the next connect — an edited timeout is no
      *  reason to bounce a running child. */
     connectTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.connectTimeoutMs),
+    /** How long one proxied `tools/call` may run before the router gives up on it (per-server override wins).
+     *  Without it every call gets the MCP SDK's own 60s, so a tool that takes longer fails through the router
+     *  and succeeds when called directly. Long by default because the router is not the one waiting: the
+     *  client's own timeout and its cancellation both reach the downstream now. Read at call time. */
+    callTimeoutMs: z.number().int().positive().default(SETTINGS_DEFAULTS.callTimeoutMs),
     /** The router's own address as a browser reaches it, e.g. https://router.example.com. The
      *  OAuth sign-in for a remote server sends the browser back to `<publicUrl>/oauth/callback`
      *  and names the router by `<publicUrl>/oauth/client-metadata.json`, and the server's login
@@ -241,6 +246,8 @@ export const serverConfigSchema = z
     envMeta: z.record(z.string(), envVarMetaSchema).default({}),
     /** Override the global stdio idle shutdown. */
     idleTimeoutMs: z.number().int().positive().optional(),
+    /** Override the global proxied `tools/call` timeout. */
+    callTimeoutMs: z.number().int().positive().optional(),
     /** OAuth sign-in for a remote server that asks for one; see {@link serverOAuthSchema}. */
     oauth: serverOAuthSchema.optional(),
     /** Set when the server was added from one found on the local network; see {@link discoveredFromSchema}. */
