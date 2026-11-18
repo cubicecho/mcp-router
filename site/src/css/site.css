@@ -1,0 +1,512 @@
+/*
+ * MCP Router-only rules. Loaded after cubesite.css, so anything here wins.
+ *
+ * If a rule in this file would be right for every project site, it belongs in
+ * cubesite's theme/cubesite.css instead — send it there and re-sync.
+ *
+ * Colours are cubesite's tokens, written the way the theme writes them: muted
+ * text is `foreground` at 60%, a border is `foreground` at 10%.
+ */
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* The pages wrap each section's content in .wrap. The theme's <main> already
+   sets the width and gutter, so .wrap adds nothing — and because of it a
+   section's h2 is not the direct child the theme's `.section > h2` expects. */
+.section h2 {
+  margin: 0 0 1.25rem;
+  font-size: 1.5rem;
+  letter-spacing: -0.01em;
+}
+.section h3 {
+  font-size: 1.1rem;
+  margin: 2rem 0 0.75rem;
+}
+.section-lede {
+  margin: -0.5rem 0 2rem;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  max-width: 42rem;
+}
+
+/* inline code outside .prose (these pages are not prose blocks) */
+
+p code,
+li code,
+td code,
+h3 code {
+  font-family: var(--font-mono);
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+  padding: 0.05rem 0.35rem;
+  border-radius: 4px;
+  font-size: 0.9em;
+}
+/* A table scrolls sideways, so a cell's code can stay on one line. */
+td code {
+  white-space: nowrap;
+}
+.cmt {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+/* hero: an eyebrow over the H1, and the two endpoint URLs under the CTA */
+
+.hero .eyebrow {
+  margin: 0 0 0.75rem;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--info);
+}
+.lede {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  font-size: 1.125rem;
+  max-width: 42rem;
+}
+
+.endpoint-card {
+  margin-top: 2.5rem;
+  max-width: 40rem;
+  padding: 0.5rem;
+  background: var(--secondary);
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: var(--radius);
+}
+.endpoint-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem 0.875rem;
+  padding: 0.75rem 0.875rem;
+}
+.endpoint-row + .endpoint-row {
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.endpoint-row code {
+  font-family: var(--font-mono);
+  font-size: 0.95rem;
+}
+.method {
+  min-width: 2.75rem;
+  padding: 0.2rem 0.5rem;
+  border-radius: 6px;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-align: center;
+  color: var(--info);
+  background: color-mix(in oklab, var(--info) 15%, transparent);
+}
+.method-agg {
+  color: var(--active);
+  background: color-mix(in oklab, var(--active) 15%, transparent);
+}
+.endpoint-note {
+  margin-left: auto;
+  font-size: 0.85rem;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+/* feature grid — not the theme's .card-grid: these are not links */
+
+.feature-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 16rem), 1fr));
+  gap: 1rem;
+}
+.feature {
+  background: var(--secondary);
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: var(--radius);
+  padding: 1.25rem;
+}
+.feature-icon {
+  font-size: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+.section .feature h3 {
+  margin: 0 0 0.5rem;
+  font-size: 1.05rem;
+}
+.feature p {
+  margin: 0;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  font-size: 0.95rem;
+}
+
+/* how-it-works flow */
+
+.flow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 0.875rem;
+}
+.flow-node {
+  flex: 1 1 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 1.125rem;
+  background: var(--secondary);
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: var(--radius);
+}
+.flow-node span {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+  font-size: 0.9rem;
+}
+.flow-router {
+  border-color: var(--info);
+  box-shadow: 0 0 0 1px var(--info) inset;
+}
+.flow-arrow {
+  display: flex;
+  align-items: center;
+  font-weight: 600;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.flow-arrow code {
+  color: var(--info);
+}
+.flow-caption {
+  margin-top: 1.5rem;
+  max-width: 42rem;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+.pill {
+  margin-left: 0.5rem;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  vertical-align: middle;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+/* screenshots in a browser frame, and the lightbox that enlarges them */
+
+.shot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 20rem), 1fr));
+  gap: 2rem;
+}
+.shot {
+  margin: 0;
+}
+.shot-wide {
+  margin: 0 0 2rem;
+}
+.browser {
+  overflow: hidden;
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: var(--radius);
+  background: var(--background);
+}
+.browser-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.625rem 0.875rem;
+  background: var(--secondary);
+  border-bottom: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.browser-bar span {
+  width: 11px;
+  height: 11px;
+  border-radius: 50%;
+  background: color-mix(in oklab, var(--foreground) 20%, transparent);
+}
+.browser-bar em {
+  margin-left: 0.75rem;
+  padding: 0.2rem 0.75rem;
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: 6px;
+  background: var(--background);
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  font-style: normal;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.browser img {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+img.zoomable {
+  cursor: zoom-in;
+}
+.shot figcaption {
+  margin-top: 0.875rem;
+  font-size: 0.95rem;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.shot figcaption strong {
+  color: var(--foreground);
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: clamp(16px, 4vw, 48px);
+  background: rgba(6, 8, 12, 0.82);
+  backdrop-filter: blur(4px);
+  cursor: zoom-out;
+}
+.lightbox[hidden] {
+  display: none;
+}
+.lightbox-img {
+  max-width: 96vw;
+  max-height: 92vh;
+  width: auto;
+  height: auto;
+  border-radius: var(--radius);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  cursor: default;
+}
+.lightbox-close {
+  position: absolute;
+  top: clamp(12px, 2vw, 24px);
+  right: clamp(12px, 2vw, 28px);
+  width: 44px;
+  height: 44px;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  font-size: 26px;
+  line-height: 1;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+}
+.lightbox-close:hover {
+  background: rgba(255, 255, 255, 0.28);
+}
+.lightbox-close:focus-visible {
+  outline-color: #fff;
+}
+
+/* closing call to action */
+
+.cta-final {
+  text-align: center;
+}
+.cta-final .cta {
+  justify-content: center;
+}
+.cta-final p {
+  margin: 0;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+
+/* docs: a sticky table of contents beside the reference */
+
+.docs-layout {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  gap: 3rem;
+  align-items: start;
+}
+.toc {
+  position: sticky;
+  top: 1.5rem;
+  font-size: 0.9rem;
+}
+.toc-title {
+  margin: 0 0 0.625rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.toc nav {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.toc nav a {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.toc nav a:hover {
+  color: var(--foreground);
+  text-decoration: none;
+}
+.toc-foot {
+  margin-top: 1.25rem;
+  padding-top: 1rem;
+  border-top: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.docs-body {
+  min-width: 0;
+}
+.docs-body h1 {
+  margin: 0 0 0.75rem;
+  font-size: clamp(1.9rem, 4vw, 2.5rem);
+  letter-spacing: -0.02em;
+}
+.section .docs-body h2 {
+  margin: 3rem 0 0.875rem;
+}
+.docs-body p,
+.docs-body li {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.docs-body strong {
+  color: var(--foreground);
+}
+.docs-cta {
+  margin-top: 2.25rem;
+}
+
+.table-scroll {
+  overflow-x: auto;
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-radius: var(--radius);
+}
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+th,
+td {
+  text-align: left;
+  padding: 0.625rem 0.875rem;
+  border-bottom: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  vertical-align: top;
+}
+th {
+  background: var(--secondary);
+  font-weight: 600;
+}
+tr:last-child td {
+  border-bottom: none;
+}
+
+.notes {
+  padding-left: 1.25rem;
+}
+.notes li {
+  margin-bottom: 0.625rem;
+}
+
+/* get started: a numbered walkthrough */
+
+.steps {
+  counter-reset: step;
+  max-width: 54rem;
+}
+.step {
+  position: relative;
+  padding-left: 4.25rem;
+  margin-bottom: 3.25rem;
+}
+.step:last-child {
+  margin-bottom: 0;
+}
+.step::before {
+  counter-increment: step;
+  content: counter(step);
+  position: absolute;
+  left: 0;
+  top: -2px;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  font-weight: 700;
+  font-size: 1.15rem;
+  color: var(--neutral-foreground);
+  background: var(--neutral);
+}
+.step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 21px;
+  top: 52px;
+  bottom: -52px;
+  width: 2px;
+  background: color-mix(in oklab, var(--foreground) 10%, transparent);
+}
+.section .step h2 {
+  margin: 0.375rem 0 0.625rem;
+  font-size: 1.3rem;
+}
+.step > p,
+.step li {
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.step strong {
+  color: var(--foreground);
+}
+.section .step h3 {
+  margin: 1.375rem 0 0.5rem;
+  font-size: 0.95rem;
+}
+.step .shot {
+  margin-top: 1.25rem;
+}
+.step ul {
+  padding-left: 1.25rem;
+}
+.step ul li {
+  margin-bottom: 0.375rem;
+}
+.gs-callout {
+  margin-top: 1.25rem;
+  padding: 1rem 1.125rem;
+  background: var(--secondary);
+  border: 1px solid color-mix(in oklab, var(--foreground) 10%, transparent);
+  border-left: 3px solid var(--info);
+  border-radius: var(--radius);
+  font-size: 0.95rem;
+  color: color-mix(in oklab, var(--foreground) 60%, transparent);
+}
+.gs-callout strong {
+  color: var(--foreground);
+}
+
+@media (max-width: 560px) {
+  .step {
+    padding-left: 0;
+  }
+  .step::before {
+    position: static;
+    margin-bottom: 0.75rem;
+  }
+  .step:not(:last-child)::after {
+    display: none;
+  }
+}
+
+@media (max-width: 780px) {
+  .docs-layout {
+    grid-template-columns: 1fr;
+    gap: 1.5rem;
+  }
+  .toc {
+    position: static;
+  }
+  /* Stacked, so a turned arrow sits between two nodes instead of beside one. */
+  .flow {
+    flex-direction: column;
+  }
+  .flow-node {
+    flex-basis: auto;
+  }
+  .flow-arrow {
+    justify-content: center;
+    transform: rotate(90deg);
+  }
+}
