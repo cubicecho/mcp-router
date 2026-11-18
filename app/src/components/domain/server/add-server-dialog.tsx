@@ -23,7 +23,7 @@ import { Code } from '@/components/ui/code';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
 import { argsFromLines } from '@/lib/arg-lines';
-import { parseJsonConfig } from '@/lib/json-config';
+import { importPastedServer } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
 import { useCheckServerOAuth, useInstallServer, useUpdateServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
@@ -112,8 +112,8 @@ function SignInStep({ name, onOpenChange }: { name: string; onOpenChange: (open:
  * @returns The dialog.
  *
  * @remarks
- * Editing never renames, and saving on the HTTP tab leaves the stored env untouched. A pasted config only fills the
- * stdio fields, from the first server in it. A new HTTP server is asked whether it wants a login; when it does, the
+ * Editing never renames, and saving on the HTTP tab leaves the stored env untouched. A pasted config fills the fields
+ * from the first server in it, switching to the tab its transport belongs on. A new HTTP server is asked whether it wants a login; when it does, the
  * dialog stays open on a sign-in step.
  */
 export function AddServerDialog({
@@ -220,11 +220,18 @@ export function AddServerDialog({
 
   const applyJson = () => {
     try {
-      const config = parseJsonConfig(jsonText);
-      setMode('stdio');
-      form.setFieldValue('command', config.command);
-      form.setFieldValue('argsText', config.args.join('\n'));
-      form.setFieldValue('envRows', recordToRows(config.env));
+      const config = importPastedServer(jsonText);
+      if (config.transport.type === TRANSPORT_STDIO) {
+        setMode('stdio');
+        form.setFieldValue('command', config.transport.command);
+        form.setFieldValue('argsText', config.transport.args.join('\n'));
+        form.setFieldValue('cwd', config.transport.cwd ?? '');
+        form.setFieldValue('envRows', recordToRows(config.env));
+      } else {
+        form.setFieldValue('url', config.transport.url);
+        form.setFieldValue('headerRows', recordToRows(config.transport.headers));
+        setMode('http');
+      }
       if (config.name && !form.getFieldValue('name')) {
         const suggested = serverNameSchema.safeParse(config.name);
         if (suggested.success) {
@@ -302,8 +309,8 @@ export function AddServerDialog({
                 <>
                   Paste a full <Code>claude_desktop_config.json</Code> block (<Code>mcpServers</Code> wrapper), a single
                   named <Code>{'{ "name": { command, args } }'}</Code> entry, or a bare{' '}
-                  <Code>{'{ command, args, env }'}</Code> object. Fills in the fields below; the first server is used if
-                  several are present.
+                  <Code>{'{ command, args, env }'}</Code> or <Code>{'{ url, headers }'}</Code> object. Fills in the
+                  fields below; the first server is used if several are present.
                 </>
               }
               controlSlot={
