@@ -155,6 +155,42 @@ export const SaysWhyAPastedConfigCannotBeRead: Story = {
   },
 };
 
+export const FillsTheHttpTabFromAPastedUrl: Story = {
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Add a server' }));
+    await userEvent.click(dialog.getByRole('textbox', { name: 'Paste a config' }));
+    await userEvent.paste(
+      JSON.stringify({
+        mcpServers: { notes: { url: 'https://notes.example.test/mcp', headers: { Authorization: 'Bearer abc' } } },
+      }),
+    );
+    await userEvent.click(dialog.getByRole('button', { name: 'Apply config' }));
+
+    await expect(dialog.getByRole('tab', { name: 'HTTP (streamable)' })).toHaveAttribute('aria-selected', 'true');
+    await expect(dialog.getByRole('textbox', { name: 'Local name' })).toHaveValue('notes');
+    await expect(dialog.getByRole('textbox', { name: 'Server URL' })).toHaveValue('https://notes.example.test/mcp');
+    await expect(dialog.getByRole('textbox', { name: 'Value for Authorization' })).toHaveValue('Bearer abc');
+    await waitFor(() => expect(body.getByText('Config applied — fields filled in below')).toBeVisible());
+    await expect(dialog.getByRole('button', { name: 'Add server' })).toBeEnabled();
+  },
+};
+
+export const SaysWhatAPastedServerIsMissing: Story = {
+  play: async ({ canvasElement }) => {
+    const body = within(canvasElement.ownerDocument.body);
+    const dialog = within(await body.findByRole('dialog', { name: 'Add a server' }));
+    await userEvent.click(dialog.getByRole('textbox', { name: 'Paste a config' }));
+    // Trailing commas are read past, so what is refused is the missing command.
+    await userEvent.paste('{ "mcpServers": { "thinking": { "args": ["-y", "thinking-mcp"], }, }, }');
+    await userEvent.click(dialog.getByRole('button', { name: 'Apply config' }));
+    await waitFor(() =>
+      expect(body.getByText('Could not parse config: server "thinking": needs a command')).toBeVisible(),
+    );
+    await expect(dialog.getByRole('textbox', { name: 'Local name' })).toHaveValue('');
+  },
+};
+
 export const ShowsWhyTheServerRefused: Story = {
   parameters: {
     api: { [ADD_ROUTE]: apiError(HttpStatus.Conflict, ErrorCode.Conflict, 'Server "echo" already exists') },

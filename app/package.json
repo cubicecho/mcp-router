@@ -12,6 +12,7 @@
     "build-storybook": "storybook build"
   },
   "dependencies": {
+    "@cubicecho/agent-mcp-pool": "^3.16.2",
     "@mcp-router/shared": "*",
     "@radix-ui/react-slot": "^1.5.0",
     "@tanstack/react-form": "^1.33.5",

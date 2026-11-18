@@ -91,6 +91,32 @@ describe('AddServerDialog', () => {
     );
   });
 
+  it('submits a pasted HTTP server as a streamable-http transport', async () => {
+    const installSpy = vi.spyOn(api, 'installServer').mockResolvedValue({ config: { name: 'docs' } } as never);
+    vi.spyOn(api, 'checkServerOAuth').mockResolvedValue({ config: { name: 'docs' }, state: 'running' } as never);
+
+    renderDialog();
+
+    const config = JSON.stringify({ mcpServers: { docs: { type: 'http', url: 'http://localhost:8080/mcp' } } });
+    fireEvent.change(screen.getByLabelText('Paste a config'), { target: { value: config } });
+    fireEvent.click(screen.getByRole('button', { name: 'Apply config' }));
+
+    await waitFor(() =>
+      expect((screen.getByLabelText('Server URL') as HTMLInputElement).value).toBe('http://localhost:8080/mcp'),
+    );
+    expect((screen.getByLabelText('Local name') as HTMLInputElement).value).toBe('docs');
+    fireEvent.click(screen.getByRole('button', { name: 'Add server' }));
+
+    await waitFor(() => expect(installSpy).toHaveBeenCalledTimes(1));
+    expect(installSpy).toHaveBeenCalledWith({
+      name: 'docs',
+      source: { type: 'remote' },
+      transport: { type: 'streamable-http', url: 'http://localhost:8080/mcp', headers: {} },
+      env: {},
+      enabled: true,
+    });
+  });
+
   it('submits an HTTP server as a remote source with a streamable-http transport', async () => {
     const installSpy = vi.spyOn(api, 'installServer').mockResolvedValue({
       config: { name: 'local-http' },
