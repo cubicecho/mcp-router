@@ -1,0 +1,17 @@
+# MCP Router for QNAP Container Station 3: Applications → Create, paste this in.
+#
+# Container Station does not read .env files, so the values are written inline:
+#   1. In File Station, create the folder Container/mcp-router/data.
+#   2. Replace change-me with a long random token (`openssl rand -hex 32`).
+#      The router refuses to start while it is still change-me.
+#   3. If port 3000 is taken on the NAS, change the left-hand number.
+services:
+  mcp-router:
+    image: vantreeseba/mcp-router:latest
+    ports:
+      - '3000:3000'
+    volumes:
+      - /share/Container/mcp-router/data:/data
+    environment:
+      MCP_ROUTER_TOKEN: change-me
+    restart: unless-stopped

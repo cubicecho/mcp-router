@@ -2,7 +2,10 @@
 
 # ── Stage 1: build ────────────────────────────────────────────────────────────
 # Full node image (matches engines >=22.18); builds shared/server/app workspaces.
-FROM node:26-slim AS builder
+# Runs on the build machine's own platform even for a multi-arch build: its
+# output (server/dist, app/dist) is plain JS, so only the runtime stage below
+# needs to run under emulation for another architecture.
+FROM --platform=$BUILDPLATFORM node:26-slim AS builder
 
 WORKDIR /app
 

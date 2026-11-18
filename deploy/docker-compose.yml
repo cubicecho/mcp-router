@@ -1,0 +1,27 @@
+# MCP Router — run the published image with Docker Compose.
+#
+#   docker compose up -d     then open http://localhost:3000 and enter your token
+#
+# Portainer and Dockhand deploy this same file as a stack (see deploy/templates.json).
+# Every value below can be set from the environment or a .env file beside this one.
+services:
+  mcp-router:
+    image: vantreeseba/mcp-router:${MCP_ROUTER_VERSION:-latest}
+    ports:
+      - '${MCP_ROUTER_PORT:-3000}:3000'
+    # LAN discovery (finding MCP servers on the network, and announcing the router)
+    # uses mDNS multicast, which the default bridge network drops. For it to work,
+    # replace `ports` with:
+    # network_mode: host
+    volumes:
+      # Config, installed server packages and caches. The config files under
+      # config/ are hand-editable; apply edits with the Reload button in Settings.
+      - ${MCP_ROUTER_DATA:-./data}:/data
+    environment:
+      # The bearer token for the web UI, the API and every MCP endpoint. Generate
+      # one with `openssl rand -hex 32`. Left empty, a token is generated into
+      # config/settings.json on first run and printed once to the container log.
+      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
+      # true turns auth off entirely. Only on a network you trust.
+      SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
+    restart: unless-stopped

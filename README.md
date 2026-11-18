@@ -1,54 +1,50 @@
 # MCP Router
 
-An MCP gateway: install [Model Context Protocol](https://modelcontextprotocol.io)
-servers from registries (default: the [official registry](https://registry.modelcontextprotocol.io))
-or directly from npm, run them locally as lazily-spawned stdio child processes
-(or proxy to remote streamable-HTTP servers), and re-expose every one of them
-over streamable HTTP:
+One endpoint for every MCP server. MCP Router installs
+[Model Context Protocol](https://modelcontextprotocol.io) servers from registries (by default the
+[official registry](https://registry.modelcontextprotocol.io)), from npm or from PyPI. It runs them for you,
+or proxies remote ones, and serves every one of them over streamable HTTP:
 
-- **Per-server routes** — each installed server at `http://host:3000/mcp/<name>`
-- **One aggregate endpoint** — `http://host:3000/mcp` merges all enabled
-  servers, with tool names namespaced as `<server>__<tool>` (resources, resource
-  templates, and prompts likewise); calls are routed back to the owning server
-- **Workspaces (custom aggregates)** — group a chosen subset of servers at their
-  own `http://host:3000/mcp/w/<slug>` endpoint, with optional per-workspace
-  `env`/`args`/`headers` overrides; give each client exactly the tools it needs
+- **Per-server routes:** each installed server at `http://host:3000/mcp/<name>`
+- **One aggregate endpoint:** `http://host:3000/mcp` merges all enabled servers, with tool names namespaced as
+  `<server>__<tool>` (resources, resource templates and prompts likewise)
+- **Workspaces:** a chosen subset of servers at its own `http://host:3000/mcp/w/<slug>`, with optional
+  per-workspace `env`/`args`/`headers` overrides, so each client gets exactly the tools it needs
 
-Point one MCP client at the router instead of configuring N servers in every
-client. Manage everything through the built-in React web UI, or hand-edit the
-flat JSON config files and reload.
+Point your MCP clients at the router instead of configuring every server in every client. Manage it all from
+the built-in web UI, or hand-edit the JSON config files.
 
-Highlights:
+![The Servers page](site/src/assets/screenshots/servers.png)
 
-- stdio servers spawn lazily on first request, stay warm, and shut down after
-  an idle timeout (default 5 minutes, per-server override)
-- Full MCP passthrough — tools, resources, resource templates, prompts,
-  completions, logging, and resource subscriptions, plus downstream
-  `list_changed` / resource-update / log notifications relayed over a stateful
-  session; a dropped SSE stream resumes gap-free via `Last-Event-ID`
-  (a downstream's elicitation is put to the session whose call asked; sampling
-  and roots are not yet proxied)
-- Single bearer token guards the management API and all MCP endpoints
-- Config is plain JSON under `DATA_DIR/config` — watched for changes, plus an
-  explicit `POST /api/reload`
+## Quickstart
 
-## Quickstart A: Docker Compose (recommended)
+Save this as `docker-compose.yml`:
+
+```yaml
+services:
+  mcp-router:
+    image: vantreeseba/mcp-router:latest
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./data:/data
+    environment:
+      MCP_ROUTER_TOKEN: change-me # replace with a long random value: openssl rand -hex 32
+    restart: unless-stopped
+```
 
 ```bash
-git clone <this-repo> mcp-router && cd mcp-router
-cp .env.example .env      # then edit .env and set a real MCP_ROUTER_TOKEN
 docker compose up -d
 ```
 
-Open http://localhost:3000, enter your token, and install servers from the
-Browse page. All state (config, installed server packages, logs) lives in
-`./data`, bind-mounted to `/data` in the container.
+Open http://localhost:3000, sign in with your token, and install a server from the **Browse** page. Then
+[connect your client](#connecting-mcp-clients).
 
-Prebuilt images are published on every release to
-[Docker Hub (`vantreeseba/mcp-router`)](https://hub.docker.com/r/vantreeseba/mcp-router)
-and GHCR, tagged `latest` and the semver version — swap `build: .` for
-`image: vantreeseba/mcp-router:latest` in `docker-compose.yml` to skip building
-locally. Or run the image directly, without cloning the repo:
+All state (config, installed server packages, caches) lives in `./data`. The router refuses to start while
+the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into
+`data/config/settings.json`, printing it once to the log (`docker compose logs`).
+
+Or without compose:
 
 ```bash
 docker run -d -p 3000:3000 -v ./data:/data \
@@ -56,321 +52,44 @@ docker run -d -p 3000:3000 -v ./data:/data \
   vantreeseba/mcp-router:latest
 ```
 
-## Quickstart B: bare Node
+The image is on [Docker Hub](https://hub.docker.com/r/vantreeseba/mcp-router) and as
+`ghcr.io/cubicecho/mcp-router`, for `linux/amd64` and `linux/arm64`. It is tagged `latest` and with each
+release's version.
 
-Requires Node >= 22.18.
+### Other ways to install
 
-```bash
-npm install
-npm run build
-MCP_ROUTER_TOKEN=your-secret-token npm start
-```
+Ready-made files are in [`deploy/`](deploy/README.md):
 
-The server listens on port 3000 (override with `PORT`) and serves the built
-web UI. State lives in `./data` (override with `DATA_DIR`). By default it binds
-all interfaces; set `HOST=127.0.0.1` (or `settings.host`) to restrict it to
-localhost.
-
-Both `npm start` and `npm run dev` also load a `.env` file from the repo root
-if one exists (`cp .env.example .env`), so you can keep `MCP_ROUTER_TOKEN`
-there instead of passing it inline. Variables already set in your shell take
-precedence over `.env`.
-
-Connections are kept open between tool calls, which usually arrive further
-apart than the defaults allow for:
-
-- `HTTP_KEEP_ALIVE_TIMEOUT_MS` (default `75000`) is how long an idle client
-  connection stays open; Node's own default is 5 s. Behind a reverse proxy, keep
-  it above the proxy's idle timeout (60 s for nginx and ALB, 90 s for Traefik),
-  or the proxy can reuse a connection the router is closing and answer 502.
-  `0` never closes an idle connection.
-- `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` (default `30000`) is how long an idle
-  connection to a remote streamable-HTTP server stays open when that server
-  does not send a `Keep-Alive` timeout of its own; the default would be 4 s,
-  after which every proxied call pays a new TLS handshake.
-
-For development:
-
-```bash
-npm run dev   # server with watch on :3001 + Vite dev server on :3000
-```
-
-If you start without `MCP_ROUTER_TOKEN`, a token is generated into
-`data/config/settings.json` on first run and logged once — check the startup
-output.
-
-On a trusted local network you can skip tokens entirely by setting
-`SECURE_LOCAL_NET=true` — this disables bearer auth for both `/api` and `/mcp`
-(no token is minted or required). Only do this when the router is not reachable
-from untrusted networks. The `/mcp` Origin guard (below) still applies, so a
-malicious web page cannot reach the endpoints via DNS rebinding even with auth
-off.
-
-## Configuration
-
-All config lives as flat, hand-editable JSON under `DATA_DIR/config`
-(`./data/config` locally, `/data/config` in Docker — i.e. `./data/config` on
-the host via the compose bind mount). Files are written by the router with
-mode `0600`. Unknown keys are preserved across round-trips.
-
-After hand-editing, either wait for the file watcher to pick the change up or
-apply it explicitly:
-
-```bash
-curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
-  http://localhost:3000/api/reload
-```
-
-(or use the **Reload config** button on the Settings page).
-
-### `settings.json`
-
-```jsonc
-{
-  // HTTP port. The PORT env var wins over this.
-  "port": 3000,
-  // Bearer token for /api/* and /mcp*. The MCP_ROUTER_TOKEN env var wins.
-  // Generated on first run when auth is enabled and no token exists.
-  "authToken": "a-long-random-secret",
-  // Set false to allow unauthenticated access (trusted networks only!).
-  "authEnabled": true,
-  // Interface to bind. The HOST env var wins. Omit to bind all interfaces
-  // (needed for Docker/LAN); set "127.0.0.1" to restrict to localhost.
-  "host": "127.0.0.1",
-  // Extra browser Origins allowed to reach /mcp (DNS-rebinding protection).
-  // Loopback origins are always allowed and native MCP clients send no Origin;
-  // add browser-based clients (e.g. the MCP Inspector on a non-loopback host).
-  "allowedOrigins": ["https://inspector.example.com"],
-  // Default idle shutdown for stdio child processes, in milliseconds.
-  // Per-server idleTimeoutMs overrides this.
-  "idleTimeoutMs": 300000,
-  // Idle lifetime of an MCP session before the router reclaims it (ms).
-  // Sessions normally end on a client DELETE; this bounds abandoned ones.
-  "sessionIdleTimeoutMs": 1800000,
-  // Hard cap on concurrent live MCP sessions; least-recently-active evicted past it.
-  "maxSessions": 1000,
-  // How long a downstream connect (spawn + MCP initialize) may take before the
-  // router gives up on it, in milliseconds. Bounds a server that starts and then
-  // never speaks. Generous by default because a first `uvx`/`npx` spawn may
-  // download the package before it says anything. Takes effect on the next
-  // connect after a reload; a running child is not bounced for it.
-  "connectTimeoutMs": 60000,
-  // How long one proxied tools/call may run before the router gives up on it,
-  // in milliseconds. Per-server callTimeoutMs overrides this. Long by default:
-  // the client's own timeout and its cancellation both reach the server.
-  "callTimeoutMs": 600000,
-  // The router's address as your browser and a remote server's login reach it.
-  // Used for OAuth sign-in (see "Remote servers that need a login"). Omit to use
-  // the address the web UI is open at; set it behind a proxy that rewrites hosts.
-  "publicUrl": "https://router.example.com",
-  // This router's name on the network, in its Server Cards and mDNS announcement.
-  // Written from the hostname on first run, then kept.
-  "instanceId": "nas",
-  // Announce the router on the local network over mDNS (_mcp._tcp). Off by default.
-  "lanAdvertise": false,
-  // Look for MCP servers on the local network and offer them on the Servers page.
-  "lanDiscovery": true,
-  // Found servers you dismissed, by discovery key; "Offer again" in Settings removes one.
-  "lanDismissed": []
-}
-```
-
-### Network discovery
-
-The router describes its endpoints so other tools can find them without being
-given each URL: `GET /.well-known/ai-catalog.json` lists the aggregate, every
-enabled server and every enabled workspace, each with an
-[MCP Server Card](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) at
-`<endpoint>/server-card`. Both are public; a card says when the bearer token is
-needed but never carries it.
-
-With **Look for servers on the network** on (the default), the router watches for
-MCP servers other machines announce over mDNS, such as
-[mcp-skills-manager](https://github.com/cubicecho/mcp-skills-manager) with its
-advertising on. Each one shows on the Servers page under **Found on your
-network**: **Add** opens a dialog for its local name and any token it needs, and
-adds it as a remote server; **Dismiss** hides it until you offer it again from
-Settings. Nothing is added without you. Other routers' endpoints are never
-offered, so two routers can't add each other in a loop. A server added this way
-remembers where it came from, and when it shows up at a new address the router
-points the config there.
-
-**Announce this router** (off by default) makes the router itself findable as
-`MCP Router on <instanceId>`. mDNS needs multicast, which Docker's default bridge
-network drops: in a container, use `network_mode: host` for discovery to work in
-either direction. All of this comes from
-[`@cubicecho/mcp-discovery`](https://github.com/cubicecho/mcp-discovery).
-
-### `registries.json`
-
-```jsonc
-{
-  "registries": [
-    // Any MCP-registry-API-compatible service (GET {url}/v0/servers).
-    // Seeded with the official registry on first run.
-    { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
-  ]
-}
-```
-
-### `servers/<name>.json` — one file per installed server
-
-The file (and server) name doubles as the route segment (`/mcp/<name>`) and
-the install directory (`data/servers/<name>`). Names must match
-`^[a-z0-9][a-z0-9._-]*$` (max 64 chars).
-
-A local stdio server installed from a registry:
-
-```jsonc
-{
-  "name": "github",
-  "displayName": "GitHub",                 // optional, UI only
-  "description": "GitHub MCP server",      // optional
-  "enabled": true,                          // disabled servers 404 and are
-                                            // excluded from the aggregate
-  "source": {
-    "type": "registry",                     // "registry" | "npm" | "remote"
-    "registry": "official",                 // name from registries.json
-    "serverName": "io.github.github/github-mcp-server",
-    "version": "1.2.3"                      // optional, defaults to latest
-  },
-  "transport": {
-    "type": "stdio",
-    "command": "node",                      // executable or absolute bin path
-    "args": ["/data/servers/github/node_modules/.bin/github-mcp-server"],
-    "cwd": "/data/servers/github"           // optional
-  },
-  // Env vars passed to the child process. Values are PLAINTEXT — see
-  // Security notes below.
-  "env": {
-    "GITHUB_TOKEN": "ghp_..."
-  },
-  // UI hints for known env vars (sourced from the registry); keys are var names.
-  "envMeta": {
-    "GITHUB_TOKEN": {
-      "description": "GitHub personal access token",
-      "isRequired": true,
-      "isSecret": true
-      // also supported: "default", "placeholder", "choices"
-    }
-  },
-  // Optional override of the global stdio idle shutdown (ms).
-  "idleTimeoutMs": 600000,
-  // Optional override of the global proxied tools/call timeout (ms).
-  "callTimeoutMs": 1800000
-}
-```
-
-A server installed directly from npm uses
-`"source": { "type": "npm", "package": "@scope/pkg", "version": "1.0.0" }`
-(version optional) with the same stdio transport shape.
-
-A remote server that is merely proxied (nothing installed):
-
-```jsonc
-{
-  "name": "some-remote",
-  "enabled": true,
-  "source": { "type": "remote" },
-  "transport": {
-    "type": "streamable-http",
-    "url": "https://mcp.example.com/mcp",
-    // Extra headers sent to the remote server, e.g. its own auth:
-    "headers": { "Authorization": "Bearer <remote-token>" }
-  }
-}
-```
-
-### `workspaces/<slug>.json` — one file per workspace (custom aggregate)
-
-A **workspace** exposes a chosen subset of servers as its own aggregate at
-`/mcp/w/<slug>`. The `slug` doubles as the filename and is derived from the
-name; each member may override the base server's `env`, `args`, or `headers`
-for that workspace only. Each member runs as an isolated downstream instance, so
-a workspace can run a server that's globally disabled, and its overrides never
-touch the base server.
-
-```jsonc
-{
-  "name": "Coding assistant",
-  "slug": "coding-assistant",               // matches the filename; auto-derived
-  "enabled": true,                          // false → /mcp/w/<slug> returns 404
-  "description": "GitHub + local files for a code client.",  // optional
-  "members": {
-    "github": { "enabled": true },
-    "filesystem": {
-      "enabled": true,
-      "args": ["/data/servers/filesystem", "/srv/repo"],  // replaces base args
-      "env": { "READ_ONLY": "1" }                          // merged over base env
-    }
-  }
-}
-```
-
-A member's effective enabled state is `workspace.enabled && member.enabled` — the
-base server's own `enabled` flag is ignored inside a workspace. Members that
-reference a server which no longer exists are skipped. Manage workspaces from the
-**Workspaces** page in the web UI, or hand-edit these files and reload.
-
-## Remote servers that need a login
-
-Some remote MCP servers — Home Assistant's, and most hosted ones — don't take an
-API key. They ask the client to sign in with OAuth instead, the way
-`codex mcp add homeassistant --url …` opens a browser login. MCP Router does the
-same:
-
-1. **Add server → HTTP (streamable)**, with the server's URL, e.g.
-   `http://homeassistant.local:8123/api/mcp`. No headers needed.
-2. If the server asks for a login, the dialog moves on to **Sign in**. Click it,
-   log in in the window that opens, and the window closes itself. The server
-   now shows as running. Later you can also sign in from the server's page or its
-   row in the list (it shows **needs sign-in**).
-
-MCP Router keeps the tokens in `servers/<name>.json` (like other secrets,
-plaintext at mode 0600, never sent to the web UI) and refreshes them on its own.
-**Sign out** on the server's page forgets them.
-
-The login sends your browser back to `<router>/oauth/callback`, and servers that
-identify clients by URL (Home Assistant does) fetch
-`<router>/oauth/client-metadata.json`. Both are served without the bearer token.
-The server must be able to reach that address, so set `publicUrl` in
-settings.json (or on the Settings page) when the router is reached by a different
-name than the one in your browser. Home Assistant's login also checks that
-the URL you use for it matches its configured Internal or External URL.
-
-For a server whose login only accepts a client registered in advance, open
-**OAuth client (optional)** in the add or edit dialog and enter its client ID and
-secret.
+- **Portainer** and **Dockhand:** an app-template catalog with the router as a stack or a single container
+- **QNAP Container Station:** a compose file to paste in as an Application, and a custom App Template
+- **A fuller compose file**, with the port, data folder and image tag set from `.env`
 
 ## Connecting MCP clients
 
-All MCP endpoints speak streamable HTTP and require the bearer token (unless
-`authEnabled` is false).
+All MCP endpoints speak streamable HTTP and require the bearer token (unless auth is off).
 
-**Claude Code** — the aggregate endpoint (every enabled server, tools named
-`<server>__<tool>`):
+**Claude Code**, the aggregate endpoint (every enabled server, tools named `<server>__<tool>`):
 
 ```bash
 claude mcp add --transport http router http://localhost:3000/mcp \
   --header "Authorization: Bearer <token>"
 ```
 
-Or a single server, un-namespaced:
+Or a single server, without the prefix:
 
 ```bash
 claude mcp add --transport http github http://localhost:3000/mcp/github \
   --header "Authorization: Bearer <token>"
 ```
 
-Or a workspace — a custom aggregate of just the servers that client should see:
+Or a workspace, which holds just the servers that client should see:
 
 ```bash
 claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assistant \
   --header "Authorization: Bearer <token>"
 ```
 
-**Other clients** — any client that supports streamable HTTP works; the usual
-JSON config shape:
+**Other clients:** any client that supports streamable HTTP works. The usual JSON config shape:
 
 ```json
 {
@@ -386,116 +105,160 @@ JSON config shape:
 }
 ```
 
-Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server,
-or `http://localhost:3000/mcp/w/<slug>` for a workspace's custom aggregate.
+Swap the URL for `http://localhost:3000/mcp/<name>` to expose just one server, or
+`http://localhost:3000/mcp/w/<slug>` for a workspace.
 
-**Instructions come through.** A server that ships `instructions` in its
-initialize result has them handed to your client verbatim on `/mcp/<name>`. The
-aggregates concatenate what their members have said into one document, each
-under a `## <server>` heading and prefaced by a note that every name is
-`<server>__`-prefixed. An aggregate never spawns a server just to read them, so
-a member that has not run yet in this router process contributes nothing until
-it does — reconnect after it wakes to pick it up.
+**Instructions come through.** A server that ships `instructions` in its initialize result has them handed to
+your client verbatim on `/mcp/<name>`. The aggregates combine what their members have said into one document,
+each under a `## <server>` heading, with a note up front that every name is `<server>__`-prefixed. An
+aggregate never starts a server just to read its instructions. A member that hasn't run yet in this router
+process contributes nothing until it does, so reconnect after it wakes to pick them up.
 
-## API reference
+## What it does
 
-Management REST API under `/api`, bearer auth, JSON in/out. Errors are non-2xx
-with `{ "error": "...", "detail": "..." }`.
+- stdio servers start on the first request, stay warm, and shut down after an idle timeout (default 5
+  minutes, per-server override)
+- Full MCP passthrough: tools, resources, resource templates, prompts, completions, logging and resource
+  subscriptions. Downstream `list_changed`, resource-update and log notifications are relayed over a stateful
+  session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. A server's elicitation is put
+  to the session whose call asked for it. Sampling and roots are not proxied yet
+- One bearer token guards the management API and all MCP endpoints
+- Config is plain JSON under `DATA_DIR/config`. Changes are picked up when the files change, or on
+  **Reload config** in Settings
 
-| Method & path | Purpose |
+### Workspaces
+
+A workspace is a custom aggregate: pick servers on the **Workspaces** page and the workspace serves just
+those at `/mcp/w/<slug>`. Each member can override the server's `env`, `args` or `headers` for that workspace
+only. Members run as separate instances, so a workspace can run a server that is turned off globally, and its
+overrides never touch the base server.
+
+### Remote servers that need a login
+
+Some remote MCP servers (Home Assistant's, and most hosted ones) don't take an API key. They ask the client to
+sign in with OAuth instead, the way `codex mcp add homeassistant --url …` opens a browser login. MCP Router
+does the same:
+
+1. **Add server → HTTP (streamable)**, with the server's URL, e.g. `http://homeassistant.local:8123/api/mcp`.
+   No headers needed.
+2. If the server asks for a login, the dialog moves on to **Sign in**. Click it and log in in the window that
+   opens. The window closes itself and the server shows as running. You can also sign in later from the
+   server's page or its row in the list (it shows **needs sign-in**).
+
+MCP Router keeps the tokens in `servers/<name>.json` (like other secrets, plaintext at mode 0600, never sent to
+the web UI) and refreshes them on its own. **Sign out** on the server's page forgets them.
+
+The login sends your browser back to `<router>/oauth/callback`. Servers that identify clients by URL (Home
+Assistant does) fetch `<router>/oauth/client-metadata.json`. Both are served without the bearer token. The
+server must be able to reach that address, so set `publicUrl` in settings.json (or on the Settings page) when
+the router is reached by a different name than the one in your browser. Home Assistant's login also checks
+that the URL you use for it matches its configured Internal or External URL.
+
+For a server whose login only accepts a client registered in advance, open **OAuth client (optional)** in the
+add or edit dialog and enter its client ID and secret.
+
+### Network discovery
+
+The router describes its endpoints so other tools can find them without being given each URL:
+`GET /.well-known/ai-catalog.json` lists the aggregate, every enabled server and every enabled workspace, each
+with an [MCP Server Card](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) at
+`<endpoint>/server-card`. Both are public. A card says when the bearer token is needed but never carries it.
+
+With **Look for servers on the network** on (the default), the router watches for MCP servers other machines
+announce over mDNS, such as [mcp-skills-manager](https://github.com/cubicecho/mcp-skills-manager) with its
+advertising on. Each one shows on the Servers page under **Found on your network**:
+
+- **Add** opens a dialog for its local name and any token it needs, and adds it as a remote server.
+- **Dismiss** hides it until you offer it again from Settings.
+
+Nothing is added without you. Other routers' endpoints are never offered, so two routers can't add each other
+in a loop. A server added this way remembers where it came from, and when it shows up at a new address the
+router points the config there.
+
+**Announce this router** (off by default) makes the router itself findable as `MCP Router on <instanceId>`.
+mDNS needs multicast, which Docker's default bridge network drops. In a container, use `network_mode: host`
+for discovery to work in either direction. All of this comes from
+[`@cubicecho/mcp-discovery`](https://github.com/cubicecho/mcp-discovery).
+
+## Configuration
+
+The main environment variables:
+
+| Variable | |
 | --- | --- |
-| `GET /healthz` | Liveness, **no auth** (not under `/api`): `{ "ok": true, "version": "…" }`. What the container healthcheck calls |
-| `GET /api/status` | Router status (version, auth mode, running/total servers) |
-| `GET /api/registries` | List configured registries |
-| `POST /api/registries` | Add a registry `{ name, url }` |
-| `DELETE /api/registries/:name` | Remove a registry |
-| `GET /api/registries/:name/servers?search=&cursor=&limit=` | Search that registry |
-| `GET /api/registries/:name/servers/:serverName` | Registry entry detail (latest version) |
-| `GET /api/servers` | All installed servers with runtime state |
-| `POST /api/servers` | Install (from a registry entry, a raw npm package, or a remote URL) |
-| `GET /api/servers/:name` | Single server status |
-| `PATCH /api/servers/:name` | Update env / enabled / transport; persists to its JSON file |
-| `DELETE /api/servers/:name` | Stop, delete config, remove its install dir |
-| `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
-| `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
-| `GET /api/servers/:name/resources` | Connect and list downstream resources + resource templates (empty when unsupported) |
-| `POST /api/servers/:name/resources/read` | Read one resource by URI (recorded to the activity log) |
-| `GET /api/servers/:name/prompts` | Connect and list downstream prompts (empty when unsupported) |
-| `POST /api/servers/:name/prompts/get` | Get one prompt with arguments (recorded to the activity log) |
-| `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
-| `GET /api/workspaces` | All workspaces with their endpoint paths |
-| `POST /api/workspaces` | Create a workspace (slug auto-derived from the name) |
-| `GET /api/workspaces/:slug` | Single workspace |
-| `PATCH /api/workspaces/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
-| `DELETE /api/workspaces/:slug` | Remove a workspace (underlying servers untouched) |
-| `POST /api/reload` | Re-read all config from disk and reconcile running processes |
+| `MCP_ROUTER_TOKEN` | The bearer token. Generated into settings.json when unset |
+| `SECURE_LOCAL_NET` | `true` turns auth off. Only on a network you trust |
+| `PORT` / `HOST` | Where to listen (default `3000` on all interfaces) |
+| `DATA_DIR` | Where state lives (`/data` in the image) |
 
-MCP endpoints (streamable HTTP):
-
-| Endpoint | Purpose |
-| --- | --- |
-| `POST/GET/DELETE /mcp/<name>` | Proxy 1:1 to that server (tools, resources, prompts) |
-| `POST/GET/DELETE /mcp` | Aggregate of all enabled servers, `<server>__` name prefix |
-| `POST/GET/DELETE /mcp/w/<slug>` | A workspace's custom aggregate — same `<server>__` prefix, over its members only |
-
-All three forward downstream `instructions` — see [Connecting MCP
-clients](#connecting-mcp-clients).
+Everything else (the keep-alive timeouts, `settings.json`, registries, and the per-server and per-workspace
+files) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
+[docs/api.md](docs/api.md).
 
 ## Security notes
 
-- **Secrets are stored in plaintext** in the JSON config files (`env` values,
-  remote-transport headers, OAuth tokens and client secrets, the auth token). The router writes these files
-  with mode `0600`, but anyone with read access to `DATA_DIR` — or to your
-  Docker bind mount — can read them. Protect the directory accordingly and
-  keep backups equally private.
-- **One bearer token guards everything** (`/api/*` and `/mcp*`). Set it via
-  `MCP_ROUTER_TOKEN`; treat it like a password. Setting `authEnabled: false` in
-  settings.json, or `SECURE_LOCAL_NET=true` in the environment, disables auth
-  entirely — only do that on a trusted network. The `SECURE_LOCAL_NET` env var
-  overrides settings and is handy for containers where editing settings.json is
-  awkward.
-- **Do not expose the router directly to the internet.** It speaks plain HTTP;
-  the bearer token would travel in cleartext. Put it behind a TLS-terminating
-  reverse proxy (Caddy, nginx, Traefik) if it must be reachable remotely, and
-  prefer binding to localhost or a private network otherwise.
-- Installed servers run as child processes of the router with the env vars you
-  configure — installing a server means running its code with access to those
-  secrets. Install packages you trust.
-- **The Activity tab keeps recent request/response bodies in memory.** For
-  debugging, the router retains the newest 200 proxied calls per server —
-  including tool arguments and results, which may contain sensitive data — in
-  process memory (bounded, never written to disk, cleared when the server is
-  removed or the process exits, and clearable from the UI). Anyone with the
-  bearer token can read them via `GET /api/servers/:name/activity`.
+- **Secrets are stored in plaintext** in the JSON config files: `env` values, remote-transport headers, OAuth
+  tokens and client secrets, and the auth token. The router writes these files with mode `0600`, but anyone
+  with read access to `DATA_DIR`, or to your Docker bind mount, can read them. Protect the folder accordingly
+  and keep backups equally private.
+- **One bearer token guards everything** (`/api/*` and `/mcp*`). Treat it like a password. Setting
+  `authEnabled: false` in settings.json, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
+  entirely. Only do that on a trusted network. The `/mcp` Origin guard still applies with auth off, so a
+  malicious web page can't reach the endpoints through DNS rebinding.
+- **Do not expose the router directly to the internet.** It speaks plain HTTP, so the bearer token would
+  travel in cleartext. Put it behind a TLS-terminating reverse proxy (Caddy, nginx, Traefik) if it must be
+  reachable remotely, and otherwise bind it to localhost or a private network.
+- Installed servers run as child processes of the router with the env vars you configure. Installing a
+  server means running its code with access to those secrets. Install packages you trust.
+- **The Activity tab keeps recent request and response bodies in memory.** For debugging, the router keeps
+  the newest 200 proxied calls per server, including tool arguments and results, which may contain sensitive
+  data. They are bounded, never written to disk, cleared when the server is removed or the process exits, and
+  clearable from the UI. Anyone with the bearer token can read them via `GET /api/servers/:name/activity`.
 
 ## Limitations
 
-- **The default Docker image supports npm-based servers only.** Runtime
-  installs shell out to `npm install --prefix /data/servers/<name>`, and the
-  image ships node/npm/npx — but not Python, `uv`/`uvx`, or other runtimes
-  some MCP servers need. To run those, extend the image, e.g.:
+- **The image runs npm and PyPI servers.** It ships Node (npm, npx) and `uv`/`uvx`. `uv` fetches its own
+  Python on first use and keeps it under `/data/uv`. Servers that need anything else (a Go or Rust binary,
+  Deno, Docker) need an image extended with that runtime, e.g.:
 
   ```dockerfile
-  FROM mcp-router
-  RUN apt-get update && apt-get install -y --no-install-recommends \
-      python3 pipx && rm -rf /var/lib/apt/lists/* \
-      && pipx install uv
+  FROM vantreeseba/mcp-router:latest
+  RUN apt-get update && apt-get install -y --no-install-recommends <your-runtime> \
+      && rm -rf /var/lib/apt/lists/*
   ```
 
-  then configure the server's `transport.command` accordingly.
-- Runtime installs need outbound network access to registry.npmjs.org from
-  inside the container.
+  then set the server's `transport.command` accordingly.
+- Installing at runtime needs outbound network access from the container to the npm registry and PyPI.
+
+---
 
 ## Development
 
-npm-workspaces monorepo: `shared/` (zod schemas — the contract), `server/`
-(Express 5 + MCP TS SDK), `app/` (React 19 + Vite + shadcn/ui). See
-[AGENTS.md](AGENTS.md) for conventions and [SPECS.md](SPECS.md) for the full
-design and work list.
+npm-workspaces monorepo: `shared/` (zod schemas, the contract), `server/` (Express 5 + MCP TS SDK), `app/`
+(React 19 + Vite + shadcn/ui). See [AGENTS.md](AGENTS.md) for conventions and [SPECS.md](SPECS.md) for the
+full design and work list.
+
+### Run from source
+
+Requires Node >= 22.18.
+
+```bash
+npm install
+npm run build
+MCP_ROUTER_TOKEN=your-secret-token npm start
+```
+
+The server listens on port 3000 and serves the built web UI, with state in `./data`. `npm start` and
+`npm run dev` also read a `.env` from the repo root (`cp .env.example .env`).
+
+To build and run the image from your checkout instead, `docker compose up -d --build` uses the root
+[`docker-compose.yml`](docker-compose.yml).
+
+### Commands
 
 ```bash
 npm run dev      # server (watch, :3001) + Vite dev server (:3000)
 npm run check    # biome + tsc for all packages
-npm test         # vitest
+npm test         # vitest: server, app, then the stories in Chromium
 npm run build    # shared typecheck → server tsc → app vite build
 ```
