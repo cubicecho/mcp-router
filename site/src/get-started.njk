@@ -26,27 +26,41 @@ permalink: /get-started/
 
       <div class="step" id="run">
         <h2>Run the router</h2>
-        <p>MCP Router ships as a single container. Pick whichever start fits — all three land you on the same
-          web UI at <code>http://localhost:3000</code>. State lives in <code>./data</code> (bind-mounted to
-          <code>/data</code> in Docker), so nothing is hidden away.</p>
+        <p>MCP Router ships as a single image, for <code>amd64</code> and <code>arm64</code>. Every way of
+          starting it lands you on the same web UI at <code>http://localhost:3000</code>. State lives in
+          <code>./data</code> (mounted at <code>/data</code> in the container), so nothing is hidden away.</p>
 
-        <h3>Prebuilt image — no clone</h3>
+        <h3>Docker Compose</h3>
+        <p>Save this as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>:</p>
+        <pre class="code"><code>services:
+  mcp-router:
+    image: vantreeseba/mcp-router:latest
+    ports:
+      - '3000:3000'
+    volumes:
+      - ./data:/data
+    environment:
+      MCP_ROUTER_TOKEN: change-me <span class="cmt"># replace: openssl rand -hex 32</span>
+    restart: unless-stopped</code></pre>
+
+        <h3>Plain <code>docker run</code></h3>
         <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
   -e MCP_ROUTER_TOKEN=your-secret-token \
   vantreeseba/mcp-router:latest</code></pre>
 
-        <h3>Docker Compose — from the repo</h3>
-        <pre class="code"><code>git clone https://github.com/cubicecho/mcp-router mcp-router &amp;&amp; cd mcp-router
-cp .env.example .env      <span class="cmt"># set a real MCP_ROUTER_TOKEN</span>
-docker compose up -d</code></pre>
+        <h3>Portainer, Dockhand or a QNAP NAS</h3>
+        <p>The repo's <a href="{{ site.repo }}/tree/main/deploy"><code>deploy/</code></a> folder has an
+          app-template catalog for Portainer and Dockhand, and a compose file and App Template for QNAP Container
+          Station. Its README walks through each.</p>
 
-        <h3>Bare Node <span class="pill">Node ≥ 22.18</span></h3>
+        <h3>From source <span class="pill">Node ≥ 22.18</span></h3>
         <pre class="code"><code>npm install &amp;&amp; npm run build
 MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
 
         <div class="gs-callout">
-          <strong>No token set?</strong> One is generated into <code>data/config/settings.json</code> and printed
-          to the log once at startup. On a trusted local network you can skip auth entirely with
+          <strong>Token.</strong> The router won't start while it is still <code>change-me</code>. Leave
+          <code>MCP_ROUTER_TOKEN</code> out and one is generated into <code>data/config/settings.json</code> and
+          printed to the log once at startup. On a trusted local network you can skip auth entirely with
           <code>SECURE_LOCAL_NET=true</code>.
         </div>
       </div>
