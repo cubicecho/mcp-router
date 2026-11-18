@@ -1,20 +1,28 @@
-name: Deploy site to GitHub Pages
+# The canonical Pages deploy for a cubicecho project site.
+#
+# Copied to .github/workflows/pages.yml by cubesite's scaffold. It assumes the
+# site lives in ./site and builds to ./site/_site — the layout every project
+# here uses, so the file is the same in every repo and a fix travels.
+#
+# One-time setup in the repo: Settings → Pages → Source: "GitHub Actions".
+
+name: Pages
 
 on:
   push:
     branches: [main]
     paths:
-      - 'site/**'
-      - '.github/workflows/pages.yml'
+      - "site/**"
+      - ".github/workflows/pages.yml"
   workflow_dispatch:
 
-# Allow the deploy job to publish to Pages.
 permissions:
   contents: read
   pages: write
   id-token: write
 
-# One Pages deploy at a time; don't cancel an in-flight one.
+# One deploy at a time, and let an in-flight one finish: a cancelled Pages
+# deploy can leave the site on the previous artifact with no sign of why.
 concurrency:
   group: pages
   cancel-in-progress: false
@@ -26,13 +34,26 @@ jobs:
       run:
         working-directory: site
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
         with:
-          node-version: '22'
-      - run: npm install
+          node-version: 22
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - run: npm ci
+
       - run: npm run build
-      - uses: actions/upload-pages-artifact@v3
+
+      # The site is the only public face of some of these repos, so a deploy
+      # that publishes an empty directory should fail here, not silently.
+      - name: The build produced a site
+        run: test -s _site/index.html
+
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
         with:
           path: site/_site
 
@@ -41,7 +62,7 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - id: deployment
+      - id: deploy
         uses: actions/deploy-pages@v5
