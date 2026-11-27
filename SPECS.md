@@ -111,6 +111,44 @@ Errors: non-2xx with `{ error, code, detail? }`. `code` is one of the shared `Er
 `INTERNAL` 500, `UPSTREAM_FAILED` 502, `UNAVAILABLE` 503, `UPSTREAM_TIMEOUT` 504); callers branch
 on it, never on the `error` text. Validation via the shared zod schemas.
 
+### Management GraphQL (`/graphql`) and its MCP door (`/admin/mcp`), bearer auth
+
+Served beside `/api` (which stays until the UI moves over) when `createApp` is given the Drizzle `db`;
+without one neither path exists. Both sit behind the same bearer guard as `/api` (`/admin/mcp` also
+behind the Origin guard, like `/mcp`) and the same `express.json` cap (`HTTP_DEFAULTS.bodyLimit`).
+They serve one permissioned schema (`server/src/graphql/build-schema.ts`) through one context factory
+(`createContextFactory` in `core/context.ts`): today every request that passed the guard is the
+operator; a later auth step reads sessions and API keys there.
+
+- **Schema:** drizzle-graphql `buildSchema` over `server/src/db/schema.ts` (create/update/delete
+  prefixes, singular type names, `complexity: true`, page sizes from `OPERATION_LIMIT_DEFAULTS`),
+  plus hand-written fields for what no table holds. `servers.oauth` and `settings.authToken` are never
+  readable. `features.nestedWrites` is off: a workspace's members can't be replaced through a nested
+  update (the NOT NULL `workspace_id` leaves only `create`/`connect`), so `saveWorkspace` does it.
+- **Generated writes** (single-row forms only; every bulk `createXs`/`updateXs`/`deleteXs`/`…Many`
+  is FORBIDDEN): `createRegistry`/`updateRegistry`/`deleteRegistry`, `createWorkspace`/`updateWorkspace`/
+  `deleteWorkspace`, `createWorkspaceMember`/`updateWorkspaceMember`/`deleteWorkspaceMember`,
+  `updateSetting` (only the settings the UI edits; the port, host, token, `authEnabled`, `instanceId`
+  and `allowedOrigins` are refused). `createServer` exists but is FORBIDDEN: servers come from
+  `installServer`. `onWrite` hooks check each written row against the shared zod schemas
+  (BAD_USER_INPUT) and, once the write commits, call `store.reload()` so the gateway sees it.
+- **Hand-written queries:** `routerStatus`, `serverRuntimes`, `serverRuntime(name)`,
+  `serverTools`/`serverResources`/`serverPrompts`/`serverActivity(name)`,
+  `workspaceTools`/`workspaceResources`/`workspacePrompts`/`workspaceActivity(slug)`,
+  `registryServers(registry, search, cursor)`, `registryServer(registry, name)`, `lanServers`.
+  Every list takes `limit` (default `defaultPageSize`, capped at `maxPageSize`) and is priced as a page.
+- **Hand-written mutations:** `installServer`, `updateServer(name)`, `deleteServer(name)`,
+  `restartServer`, `clearServerActivity`, `startServerOAuth(name, origin)`, `checkServerOAuth`,
+  `signOutServerOAuth`, `saveWorkspace` (a workspace and its whole member list, one transaction),
+  `clearWorkspaceActivity`, `reloadConfig`, `setLanServerDismissed(key, dismissed)`.
+- **Bounds:** depth, aliases and cost per operation (`OPERATION_LIMIT_DEFAULTS`, refused as
+  `QUERY_TOO_COMPLEX`); a `limit` over `maxPageSize` is drizzle-graphql's `DRIZZLE_LIMIT_EXCEEDED`.
+  `/admin/mcp` offers the tools in `ADMIN_TOOLS` (`graphql/admin-mcp.ts`), bounded by `MCP_DEFAULTS`.
+- **Errors:** `GraphQLError` with `extensions.code` from the shared `ErrorCode` (the REST codes, plus
+  `QUERY_TOO_COMPLEX`); anything uncoded is masked by Yoga and logged with a `[graphql]` tag,
+  never with the operation's variables.
+- `npm run codegen` prints the served schema to `server/__generated__/schema.graphql` (gitignored).
+
 ### MCP endpoints (streamable HTTP, bearer auth)
 
 - `POST/GET/DELETE /mcp/<name>` — proxy to that server: tools, resources,

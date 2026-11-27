@@ -1,0 +1,123 @@
+import { ErrorCode } from '@mcp-router/shared';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { closeTestDb, createTestDb, resetTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { registries } from '../../db/tables/registries.ts';
+import { settings } from '../../db/tables/settings.ts';
+import { createHarness, type Harness } from './harness.ts';
+
+const CREATE_WORKSPACE = `mutation($slug: String!) { createWorkspace(values: { name: "Work", slug: $slug }) { id slug } }`;
+const RENAME_WORKSPACE = `mutation($id: UUID!, $name: String!) {
+  updateWorkspace(where: { id: { eq: $id } }, set: { name: $name }) { id name slug }
+}`;
+
+describe('generated CRUD', () => {
+  let db: TestDb;
+  let harness: Harness;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+  });
+
+  afterAll(() => closeTestDb(db));
+
+  beforeEach(async () => {
+    await resetTestDb(db);
+    harness = await createHarness(db);
+  });
+
+  afterEach(async () => {
+    vi.restoreAllMocks();
+    await harness.close();
+  });
+
+  it('reads rows through a generated query', async () => {
+    await db.insert(registries).values({ name: 'official', url: 'https://registry.example.com' });
+    const data = await harness.expectOk('{ registries { name url } }');
+    expect(data.registries).toEqual([{ name: 'official', url: 'https://registry.example.com' }]);
+  });
+
+  it('round-trips a generated single-row update', async () => {
+    const { createWorkspace } = await harness.expectOk(CREATE_WORKSPACE, { slug: 'work' });
+    const { updateWorkspace } = await harness.expectOk(RENAME_WORKSPACE, { id: createWorkspace.id, name: 'Renamed' });
+    expect(updateWorkspace).toEqual({ id: createWorkspace.id, name: 'Renamed', slug: 'work' });
+    const { workspaces } = await harness.expectOk('{ workspaces { name } }');
+    expect(workspaces).toEqual([{ name: 'Renamed' }]);
+  });
+
+  it('reloads the store once a write commits', async () => {
+    const reload = vi.spyOn(harness.store, 'reload');
+    await harness.expectOk(CREATE_WORKSPACE, { slug: 'work' });
+    expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses a slug the workspace rules reject, writes nothing and does not reload', async () => {
+    const reload = vi.spyOn(harness.store, 'reload');
+    const { code } = await harness.expectError(CREATE_WORKSPACE, { slug: 'Not A Slug' });
+    expect(code).toBe(ErrorCode.BadUserInput);
+    const { workspaces } = await harness.expectOk('{ workspaces { id } }');
+    expect(workspaces).toEqual([]);
+    expect(reload).not.toHaveBeenCalled();
+  });
+
+  it('refuses a taken slug as CONFLICT', async () => {
+    await harness.expectOk(CREATE_WORKSPACE, { slug: 'work' });
+    const { code } = await harness.expectError(CREATE_WORKSPACE, { slug: 'work' });
+    expect(code).toBe(ErrorCode.Conflict);
+  });
+
+  it('refuses a registry whose URL is not one', async () => {
+    const { code } = await harness.expectError(
+      `mutation { createRegistry(values: { name: "bad", url: "nope" }) { id } }`,
+    );
+    expect(code).toBe(ErrorCode.BadUserInput);
+  });
+
+  it('edits the settings the UI edits, and refuses the ones it does not', async () => {
+    await db.insert(settings).values({});
+    const edit = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { lanAdvertise: true }) { lanAdvertise } }`;
+    expect((await harness.expectOk(edit)).updateSetting).toEqual({ lanAdvertise: true });
+    const locked = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { authEnabled: false }) { authEnabled } }`;
+    const { code } = await harness.expectError(locked);
+    expect(code).toBe(ErrorCode.BadUserInput);
+  });
+});
+
+describe('permissions', () => {
+  let db: TestDb;
+  let harness: Harness;
+
+  beforeAll(async () => {
+    db = await createTestDb();
+    harness = await createHarness(db);
+  });
+
+  afterAll(async () => {
+    await harness.close();
+    await closeTestDb(db);
+  });
+
+  it('refuses a bulk delete as FORBIDDEN', async () => {
+    const { code } = await harness.expectError(`mutation { deleteWorkspaces(where: { slug: { eq: "x" } }) { id } }`);
+    expect(code).toBe(ErrorCode.Forbidden);
+  });
+
+  it('refuses a bulk update as FORBIDDEN', async () => {
+    const bulk = `mutation { updateRegistries(where: { name: { eq: "x" } }, set: { url: "https://x.test" }) { id } }`;
+    const { code } = await harness.expectError(bulk);
+    expect(code).toBe(ErrorCode.Forbidden);
+  });
+
+  it('refuses the generated createServer as FORBIDDEN, naming installServer', async () => {
+    const create = `mutation {
+      createServer(values: { name: "x", source: { type: "remote" }, transport: { type: "streamable-http", url: "https://x.test" } }) { id }
+    }`;
+    const { code, message } = await harness.expectError(create);
+    expect(code).toBe(ErrorCode.Forbidden);
+    expect(message).toContain('installServer');
+  });
+
+  it('refuses a caller who is not the operator', async () => {
+    const result = await harness.run('{ servers { id } }', {}, null);
+    expect(result.errors?.[0]?.extensions.code).toBe(ErrorCode.Unauthenticated);
+  });
+});

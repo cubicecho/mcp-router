@@ -30,6 +30,7 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 | `installer/` | turns an install request into a server config (npm, PyPI, remote) |
 | `registry/` | client for MCP registries |
 | `discovery/` | LAN discovery: the router's Server Cards, its mDNS announcement, and the servers found on the network |
+| `graphql/` | the management schema at `/graphql` and `/admin/mcp`: generated CRUD, hand-written fields, write hooks, permissions, operation limits |
 
 Tests live in the `__tests__/` folder of the module they cover, named after it.
 
