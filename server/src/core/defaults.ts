@@ -131,3 +131,46 @@ export const OAUTH_DEFAULTS: Readonly<OAuthSettings> = Object.freeze({
   callbackPath: '/oauth/callback',
   clientMetadataPath: '/oauth/client-metadata.json',
 });
+
+/** Bounds on one GraphQL operation. */
+export interface OperationLimitSettings {
+  /** Rows a list returns when the request names no `limit`. */
+  defaultPageSize: number;
+  /** The largest `limit` a request may ask for. */
+  maxPageSize: number;
+  /** Deepest selection accepted. */
+  maxDepth: number;
+  /** Aliases per operation. */
+  maxAliases: number;
+  /** Cost per operation. One full page of rows with about 10 fields fits. A page of full pages doesn't. */
+  maxCost: number;
+  /** What a field costs when nothing prices it. */
+  defaultFieldCost: number;
+}
+
+/** The fixed GraphQL operation limits this build ships with. */
+export const OPERATION_LIMIT_DEFAULTS: Readonly<OperationLimitSettings> = Object.freeze({
+  defaultPageSize: 50,
+  maxPageSize: 500,
+  maxDepth: 8,
+  maxAliases: 15,
+  maxCost: 10_000,
+  defaultFieldCost: 1,
+});
+
+/** Bounds on the router's own MCP door, /admin/mcp. */
+export interface McpSettings {
+  /** Levels of relations a tool's selection includes. Deeper pulls whole relations into the agent's context. */
+  selectionDepth: number;
+  /** Largest schema one tool may have, in bytes of JSON. */
+  maxToolSchemaBytes: number;
+  /** Largest `tools/list` response, in bytes of JSON. */
+  maxToolListBytes: number;
+}
+
+/** The fixed /admin/mcp bounds this build ships with. */
+export const MCP_DEFAULTS: Readonly<McpSettings> = Object.freeze({
+  selectionDepth: 1,
+  maxToolSchemaBytes: 40_000,
+  maxToolListBytes: 250_000,
+});

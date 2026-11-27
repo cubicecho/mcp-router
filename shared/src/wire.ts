@@ -29,6 +29,8 @@ export const ErrorCode = {
   /** A downstream server is backed off after crashing. */
   Unavailable: 'UNAVAILABLE',
   UpstreamTimeout: 'UPSTREAM_TIMEOUT',
+  /** A GraphQL operation too deep, too aliased or too costly to run. A client bug: fix the query. */
+  QueryTooComplex: 'QUERY_TOO_COMPLEX',
 } as const;
 /** One of the {@link ErrorCode} values. */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];

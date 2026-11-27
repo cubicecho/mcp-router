@@ -83,6 +83,16 @@ export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean
 }
 
 /**
+ * Whether the router runs as a production build: `NODE_ENV=production`, as `npm start` and the Docker image set it.
+ *
+ * @param [env] - The process environment.
+ * @returns True in production, where GraphiQL is not served.
+ */
+export function isProduction(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env.NODE_ENV === 'production';
+}
+
+/**
  * The bearer token from `MCP_ROUTER_TOKEN`, which replaces the one stored in settings.json.
  *
  * @param [env] - The process environment.
