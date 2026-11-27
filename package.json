@@ -41,5 +41,11 @@
     "concurrently": "^9.1.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "drizzle-orm": "1.0.0-rc.5"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-rc.5"
   }
 }
