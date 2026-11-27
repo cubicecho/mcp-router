@@ -226,3 +226,16 @@ export function createLanServers(deps: LanServersDeps): LanServers {
 export function idleLanServers(): LanServers {
   return { sync: async () => undefined, list: () => [], close: async () => undefined };
 }
+
+/**
+ * Hides a found server from the offer, or offers it again.
+ *
+ * @param current - The dismissed discovery keys.
+ * @param key - The server's discovery key.
+ * @param dismissed - True hides it, false offers it again.
+ * @returns The new list of dismissed keys, each key once.
+ */
+export function withDismissed(current: readonly string[], key: string, dismissed: boolean): string[] {
+  const others = current.filter((existing) => existing !== key);
+  return dismissed ? [...others, key] : others;
+}

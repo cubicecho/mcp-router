@@ -1,4 +1,3 @@
-import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '@cubicecho/agent-mcp-pool';
 import {
   activityResponseSchema,
   HttpStatus,
@@ -10,10 +9,10 @@ import {
   updateServerRequestSchema,
 } from '@mcp-router/shared';
 import { Router } from 'express';
-import { conflict, errorMessage, notFound } from '../../core/errors.ts';
-import { emptyOnMissing } from '../../gateway/capability.ts';
-import { buildServerConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
-import { applyOAuthClient, dropSignInOnMove } from '../../oauth/service.ts';
+import { applyServerUpdate } from '../../config/server-update.ts';
+import { conflict, notFound } from '../../core/errors.ts';
+import { listServerPrompts, listServerResources, listServerTools } from '../../gateway/listings.ts';
+import { buildInstalledConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
@@ -62,11 +61,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir, oa
     if (store.getServer(name)) {
       throw conflict(`Server "${name}" already exists`);
     }
-    const built = await buildServerConfig({ ...request, name }, installerDeps);
-    const signedIn: ServerConfig = request.oauthClient
-      ? { ...built, oauth: applyOAuthClient(built.oauth, request.oauthClient) }
-      : built;
-    const config: ServerConfig = request.discovered ? { ...signedIn, discovered: request.discovered } : signedIn;
+    const config = await buildInstalledConfig({ ...request, name }, installerDeps);
     await store.saveServer(config);
     await applyConfig({ store, manager });
     res.status(HttpStatus.Created).json(requireStatus(config.name));
@@ -78,20 +73,7 @@ export function createServerRoutes({ store, manager, registryClient, dataDir, oa
 
   router.patch('/:name', async (req, res) => {
     const name = req.params.name;
-    const existing = requireServer(name);
-    // The request schema is a plain object, so an omitted field is an absent key
-    // (never an explicit undefined) and spreads as "leave it alone". Only
-    // idleTimeoutMs needs a hand: null means "clear the override", not "set null".
-    const { idleTimeoutMs, oauthClient, ...fields } = updateServerRequestSchema.parse(req.body);
-    let next: ServerConfig = dropSignInOnMove(existing, { ...existing, ...fields });
-    if (oauthClient !== undefined) {
-      next = { ...next, oauth: applyOAuthClient(next.oauth, oauthClient) };
-    }
-    if (idleTimeoutMs === null) {
-      delete next.idleTimeoutMs;
-    } else if (idleTimeoutMs !== undefined) {
-      next.idleTimeoutMs = idleTimeoutMs;
-    }
+    const next = applyServerUpdate(requireServer(name), updateServerRequestSchema.parse(req.body));
     await store.saveServer(next);
     await applyConfig({ store, manager });
     res.json(requireStatus(name));
@@ -141,45 +123,24 @@ export function createServerRoutes({ store, manager, registryClient, dataDir, oa
     res.json(requireStatus(name));
   });
 
-  // Every listing drains all pages (listAll*), so a downstream that paginates
-  // doesn't silently lose items — or, for tools, report a wrong count — past
-  // page 1.
+  // Every listing drains all pages, so a downstream that paginates doesn't silently lose items (or, for tools,
+  // report a wrong count) past page 1. A downstream that lacks resources/prompts lists none.
   router.get('/:name/tools', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const tools = await manager.withClient(name, listAllTools);
-    manager.recordToolCount(name, tools.length);
-    res.json({ tools });
+    res.json({ tools: await listServerTools(manager, name) });
   });
 
-  // A downstream that lacks resources/prompts answers "method not found" (or our
-  // client refuses to send). That's not an error for a listing endpoint — it's an
-  // empty list, so the UI shows "none reported" rather than a failure.
   router.get('/:name/resources', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const [resources, templates] = await Promise.all([
-      emptyOnMissing(() => manager.withClient(name, listAllResources)),
-      // Templates are a supplementary sub-listing: a genuine failure here must not
-      // discard a successful resources list, so it is best-effort (missing → null
-      // via emptyOnMissing; any other error → warn + null) rather than fatal to the
-      // whole endpoint.
-      emptyOnMissing(() => manager.withClient(name, listAllResourceTemplates)).catch((cause: unknown) => {
-        console.warn(`[api] listing resource templates for "${name}" failed: ${errorMessage(cause)}`);
-        return null;
-      }),
-    ]);
-    res.json({
-      resources: resources ?? [],
-      resourceTemplates: templates ?? [],
-    });
+    res.json(await listServerResources(manager, name));
   });
 
   router.get('/:name/prompts', async (req, res) => {
     const name = req.params.name;
     requireStatus(name);
-    const prompts = await emptyOnMissing(() => manager.withClient(name, listAllPrompts));
-    res.json({ prompts: prompts ?? [] });
+    res.json({ prompts: await listServerPrompts(manager, name) });
   });
 
   registerUiCallRoutes(router, manager, (name) => {

@@ -17,12 +17,18 @@ export interface ApiDeps {
   lanServers: LanServers;
 }
 
+/** What a reconcile reads the desired state from, and the gateway it reconciles. */
+export interface ConfigToApply {
+  store: Pick<ConfigStore, 'getServers' | 'getWorkspaces'>;
+  manager: Pick<GatewayManager, 'reconcile'>;
+}
+
 /**
  * Reconcile the gateway's instances to the desired state the store holds right now.
  *
  * @param deps.store - Read for the current servers and workspaces.
  * @param deps.manager - The gateway to reconcile.
  */
-export function applyConfig({ store, manager }: Pick<ApiDeps, 'store' | 'manager'>): Promise<void> {
+export function applyConfig({ store, manager }: ConfigToApply): Promise<void> {
   return manager.reconcile(store.getServers(), store.getWorkspaces());
 }

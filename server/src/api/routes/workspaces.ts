@@ -1,4 +1,3 @@
-import { listAllPrompts, listAllResources, listAllResourceTemplates, listAllTools } from '@cubicecho/agent-mcp-pool';
 import {
   activityResponseSchema,
   createWorkspaceRequestSchema,
@@ -12,13 +11,15 @@ import {
 } from '@mcp-router/shared';
 import { Router } from 'express';
 import { badInput, conflict, notFound } from '../../core/errors.ts';
-import { emptyOnMissing } from '../../gateway/capability.ts';
-import type { DownstreamClient } from '../../gateway/downstream.ts';
-import { type EndpointScope, scopedDeps, workspaceScope } from '../../gateway/endpoint-scope.ts';
-import { collectFrom } from '../../gateway/fan-out.ts';
-import { McpMethod } from '../../gateway/mcp-method.ts';
-import { enabledMembers, existingMembers } from '../../gateway/members.ts';
-import { namespaceName, splitNamespacedName } from '../../gateway/naming.ts';
+import {
+  clearWorkspaceActivity,
+  listWorkspacePrompts,
+  listWorkspaceResources,
+  listWorkspaceTools,
+  workspaceActivity,
+  workspaceEndpointScope,
+} from '../../gateway/listings.ts';
+import { splitNamespacedName } from '../../gateway/naming.ts';
 import { registerUiCallRoutes } from '../calls.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
@@ -125,80 +126,26 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     res.status(HttpStatus.NoContent).end();
   });
 
-  //
-  // These mirror the per-server capability endpoints but run against each
-  // member's workspace-scoped downstream instance (so per-workspace param overrides
-  // apply), and present tools/resources/prompts exactly as the /mcp/w/:slug
-  // aggregate does — `<server>__`-namespaced. Test calls route by that namespace
-  // back to the owning member and record activity under its workspace instance key.
-
-  /** The scope the /mcp/w/:slug aggregate serves, taken from the workspace as this request read it. */
-  const scopeOf = (workspace: WorkspaceConfig): EndpointScope =>
-    workspaceScope(workspace.slug, () => enabledMembers(workspace, store));
-
-  // Fan a listing out over a workspace's enabled members, exactly as the
-  // /mcp/w/:slug aggregate does — same skip-and-record rules (see collectFrom),
-  // but against each member's workspace-scoped instance.
-  const workspaceCollect = <T>(
-    workspace: WorkspaceConfig,
-    method: string,
-    fn: (client: DownstreamClient, name: string) => Promise<T[]>,
-  ): Promise<T[]> => {
-    const scope = scopeOf(workspace);
-    return collectFrom(
-      scope.names(),
-      method,
-      scopedDeps(manager, scope),
-      fn,
-      (name) => `member "${name}" of workspace "${workspace.slug}"`,
-    );
-  };
-
+  // These mirror the per-server capability endpoints but run against each member's workspace-scoped instance (so
+  // per-workspace overrides apply), and present everything as the /mcp/w/:slug aggregate does: `<server>__`-namespaced.
   router.get('/:slug/tools', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const tools = await workspaceCollect(workspace, McpMethod.ToolsList, async (client, name) => {
-      const all = await listAllTools(client);
-      manager.recordToolCount(scopeOf(workspace).keyFor(name), all.length);
-      return all.map((tool) => ({ ...tool, name: namespaceName(name, tool.name) }));
-    });
-    res.json({ tools });
+    res.json({ tools: await listWorkspaceTools(manager, store, workspace) });
   });
 
   router.get('/:slug/resources', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const [resources, resourceTemplates] = await Promise.all([
-      workspaceCollect(workspace, McpMethod.ResourcesList, async (client, name) => {
-        const all = await emptyOnMissing(() => listAllResources(client));
-        return (all ?? []).map((resource) => ({
-          ...resource,
-          uri: namespaceName(name, resource.uri),
-          name: resource.name === undefined ? undefined : namespaceName(name, resource.name),
-        }));
-      }),
-      workspaceCollect(workspace, McpMethod.ResourceTemplatesList, async (client, name) => {
-        const all = await emptyOnMissing(() => listAllResourceTemplates(client));
-        return (all ?? []).map((template) => ({
-          ...template,
-          uriTemplate: namespaceName(name, template.uriTemplate),
-          name: template.name === undefined ? undefined : namespaceName(name, template.name),
-        }));
-      }),
-    ]);
-    res.json({ resources, resourceTemplates });
+    res.json(await listWorkspaceResources(manager, store, workspace));
   });
 
   router.get('/:slug/prompts', async (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const prompts = await workspaceCollect(workspace, McpMethod.PromptsList, async (client, name) => {
-      const all = await emptyOnMissing(() => listAllPrompts(client));
-      return (all ?? []).map((prompt) => ({ ...prompt, name: namespaceName(name, prompt.name) }));
-    });
-    res.json({ prompts });
+    res.json({ prompts: await listWorkspacePrompts(manager, store, workspace) });
   });
 
   // A test call routes by its `<server>__` prefix back to the owning member's workspace instance.
   registerUiCallRoutes(router, manager, (slug) => {
-    const scope = scopeOf(requireWorkspace(slug));
+    const scope = workspaceEndpointScope(requireWorkspace(slug), store);
     return (kind, requested) => {
       const split = splitNamespacedName(requested, scope.names());
       if (!split) {
@@ -208,23 +155,14 @@ export function createWorkspaceRoutes({ store, manager }: ApiDeps): Router {
     };
   });
 
-  // Workspace activity merges every member instance's log, newest first. Ids are
-  // monotonic per process, so a descending id sort orders across members.
+  // Workspace activity merges every member instance's log, newest first.
   router.get('/:slug/activity', (req, res) => {
     const workspace = requireWorkspace(req.params.slug);
-    const scope = scopeOf(workspace);
-    const entries = existingMembers(workspace, store)
-      .flatMap((name) => manager.getActivity(scope.keyFor(name)))
-      .sort((a, b) => b.id - a.id);
-    res.json(activityResponseSchema.parse({ entries }));
+    res.json(activityResponseSchema.parse({ entries: workspaceActivity(manager, store, workspace) }));
   });
 
   router.delete('/:slug/activity', (req, res) => {
-    const workspace = requireWorkspace(req.params.slug);
-    const scope = scopeOf(workspace);
-    for (const name of existingMembers(workspace, store)) {
-      manager.clearActivity(scope.keyFor(name));
-    }
+    clearWorkspaceActivity(manager, store, requireWorkspace(req.params.slug));
     res.status(HttpStatus.NoContent).end();
   });
 

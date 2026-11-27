@@ -23,6 +23,7 @@ import {
 import { INSTALL_DEFAULTS } from '../core/defaults.ts';
 import { badInput, errorMessage, internal, notFound, upstreamTimeout } from '../core/errors.ts';
 import { isRecord } from '../core/is-record.ts';
+import { applyOAuthClient } from '../oauth/service.ts';
 import type { RegistryClient } from '../registry/client.ts';
 
 /** `child_process.execFile` as a promise; no shell is involved. */
@@ -419,4 +420,20 @@ export async function buildServerConfig(request: InstallRequest, deps: Installer
     envMeta: {},
     ...(await sourceParts(request, name, deps)),
   });
+}
+
+/**
+ * Builds the config an install records: the server itself, its pre-registered sign-in client and where on the
+ * network it was found.
+ *
+ * @param request - The validated install request.
+ * @param deps - Reaches the registry and runs npm.
+ * @returns The config to save. Nothing is saved; an npm package is already on disk by then.
+ */
+export async function buildInstalledConfig(request: InstallRequest, deps: InstallerDeps): Promise<ServerConfig> {
+  const built = await buildServerConfig(request, deps);
+  const signedIn: ServerConfig = request.oauthClient
+    ? { ...built, oauth: applyOAuthClient(built.oauth, request.oauthClient) }
+    : built;
+  return request.discovered ? { ...signedIn, discovered: request.discovered } : signedIn;
 }

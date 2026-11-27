@@ -1,5 +1,6 @@
 import { type DiscoveryResponse, setDismissedRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
+import { withDismissed } from '../../discovery/lan-servers.ts';
 import type { ApiDeps } from '../deps.ts';
 
 /**
@@ -26,8 +27,7 @@ export function createDiscoveryRoutes({ store, lanServers }: ApiDeps): Router {
 
   router.post('/dismissed', async (req, res) => {
     const { key, dismissed } = setDismissedRequestSchema.parse(req.body);
-    const others = store.getSettings().lanDismissed.filter((existing) => existing !== key);
-    await store.updateSettings({ lanDismissed: dismissed ? [...others, key] : others });
+    await store.updateSettings({ lanDismissed: withDismissed(store.getSettings().lanDismissed, key, dismissed) });
     res.json(answer());
   });
 

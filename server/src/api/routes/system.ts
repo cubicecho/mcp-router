@@ -1,8 +1,6 @@
-import type { RouterStatus } from '@mcp-router/shared';
-import { MS_PER_SECOND, updateSettingsRequestSchema } from '@mcp-router/shared';
+import { updateSettingsRequestSchema } from '@mcp-router/shared';
 import { Router } from 'express';
-import { effectiveAuth } from '../../auth/middleware.ts';
-import { SERVER_VERSION } from '../../core/version.ts';
+import { routerStatus } from '../../gateway/router-status.ts';
 import { type ApiDeps, applyConfig } from '../deps.ts';
 
 /**
@@ -17,18 +15,7 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
   const router = Router();
 
   router.get('/status', (_req, res) => {
-    const status: RouterStatus = {
-      version: SERVER_VERSION,
-      uptimeSeconds: Math.floor((Date.now() - startedAt) / MS_PER_SECOND),
-      serverCount: store.getServers().length,
-      runningCount: manager.runningCount(),
-      authEnabled: effectiveAuth(store.getSettings()).enabled,
-      idleTimeoutMs: store.getSettings().idleTimeoutMs,
-      ...(store.getSettings().publicUrl ? { publicUrl: store.getSettings().publicUrl } : {}),
-      instanceId: store.getSettings().instanceId ?? '',
-      lanAdvertise: store.getSettings().lanAdvertise,
-      lanDiscovery: store.getSettings().lanDiscovery,
-    };
+    const status = routerStatus(store, manager, startedAt);
     res.json(status);
   });
 
