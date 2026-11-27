@@ -7,8 +7,8 @@ import { isRecord } from './is-record.ts';
  * @returns The version, or `0.0.0` when the file is missing, unreadable or has none.
  *
  * @remarks
- * semantic-release bumps that file at release time and the Dockerfile copies it into the runtime image. The path is
- * three levels up from this module in both dev (`server/src/core/version.ts`) and prod (`server/dist/core/version.js`).
+ * semantic-release bumps that file at release time and the Dockerfile copies it into the runtime image. The server runs
+ * from its sources, so the file is three levels up from this module (`server/src/core/version.ts`).
  */
 function readVersion(): string {
   try {

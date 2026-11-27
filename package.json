@@ -5,7 +5,7 @@
   "description": "MCP Router - install MCP servers from registries/npm and re-expose them over streamable HTTP",
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26"
   },
   "workspaces": [
     "shared",
@@ -16,11 +16,10 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:app\"",
     "dev:app": "npm run dev -w app",
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w shared && npm run build -w server && npm run build -w app",
+    "build": "npm run build -w app",
     "build:app": "npm run build -w app",
-    "build:server": "npm run build -w server",
     "build:docker": "docker build -t mcp-router .",
-    "start": "NODE_ENV=production node --env-file-if-exists=.env server/dist/index.js",
+    "start": "NODE_ENV=production node --env-file-if-exists=.env server/src/index.ts",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
@@ -33,11 +32,11 @@
     "test:watch": "vitest",
     "storybook": "npm run storybook -w app",
     "build-storybook": "npm run build-storybook -w app",
-    "clean": "rm -rf node_modules shared/dist server/dist app/dist"
+    "clean": "rm -rf node_modules app/dist"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
-    "@types/node": "^22.13.0",
+    "@types/node": "^26.6.11",
     "concurrently": "^9.1.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
