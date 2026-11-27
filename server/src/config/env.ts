@@ -1,7 +1,7 @@
 // The one module that reads `process.env`. Every getter reads at call time and takes the environment as an
 // argument, so a test passes its own.
 import path from 'node:path';
-import { HTTP_DEFAULTS } from '../core/defaults.ts';
+import { DATABASE_DEFAULTS, HTTP_DEFAULTS } from '../core/defaults.ts';
 
 /** The token `.env.example` ships with, which protects nothing once it is public. */
 const PLACEHOLDER_TOKEN = 'change-me';
@@ -9,7 +9,7 @@ const PLACEHOLDER_TOKEN = 'change-me';
 /** The highest TCP port number. */
 const MAX_PORT = 65_535;
 
-/** Where config and installed packages live when `DATA_DIR` is unset. */
+/** Where the database and installed packages live when `DATA_DIR` is unset. */
 const DEFAULT_DATA_DIR = './data';
 
 /** The values of a switch variable that turn it on. */
@@ -29,7 +29,7 @@ function envMs(value: string | undefined, fallback: number, min: number): number
 }
 
 /**
- * The directory config and installed packages live in: `DATA_DIR`, or `./data`.
+ * The directory the database and installed packages live in: `DATA_DIR`, or `./data`.
  *
  * @param [env] - The process environment.
  * @returns The absolute path.
@@ -39,9 +39,9 @@ export function dataDir(env: NodeJS.ProcessEnv = process.env): string {
 }
 
 /**
- * The port to listen on: `PORT` when it is set, otherwise the one in settings.json.
+ * The port to listen on: `PORT` when it is set, otherwise the one in the stored settings.
  *
- * @param settingsPort - The port from settings.json.
+ * @param settingsPort - The port from the stored settings.
  * @param [env] - The process environment.
  * @returns The port number.
  * @throws When `PORT` is set to something that is not a port number.
@@ -60,9 +60,9 @@ export function listenPort(settingsPort: number, env: NodeJS.ProcessEnv = proces
 }
 
 /**
- * The interface to bind: `HOST` when it is set, otherwise the one in settings.json.
+ * The interface to bind: `HOST` when it is set, otherwise the one in the stored settings.
  *
- * @param settingsHost - The host from settings.json.
+ * @param settingsHost - The host from the stored settings.
  * @param [env] - The process environment.
  * @returns The host, or undefined to bind every interface.
  */
@@ -71,8 +71,8 @@ export function listenHost(settingsHost: string | undefined, env: NodeJS.Process
 }
 
 /**
- * Whether `SECURE_LOCAL_NET` has turned bearer auth off for /api and /mcp. It overrides `authEnabled` in
- * settings.json, for a trusted local network where minting and passing tokens is not worth it.
+ * Whether `SECURE_LOCAL_NET` has turned bearer auth off for /api and /mcp. It overrides `authEnabled` in the
+ * stored settings, for a trusted local network where minting and passing tokens is not worth it.
  *
  * @param [env] - The process environment.
  * @returns True when the variable is set to a truthy value.
@@ -83,7 +83,7 @@ export function authDisabledByEnv(env: NodeJS.ProcessEnv = process.env): boolean
 }
 
 /**
- * The bearer token from `MCP_ROUTER_TOKEN`, which replaces the one stored in settings.json.
+ * The bearer token from `MCP_ROUTER_TOKEN`, which replaces the one in the stored settings.
  *
  * @param [env] - The process environment.
  * @returns The token, or undefined when the variable is unset or empty (compose passes an unset variable as '').
@@ -110,6 +110,26 @@ export function keepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env): number
  */
 export function outboundKeepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
   return envMs(env.HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS, HTTP_DEFAULTS.outboundKeepAliveTimeoutMs, 1);
+}
+
+/**
+ * Where the database is: `DATABASE_URL`, or empty for the PGlite data dir under `DATA_DIR/pg`.
+ *
+ * @param [env] - The process environment.
+ * @returns A postgres:// URL, a PGlite location, or an empty string.
+ */
+export function databaseUrl(env: NodeJS.ProcessEnv = process.env): string {
+  return env.DATABASE_URL?.trim() ?? '';
+}
+
+/**
+ * How long boot waits for Postgres: `DB_CONNECT_TIMEOUT_MS`, or the default.
+ *
+ * @param [env] - The process environment. The default applies when the value is not a positive whole number.
+ * @returns The timeout in ms.
+ */
+export function dbConnectTimeoutMs(env: NodeJS.ProcessEnv = process.env): number {
+  return envMs(env.DB_CONNECT_TIMEOUT_MS, DATABASE_DEFAULTS.connectTimeoutMs, 1);
 }
 
 /**
