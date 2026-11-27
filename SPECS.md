@@ -3,8 +3,8 @@
 An MCP gateway/router: install MCP servers from registries or npm, run them
 locally (stdio) or point at remote ones (streamable HTTP), and re-expose every
 one of them over streamable HTTP — per-server routes, one merged aggregate, and
-per-**workspace** custom aggregates. Managed through a React web UI and
-hand-editable flat config files.
+per-**workspace** custom aggregates. Managed through a React web UI; state lives
+in a database (PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`).
 
 ## Decisions (locked)
 
@@ -12,11 +12,11 @@ hand-editable flat config files.
 | --- | --- |
 | Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-workspace custom aggregates `/mcp/w/<slug>` |
 | Workspaces | Custom aggregates: a named subset of servers at `/mcp/w/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `w:<slug>:<server>`), so a workspace scope is fully independent of a server's global enabled state; effective enabled = `workspace.enabled && member.enabled` |
-| Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
+| Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into the settings row on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
-| Secrets | Plaintext values in the JSON config files, written with mode 0600 |
-| Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's config file, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
-| Config | Flat files under `DATA_DIR/config`; watched for changes (chokidar) + explicit `POST /api/reload` |
+| Secrets | Plaintext values in the database (the settings row, the servers' `env`, headers and `oauth` columns) |
+| Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's row, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
+| Config | Drizzle tables (`server/src/db/tables/`), migrations committed in `server/drizzle/` and run on boot. PGlite data dir `DATA_DIR/pg` (pid lockfile `DATA_DIR/pg.lock`) when `DATABASE_URL` is unset, Postgres for a `postgres://` URL. `ConfigStore` caches it in memory and emits `change` after every write; anything else that writes the tables calls `store.reload()`, as `POST /api/reload` does. On first boot with an empty database the old `DATA_DIR/config` files are imported once and renamed `*.imported` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
 | Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
@@ -28,22 +28,22 @@ hand-editable flat config files.
 ```
 mcp-router/
 ├── shared/          # zod schemas + types (DONE — the contract, see shared/src/)
-│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json / workspaces/<slug>.json schemas
+│   ├── config.ts    #   settings / registry / server / workspace config schemas (validated on every row read)
 │   ├── registry.ts  #   MCP registry API response schemas
 │   └── api.ts       #   REST DTOs (/api/*)
 ├── server/          # Express + MCP SDK backend        [Track A]
 ├── app/             # Vite + React + shadcn web UI     [Track B]
 ├── Dockerfile, docker-compose.yml, README.md           [Track C]
-└── data/            # runtime, gitignored: config/, servers/<name>/ (npm prefixes), logs
+└── data/            # runtime, gitignored: pg/ (PGlite), servers/<name>/ (npm prefixes), logs
 ```
 
-### Flat config files (`DATA_DIR/config`, default `./data/config`)
+### Config tables (one row per entry; the shapes are the shared schemas)
 
-- `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
+- `settings` (one row) — port, authToken, authEnabled, default idleTimeoutMs,
   connectTimeoutMs, default callTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
   callbacks; the UI's origin when unset)
-- `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
-- `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
+- `registries` — `{ name, url }`, seeded with `official`
+- `servers` — one row per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
   command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
   from the registry), idleTimeoutMs, callTimeoutMs, oauth (a remote's sign-in: typed-in
@@ -51,9 +51,10 @@ mcp-router/
   redirectUri, tokens, tokensSavedAt — plaintext, never sent to the UI). npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
   (uv resolves/caches on spawn, no install dir)
-- `workspaces/<slug>.json` — one file per workspace (`workspaceConfigSchema`): name,
-  slug (matches the filename), enabled, description, `members` — a map of server
-  name → `{ enabled, env?, args?, headers?, url? }`. Overrides merge over the
+- `workspaces` + `workspace_members` — one row per workspace (`workspaceConfigSchema`): name,
+  slug, enabled, description; `members` — a map of server
+  name → `{ enabled, env?, args?, headers?, url? }`, stored as `workspace_members` rows by server id
+  (deleting a server deletes its memberships; a member naming no server is not stored). Overrides merge over the
   base server config (`env`/`headers` shallow-merged, `args`/`url` replaced) for
   that workspace's instance only; `url` re-points a remote member's
   streamable-http endpoint (e.g. to scope a shared upstream to a workspace path);
@@ -88,7 +89,7 @@ Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are b
 | `POST /api/servers` | install (`InstallRequest`: from registry entry, raw npm package, or remote URL) |
 | `GET /api/servers/:name` | single `ServerStatus` |
 | `PATCH /api/servers/:name` | `UpdateServerRequest` (env, enabled, transport, …) → persists to its JSON file |
-| `DELETE /api/servers/:name` | stop, delete config file, remove `data/servers/<name>` install dir |
+| `DELETE /api/servers/:name` | stop, delete its row (and its workspace memberships), remove `data/servers/<name>` install dir |
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
 | `POST /api/servers/:name/oauth/check` | ask a remote, without a token, whether it wants a login; `ServerStatus` (`needs-auth` when it does) |
 | `POST /api/servers/:name/oauth/start` | `OAuthStartRequest { origin }` → `OAuthStartResponse { authorizationUrl?, signedIn }` |
@@ -102,8 +103,8 @@ Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are b
 | `GET /api/workspaces` | `WorkspaceStatus[]` (config + derived endpoint `path`) |
 | `POST /api/workspaces` | create (`CreateWorkspaceRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
 | `GET /api/workspaces/:slug` | single `WorkspaceStatus` |
-| `PATCH /api/workspaces/:slug` | `UpdateWorkspaceRequest` (name, enabled, description, members); a name change re-derives the slug and moves the file/endpoint |
-| `DELETE /api/workspaces/:slug` | delete the workspace file (underlying servers untouched) |
+| `PATCH /api/workspaces/:slug` | `UpdateWorkspaceRequest` (name, enabled, description, members); a name change re-derives the slug and moves the endpoint |
+| `DELETE /api/workspaces/:slug` | delete the workspace and its memberships (underlying servers untouched) |
 | `POST /api/reload` | re-read all config from disk, reconcile running processes |
 
 Errors: non-2xx with `{ error, code, detail? }`. `code` is one of the shared `ErrorCode` values
@@ -226,7 +227,7 @@ browser. The router is the OAuth client; the browser only carries the redirect.
    dynamic registration. `<base>` is `settings.publicUrl`, else the UI's origin.
 4. **Callback.** `GET /oauth/callback?code&state` — mounted before the bearer
    guard, like `/healthz`; the single-use `state` is its credential. It exchanges
-   the code, writes the tokens to `servers/<name>.json`, drops every connection of
+   the code, writes the tokens to the server's row, drops every connection of
    the server (base and workspace instances) so the next use dials with them, and
    answers a page that `postMessage`s `{ type: 'mcp-router-oauth', server, ok }`
    to the UI's origin and closes. `GET /oauth/client-metadata.json` is public too.
@@ -439,6 +440,7 @@ pool leaves `naming.ts` untouched, as predicted.
 
 - [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (emits to `dist/`, `rewriteRelativeImportExtensions`), `src/index.ts` entry
 - [x] A2 Config store (`src/config/`): load/validate/write `settings.json`, `registries.json`, `servers/*.json` via shared schemas; atomic writes (tmp+rename, mode 0600); seed defaults on first run (official registry, generated auth token → log it once); chokidar watcher (debounced) emitting typed change events; `reload()` for the API
+- [x] A2b Database (#91, step 1): the config store reads and writes Drizzle tables (PGlite `DATA_DIR/pg` with a pid lockfile, or Postgres via `DATABASE_URL`, `waitForDatabase` at boot, migrations run on boot), emits `change` after its writes and on `reload()`; the watcher and chokidar are gone; first boot on an empty database imports `DATA_DIR/config` in one transaction and renames the files `*.imported`
 - [x] A3 Auth middleware: bearer check for `/api` and `/mcp`; constant-time compare; skipped when `authEnabled: false`; `GET /api/status` reports authEnabled
 - [x] A4 Registry client (`src/registry/`): fetch + zod-parse `GET {url}/v0/servers` (search, cursor, version=latest) and single-server detail; per-registry base URL; friendly errors for unreachable/invalid registries
 - [x] A5 Installer (`src/installer/`): `npm install --prefix data/servers/<name> <pkg>@<ver>` via execFile (no shell); derive stdio transport: resolve installed package `bin` → `node <binPath>` (+ registry runtimeArguments/packageArguments where value is fixed); map registry `environmentVariables` → `envMeta`; build `ServerConfig` from an `InstallRequest` for all three source types; uninstall = rm install dir
