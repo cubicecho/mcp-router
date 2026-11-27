@@ -5,7 +5,7 @@ import { errorMessage } from '../core/errors.ts';
 
 /** What runs around the drain. */
 export interface ShutdownSteps {
-  /** Stops starting new work (the config watcher). Runs as soon as the signal arrives. */
+  /** Stops starting new work (the LAN announcement and watch). Runs as soon as the signal arrives. */
   before?: () => unknown;
   /** Closes what requests were using (the downstream servers). Runs once the server has drained. */
   after?: () => Promise<unknown>;

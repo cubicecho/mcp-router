@@ -1,11 +1,14 @@
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { createServerCard } from '@cubicecho/mcp-discovery';
 import { type ServerWatchHandlers, toMcpHost } from '@cubicecho/mcp-discovery/mdns';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConfigStore } from '../../config/store.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
+import { settings } from '../../db/tables/settings.ts';
 import { createLanServers } from '../../discovery/lan-servers.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { createApp } from '../../http/app.ts';
@@ -15,16 +18,23 @@ const FOUND_URL = 'http://192.168.1.20:3000/mcp';
 describe('/api/discovery', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let token: string;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-lan-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken ?? '';
     manager = new GatewayManager(() => store.getSettings());
     let handlers: ServerWatchHandlers | undefined;
@@ -60,7 +70,6 @@ describe('/api/discovery', () => {
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
@@ -76,12 +85,12 @@ describe('/api/discovery', () => {
     });
   });
 
-  it('dismisses a found server and restores it, keeping the choice in settings.json', async () => {
+  it('dismisses a found server and restores it, keeping the choice in the settings row', async () => {
     const key = 'MCP Skills on nas/io.github.cubicecho.mcp-skills.nas/skills';
     const dismissed = await authed(request(app).post('/api/discovery/dismissed')).send({ key, dismissed: true });
     expect(dismissed.body.servers[0].state).toBe('dismissed');
-    const settings = JSON.parse(await readFile(path.join(dataDir, 'config/settings.json'), 'utf8'));
-    expect(settings.lanDismissed).toEqual([key]);
+    const [row] = await database.db.select().from(settings);
+    expect(row?.lanDismissed).toEqual([key]);
     const restored = await authed(request(app).post('/api/discovery/dismissed')).send({ key, dismissed: false });
     expect(restored.body.servers[0].state).toBe('available');
   });

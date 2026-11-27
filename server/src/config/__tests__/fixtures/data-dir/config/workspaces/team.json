@@ -1,0 +1,11 @@
+{
+  "name": "Team",
+  "slug": "team",
+  "enabled": true,
+  "description": "What the team's agents get.",
+  "members": {
+    "context7": { "enabled": true, "headers": { "CONTEXT7_API_KEY": "team-key" } },
+    "echo": { "enabled": false, "env": { "API_KEY": "team-echo" }, "args": ["--team"] },
+    "ghost": { "enabled": true }
+  }
+}

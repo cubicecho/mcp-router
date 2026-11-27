@@ -1,0 +1,13 @@
+{
+  "name": "echo",
+  "enabled": false,
+  "source": { "type": "npm", "package": "echo-mcp", "version": "2.1.0" },
+  "transport": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["/data/servers/echo/node_modules/echo-mcp/dist/index.js"]
+  },
+  "env": { "API_KEY": "echo-secret" },
+  "envMeta": { "API_KEY": { "isSecret": true, "isRequired": true, "description": "The echo API key" } },
+  "idleTimeoutMs": 300000
+}

@@ -1,0 +1,16 @@
+{
+  "port": 3000,
+  "authToken": "fixture-token-0123456789abcdef0123456789abcdef",
+  "authEnabled": true,
+  "allowedOrigins": ["https://claude.ai"],
+  "idleTimeoutMs": 600000,
+  "sessionIdleTimeoutMs": 1800000,
+  "maxSessions": 500,
+  "connectTimeoutMs": 120000,
+  "callTimeoutMs": 3600000,
+  "instanceId": "nas",
+  "lanAdvertise": true,
+  "lanDiscovery": true,
+  "lanDismissed": ["MCP Skills on nas/io.github.cubicecho.mcp-skills.nas/skills"],
+  "myNote": "hand-added, not a column"
+}

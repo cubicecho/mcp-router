@@ -3,8 +3,10 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { cardConnection, parseAiCatalog, parseServerCard } from '@cubicecho/mcp-discovery';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConfigStore } from '../../config/store.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { createApp } from '../../http/app.ts';
 import { ROUTER_ROLE_META_KEY } from '../endpoints.ts';
@@ -12,15 +14,22 @@ import { ROUTER_ROLE_META_KEY } from '../endpoints.ts';
 describe('discovery documents', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-discovery-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     await store.updateSettings({ instanceId: 'nas' });
     await store.saveServer({
       name: 'context7',
@@ -45,7 +54,6 @@ describe('discovery documents', () => {
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });

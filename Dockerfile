@@ -66,10 +66,12 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY shared ./shared
 
 COPY --from=builder /app/server/dist ./server/dist
+# The committed migrations, applied on boot; the server finds them beside dist/.
+COPY server/drizzle ./server/drizzle
 COPY --from=builder /app/app/dist ./app/dist
 
 ENV NODE_ENV=production
-# Config, per-server npm install prefixes, and logs all live under /data —
+# The PGlite database (/data/pg), per-server npm install prefixes and logs live under /data —
 # mount a volume here to persist them.
 ENV DATA_DIR=/data
 
