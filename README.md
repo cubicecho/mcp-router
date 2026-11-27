@@ -18,7 +18,12 @@ the built-in web UI, or hand-edit the JSON config files.
 
 ## Quickstart
 
-Save this as `docker-compose.yml`:
+Make the data folder, owned by uid 1000 (the container's `node` user), and save this as
+`docker-compose.yml` beside it:
+
+```bash
+mkdir data && sudo chown 1000:1000 data
+```
 
 ```yaml
 services:
@@ -40,7 +45,9 @@ docker compose up -d
 Open http://localhost:3000, sign in with your token, and install a server from the **Browse** page. Then
 [connect your client](#connecting-mcp-clients).
 
-All state (config, installed server packages, caches) lives in `./data`. The router refuses to start while
+All state (config, installed server packages, caches) lives in `./data`, which must stay writable by uid
+1000: a folder an older image wrote to (they ran as root) needs `sudo chown -R 1000:1000 data`. The
+router refuses to start while
 the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into
 `data/config/settings.json`, printing it once to the log (`docker compose logs`).
 
@@ -240,7 +247,7 @@ full design and work list.
 
 ### Run from source
 
-Requires Node >= 22.18.
+Requires Node >= 26 (the server runs its TypeScript sources directly).
 
 ```bash
 npm install
@@ -260,5 +267,5 @@ To build and run the image from your checkout instead, `docker compose up -d --b
 npm run dev      # server (watch, :3001) + Vite dev server (:3000)
 npm run check    # biome + tsc for all packages
 npm test         # vitest: server, app, then the stories in Chromium
-npm run build    # shared typecheck → server tsc → app vite build
+npm run build    # the web UI (the server has no build step)
 ```

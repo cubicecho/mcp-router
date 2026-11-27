@@ -29,7 +29,7 @@
         {
           "name": "MCP_ROUTER_DATA",
           "label": "Data folder",
-          "description": "Host folder for config, installed server packages and caches.",
+          "description": "Host folder for config, installed server packages and caches. It must be writable by uid 1000, which the container runs as.",
           "default": "/opt/mcp-router/data"
         },
         {

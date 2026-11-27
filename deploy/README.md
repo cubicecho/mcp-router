@@ -18,7 +18,9 @@ left the token empty, one is generated on first start and printed once to the co
 ## Docker Compose
 
 ```bash
-mkdir mcp-router && cd mcp-router
+mkdir -p mcp-router/data && cd mcp-router
+# The container runs as uid 1000 (node), and Docker would create a missing folder as root.
+sudo chown 1000:1000 data
 curl -O https://raw.githubusercontent.com/cubicecho/mcp-router/main/deploy/docker-compose.yml
 echo "MCP_ROUTER_TOKEN=$(openssl rand -hex 32)" > .env
 docker compose up -d
@@ -30,7 +32,7 @@ The file reads these from the environment or a `.env` beside it:
 | --- | --- | --- |
 | `MCP_ROUTER_TOKEN` | generated | The bearer token for the UI, the API and the MCP endpoints |
 | `MCP_ROUTER_PORT` | `3000` | Host port |
-| `MCP_ROUTER_DATA` | `./data` | Host folder mounted at `/data` |
+| `MCP_ROUTER_DATA` | `./data` | Host folder mounted at `/data`, writable by uid 1000 |
 | `MCP_ROUTER_VERSION` | `latest` | Image tag, e.g. `1.4.0` to pin a release |
 | `SECURE_LOCAL_NET` | `false` | `true` turns auth off. Only on a network you trust |
 
@@ -58,7 +60,8 @@ add `MCP_ROUTER_TOKEN` under environment variables.
 ## QNAP Container Station 3
 
 Either way, first create the folder `Container/mcp-router/data` in File Station. That is where config and
-installed servers are kept.
+installed servers are kept. The container runs as uid 1000, so give that uid write access: over SSH,
+`sudo chown 1000:1000 /share/Container/mcp-router/data`.
 
 **As an Application** (Docker Compose):
 
