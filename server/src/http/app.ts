@@ -10,7 +10,7 @@ import type { ConfigStore } from '../config/store.ts';
 import { createContextFactory } from '../core/context.ts';
 import { HTTP_DEFAULTS } from '../core/defaults.ts';
 import { SERVER_VERSION } from '../core/version.ts';
-import type { RouterDb } from '../db/database.ts';
+import type { DB } from '../db/client.ts';
 import { discoveryEndpoints } from '../discovery/endpoints.ts';
 import { idleLanServers, type LanServers } from '../discovery/lan-servers.ts';
 import type { GatewayManager } from '../gateway/manager.ts';
@@ -34,8 +34,8 @@ export interface AppDeps {
   oauth?: OAuthService;
   /** The servers found on the local network; one that never watches when absent. */
   lanServers?: LanServers;
-  /** The router's tables. With it, /graphql and /admin/mcp are served beside /api; without it, neither is. */
-  db?: RouterDb;
+  /** The router's tables, the ones `store` reads: /graphql and /admin/mcp query and write them directly. */
+  db: DB;
 }
 
 /** The path the router's own management schema is served at as MCP tools. Beside /mcp, which proxies servers. */
@@ -45,8 +45,8 @@ export const ADMIN_MCP_PATH = '/admin/mcp';
  * Build the Express app (separate from listen() so tests can drive it with supertest).
  *
  * @param deps - The store and gateway, plus the test overrides.
- * @returns The app: /healthz, the discovery documents, /api, /mcp, /graphql and /admin/mcp when there is a `db`, and
- * the built web UI when its directory exists.
+ * @returns The app: /healthz, the discovery documents, /api, /mcp, /graphql, /admin/mcp, and the built web UI when its
+ * directory exists.
  */
 export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
@@ -84,13 +84,11 @@ export function createApp(deps: AppDeps): express.Express {
 
   // The same management API as GraphQL, for the UI, and as MCP tools, for agents. Behind the same guards as /api and
   // /mcp, and the same body cap (the express.json above).
-  if (deps.db !== undefined) {
-    const { schema } = createSchema(deps.db);
-    const contextFor = createContextFactory({ ...apiDeps, db: deps.db, startedAt: Date.now() });
-    const yoga = createGraphQLHandler(schema, contextFor);
-    app.all(GRAPHQL_PATH, auth, (req, res) => yoga(req, res));
-    app.all(ADMIN_MCP_PATH, originGuard, auth, createAdminMcpHandler(schema, contextFor));
-  }
+  const { schema } = createSchema(deps.db);
+  const contextFor = createContextFactory({ ...apiDeps, db: deps.db, startedAt: Date.now() });
+  const yoga = createGraphQLHandler(schema, contextFor);
+  app.all(GRAPHQL_PATH, auth, (req, res) => yoga(req, res));
+  app.all(ADMIN_MCP_PATH, originGuard, auth, createAdminMcpHandler(schema, contextFor));
 
   // Production: serve the built web UI with an SPA fallback for non-API GETs.
   const appDist = deps.appDistDir ?? path.resolve(import.meta.dirname, '../../../app/dist');

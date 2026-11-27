@@ -1,0 +1,6 @@
+{
+  "registries": [
+    { "name": "official", "url": "https://registry.modelcontextprotocol.io" },
+    { "name": "mine", "url": "https://registry.example.test" }
+  ]
+}

@@ -1,8 +1,8 @@
 import { ErrorCode } from '@mcp-router/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeTestDb, createTestDb, resetTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestDb, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database, DB } from '../../db/client.ts';
 import { registries } from '../../db/tables/registries.ts';
-import { settings } from '../../db/tables/settings.ts';
 import { createHarness, type Harness } from './harness.ts';
 
 const CREATE_WORKSPACE = `mutation($slug: String!) { createWorkspace(values: { name: "Work", slug: $slug }) { id slug } }`;
@@ -11,18 +11,20 @@ const RENAME_WORKSPACE = `mutation($id: UUID!, $name: String!) {
 }`;
 
 describe('generated CRUD', () => {
-  let db: TestDb;
+  let database: Database;
+  let db: DB;
   let harness: Harness;
 
   beforeAll(async () => {
-    db = await createTestDb();
+    database = await createTestDb();
+    db = database.db;
   });
 
-  afterAll(() => closeTestDb(db));
+  afterAll(() => database.close());
 
   beforeEach(async () => {
-    await resetTestDb(db);
-    harness = await createHarness(db);
+    await resetTestDb(database);
+    harness = await createHarness(database);
   });
 
   afterEach(async () => {
@@ -31,9 +33,9 @@ describe('generated CRUD', () => {
   });
 
   it('reads rows through a generated query', async () => {
-    await db.insert(registries).values({ name: 'official', url: 'https://registry.example.com' });
+    await db.insert(registries).values({ name: 'extra', url: 'https://registry.example.com' });
     const data = await harness.expectOk('{ registries { name url } }');
-    expect(data.registries).toEqual([{ name: 'official', url: 'https://registry.example.com' }]);
+    expect(data.registries).toContainEqual({ name: 'extra', url: 'https://registry.example.com' });
   });
 
   it('round-trips a generated single-row update', async () => {
@@ -73,7 +75,7 @@ describe('generated CRUD', () => {
   });
 
   it('edits the settings the UI edits, and refuses the ones it does not', async () => {
-    await db.insert(settings).values({});
+    // The store's first boot seeded the settings row, so the update has a row to change.
     const edit = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { lanAdvertise: true }) { lanAdvertise } }`;
     expect((await harness.expectOk(edit)).updateSetting).toEqual({ lanAdvertise: true });
     const locked = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { authEnabled: false }) { authEnabled } }`;
@@ -83,17 +85,17 @@ describe('generated CRUD', () => {
 });
 
 describe('permissions', () => {
-  let db: TestDb;
+  let database: Database;
   let harness: Harness;
 
   beforeAll(async () => {
-    db = await createTestDb();
-    harness = await createHarness(db);
+    database = await createTestDb();
+    harness = await createHarness(database);
   });
 
   afterAll(async () => {
     await harness.close();
-    await closeTestDb(db);
+    await database.close();
   });
 
   it('refuses a bulk delete as FORBIDDEN', async () => {

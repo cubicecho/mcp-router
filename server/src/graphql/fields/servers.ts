@@ -12,11 +12,11 @@ import {
   type GraphQLObjectType,
   GraphQLString,
 } from 'graphql';
+import { serverFromRow, serverToRow } from '../../config/rows.ts';
 import { applyServerUpdate } from '../../config/server-update.ts';
 import type { Context } from '../../core/context.ts';
 import { codedError } from '../../core/errors.ts';
 import { parseOrThrow } from '../../core/validation.ts';
-import { serverConfigOf, serverValues } from '../../db/server-rows.ts';
 import { servers } from '../../db/tables/servers.ts';
 import { listServerPrompts, listServerResources, listServerTools } from '../../gateway/listings.ts';
 import { buildInstalledConfig, resolveServerName, uninstall } from '../../installer/installer.ts';
@@ -163,7 +163,7 @@ export function serverMutations(Server: GraphQLObjectType): GraphQLFieldConfigMa
         };
         const config = await buildInstalledConfig({ ...request, name }, installerDeps);
         const id = await writeServer(ctx, () =>
-          ctx.db.insert(servers).values(serverValues(config)).returning({ id: servers.id }),
+          ctx.db.insert(servers).values(serverToRow(config)).returning({ id: servers.id }),
         );
         return selectedRow(info, ctx, 'servers', id);
       },
@@ -176,9 +176,9 @@ export function serverMutations(Server: GraphQLObjectType): GraphQLFieldConfigMa
       resolve: async ({ name, input }, ctx, info) => {
         const row = await requireServerRow(ctx, name);
         const update = parseOrThrow(updateServerRequestSchema, input, 'Server edit');
-        const next = applyServerUpdate(serverConfigOf(row), update);
+        const next = applyServerUpdate(serverFromRow(row), update);
         const id = await writeServer(ctx, () =>
-          ctx.db.update(servers).set(serverValues(next)).where(eq(servers.id, row.id)).returning({ id: servers.id }),
+          ctx.db.update(servers).set(serverToRow(next)).where(eq(servers.id, row.id)).returning({ id: servers.id }),
         );
         return selectedRow(info, ctx, 'servers', id);
       },

@@ -2,9 +2,10 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type ExecutionResult, type GraphQLSchema, graphql } from 'graphql';
-import { ConfigStore } from '../../config/store.ts';
+import type { ConfigStore } from '../../config/store.ts';
 import { CALLER_OPERATOR, type Caller, type Context, type ContextDeps, UNKNOWN_IP } from '../../core/context.ts';
-import type { TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestStore } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { idleLanServers } from '../../discovery/lan-servers.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { OAuthService } from '../../oauth/service.ts';
@@ -34,7 +35,7 @@ export interface Refusal {
 
 /** The collaborators a resolver test drives, and a client over them. */
 export interface Harness {
-  /** The real file-backed store, over a temp dir. Spy on `reload` to see a write reach the gateway. */
+  /** The real store, over the same database the schema writes to. Spy on `reload` to see a write reach the gateway. */
   store: ConfigStore;
   manager: GatewayManager;
   /** Runs an operation in-process as `caller` and returns the raw result. */
@@ -51,16 +52,16 @@ export interface Harness {
 export type HarnessOverrides = Partial<Pick<ContextDeps, 'registryClient' | 'lanServers'>>;
 
 /**
- * Builds the collaborators every resolver is handed, over a test db and a temp data dir.
+ * Builds the collaborators every resolver is handed, over a test database and a temp data dir.
  *
- * @param db - The test db.
+ * @param database - The test database, usually just reset: the store's first boot seeds its settings row.
  * @param [overrides] - Collaborators to swap: a registry client over a fake fetch, found network servers.
  * @returns The harness.
  */
-export async function createHarness(db: TestDb, overrides: HarnessOverrides = {}): Promise<Harness> {
+export async function createHarness(database: Database, overrides: HarnessOverrides = {}): Promise<Harness> {
   const dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-graphql-'));
-  const store = new ConfigStore(dataDir);
-  await store.init();
+  const { db } = database;
+  const store = await createTestStore(database, dataDir);
   const oauth = new OAuthService(store);
   const manager = new GatewayManager(() => store.getSettings(), oauth);
   const deps: ContextDeps = {
@@ -98,7 +99,6 @@ export async function createHarness(db: TestDb, overrides: HarnessOverrides = {}
   };
   const close = async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
   };
   return { store, manager, run, expectOk, expectError, close };

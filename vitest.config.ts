@@ -18,8 +18,6 @@ export default defineConfig({
           name: 'server',
           environment: 'node',
           sequence: { groupOrder: 0 },
-          // Diffs the tables once per run, so no test file has to load drizzle-kit.
-          globalSetup: ['./server/src/db/__tests__/global-setup.ts'],
           include: ['server/src/**/*.test.ts', 'shared/src/**/*.test.ts'],
         },
       },

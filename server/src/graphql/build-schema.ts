@@ -4,7 +4,7 @@ import { applyPermissions } from '@vantreeseba/graphql-casl';
 import { GraphQLObjectType, GraphQLSchema } from 'graphql';
 import { OPERATION_LIMIT_DEFAULTS } from '../core/defaults.ts';
 import { codedError } from '../core/errors.ts';
-import type { RouterDb } from '../db/database.ts';
+import type { DB } from '../db/client.ts';
 import { mapDatabaseError } from './database-errors.ts';
 import { serverMutations, serverQueries } from './fields/servers.ts';
 import { systemMutations, systemQueries } from './fields/system.ts';
@@ -64,7 +64,7 @@ export interface BuiltSchema {
  * @param db - The database the resolvers query. Tests pass PGlite.
  * @returns The schema.
  */
-export function createSchema(db: RouterDb): BuiltSchema {
+export function createSchema(db: DB): BuiltSchema {
   const { entities } = buildSchema(db, {
     prefixes: { insert: 'create', update: 'update', delete: 'delete' },
     // Table keys are plural (`servers`). Types and single-row fields are singular (Server, server).

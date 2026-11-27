@@ -8,7 +8,7 @@ streamable-HTTP servers), and re-exposes each one over streamable HTTP at
 tools. **Workspaces** are custom aggregates — a chosen subset of servers at
 `/mcp/w/<slug>` with optional per-workspace param overrides, each member running
 as an isolated instance independent of the server's global state. Configuration
-lives in hand-editable flat JSON files under `DATA_DIR/config`; a React web UI
+lives in a database (Drizzle; PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`); a React web UI
 manages registries, installs, workspaces, and per-server env vars/API keys.
 
 **Read [`SPECS.md`](SPECS.md) first** — it holds the locked design decisions,
@@ -22,7 +22,8 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 | Folder | Holds |
 | --- | --- |
 | `core/` | what every other folder reads: defaults, errors and error codes, version |
-| `config/` | env flags and the config store (the JSON files under `DATA_DIR/config`) |
+| `config/` | env flags and the config store (cached over the config tables; first-boot import of old config files) |
+| `db/` | the Drizzle tables, the PGlite-or-Postgres client, `waitForDatabase` |
 | `http/` | the Express app (`createApp`), server timeouts, graceful shutdown |
 | `auth/` | bearer-token and origin guards |
 | `api/` | the REST routes under `/api` and the error middleware |
@@ -67,10 +68,10 @@ docker compose up        # run the container; ./data mounted at /data
 | --- | --- |
 | **Biome** | Single formatter+linter; enforces `useImportType`, `noUnusedImports` |
 | **Express 5 + @modelcontextprotocol/sdk** | `StreamableHTTPServerTransport` for exposed endpoints; SDK `Client` with stdio/streamable-http transports for downstream servers |
-| **Flat JSON config** | `DATA_DIR/config/{settings,registries}.json` + `config/servers/<name>.json`; hand-editable, watched (chokidar) + `POST /api/reload`; secrets plaintext, files mode 0600 |
+| **Drizzle 1.0.0-rc.5 + PGlite/Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. PGlite data dir `DATA_DIR/pg` unless `DATABASE_URL` is a `postgres://` URL. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
 | **Node ≥22.18 type stripping** | Server dev runs `.ts` directly (`node --watch`), no build step; `tsc` with `rewriteRelativeImportExtensions` emits `dist/` for prod — so **use `.ts` extensions in all relative imports** in `server/` and `shared/` |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes), minus GraphQL — plain REST with shared zod DTOs |
-| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into settings.json; guards `/api/*` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
+| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/api/*` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
 
 ## Key Conventions
 
@@ -99,9 +100,11 @@ try {
 }
 ```
 
-**Config writes are atomic:** write to a temp file in the same dir, `chmod
-0600`, then `rename`. Parse leniently (`.loose()`) so hand-added keys
-survive round-trips.
+**Config writes go through `ConfigStore`** (or a transaction followed by
+`store.reload()`): a multi-row write is one transaction, and rows are
+validated with the shared schemas when read back. Tests use a PGlite
+`memory://` database from `server/src/db/__tests__/test-db.ts`: one per file
+(`beforeAll`), `resetTestDb` between tests.
 
 **Child processes:** always `execFile`/`spawn` with arg arrays — never string
 interpolation into a shell. Downstream env = explicit allowlist (`PATH`,

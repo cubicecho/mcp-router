@@ -33,18 +33,35 @@ export const HTTP_DEFAULTS: Readonly<HttpSettings> = Object.freeze({
   shutdownDeadlineSeconds: 8,
 });
 
-/** Settings for the config files under DATA_DIR/config. */
+/** Settings for the stored config. */
 export interface ConfigSettings {
-  /** How long config-file changes are gathered before one reload, in ms. */
-  watchDebounceMs: number;
   /** Random bytes in a generated auth token. It is stored as twice as many hex characters. */
   authTokenBytes: number;
 }
 
-/** The fixed config-file settings this build ships with. */
+/** The fixed config settings this build ships with. */
 export const CONFIG_DEFAULTS: Readonly<ConfigSettings> = Object.freeze({
-  watchDebounceMs: 300,
   authTokenBytes: 32,
+});
+
+/** Settings for reaching Postgres at boot. */
+export interface DatabaseSettings {
+  /** How long boot waits for Postgres before giving up, in ms. `DB_CONNECT_TIMEOUT_MS` overrides it. */
+  connectTimeoutMs: number;
+  /** The wait before the first retry, in ms. */
+  firstRetryDelayMs: number;
+  /** The longest wait between two retries, in ms. */
+  maxRetryDelayMs: number;
+  /** How much the wait grows after each failed attempt. */
+  retryBackoffFactor: number;
+}
+
+/** The fixed database settings this build ships with. */
+export const DATABASE_DEFAULTS: Readonly<DatabaseSettings> = Object.freeze({
+  connectTimeoutMs: 60_000,
+  firstRetryDelayMs: 500,
+  maxRetryDelayMs: 5_000,
+  retryBackoffFactor: 2,
 });
 
 /** Settings for the downstream connections and the MCP sessions in front of them. */

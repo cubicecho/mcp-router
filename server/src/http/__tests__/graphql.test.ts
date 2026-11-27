@@ -8,9 +8,10 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import type { ConfigStore } from '../../config/store.ts';
 import { MCP_DEFAULTS, OPERATION_LIMIT_DEFAULTS } from '../../core/defaults.ts';
-import { closeTestDb, createTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestDb, createTestStore } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { ADMIN_TOOLS } from '../../graphql/admin-mcp.ts';
 import { ADMIN_MCP_PATH, createApp } from '../app.ts';
@@ -18,7 +19,7 @@ import { ADMIN_MCP_PATH, createApp } from '../app.ts';
 const { maxDepth, maxAliases, maxPageSize } = OPERATION_LIMIT_DEFAULTS;
 
 describe('/graphql and /admin/mcp', () => {
-  let db: TestDb;
+  let database: Database;
   let dataDir: string;
   let store: ConfigStore;
   let manager: GatewayManager;
@@ -28,21 +29,19 @@ describe('/graphql and /admin/mcp', () => {
   beforeAll(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    db = await createTestDb();
+    database = await createTestDb();
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-graphql-http-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken ?? '';
     manager = new GatewayManager(() => store.getSettings());
-    app = createApp({ store, manager, db, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterAll(async () => {
     vi.restoreAllMocks();
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
-    await closeTestDb(db);
+    await database.close();
   });
 
   const post = (query: string) => request(app).post('/graphql').set('Authorization', `Bearer ${token}`).send({ query });
@@ -57,15 +56,6 @@ describe('/graphql and /admin/mcp', () => {
   it('answers a query with the token', async () => {
     const res = await post('{ routerStatus { serverCount } }');
     expect(res.body).toEqual({ data: { routerStatus: { serverCount: 0 } } });
-  });
-
-  it('is not served without a database', async () => {
-    const bare = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
-    const res = await request(bare)
-      .post('/graphql')
-      .set('Authorization', `Bearer ${token}`)
-      .send({ query: '{ __typename }' });
-    expect(res.status).toBe(HttpStatus.NotFound);
   });
 
   it('refuses a query deeper than maxDepth before running it', async () => {

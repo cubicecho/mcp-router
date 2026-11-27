@@ -2,7 +2,8 @@ import { ErrorCode } from '@mcp-router/shared';
 import { buildSchema } from '@vantreeseba/drizzle-graphql';
 import { type GraphQLSchema, graphql, isInputObjectType } from 'graphql';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeTestDb, createTestDb, resetTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestDb, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database, DB } from '../../db/client.ts';
 import { servers } from '../../db/tables/servers.ts';
 import { workspaceMembers } from '../../db/tables/workspace-members.ts';
 import { workspaces } from '../../db/tables/workspaces.ts';
@@ -19,13 +20,15 @@ const CREATE_WITH_MEMBER = `mutation($serverId: UUID!, $url: String) {
 }`;
 
 describe('nested writes', () => {
-  let db: TestDb;
+  let database: Database;
+  let db: DB;
   let schema: GraphQLSchema;
   let serverId: string;
   const reload = vi.fn(async () => {});
 
   beforeAll(async () => {
-    db = await createTestDb();
+    database = await createTestDb();
+    db = database.db;
     schema = buildSchema(db, {
       prefixes: { insert: 'create', update: 'update', delete: 'delete' },
       typeNameMapper: 'singularize',
@@ -34,10 +37,10 @@ describe('nested writes', () => {
     }).schema;
   });
 
-  afterAll(() => closeTestDb(db));
+  afterAll(() => database.close());
 
   beforeEach(async () => {
-    await resetTestDb(db);
+    await resetTestDb(database);
     reload.mockClear();
     const [row] = await db
       .insert(servers)

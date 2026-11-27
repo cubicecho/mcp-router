@@ -1,6 +1,7 @@
 import { GraphQLObjectType, GraphQLString, isInputObjectType, isObjectType } from 'graphql';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { closeTestDb, createTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database, DB } from '../../db/client.ts';
 import { createSchema } from '../build-schema.ts';
 import { serverMutations, serverQueries } from '../fields/servers.ts';
 import { systemMutations, systemQueries } from '../fields/system.ts';
@@ -11,13 +12,15 @@ const SERVER = new GraphQLObjectType({ name: 'Server', fields: { id: { type: Gra
 const WORKSPACE = new GraphQLObjectType({ name: 'Workspace', fields: { id: { type: GraphQLString } } });
 
 describe('createSchema', () => {
-  let db: TestDb;
+  let database: Database;
+  let db: DB;
 
   beforeAll(async () => {
-    db = await createTestDb();
+    database = await createTestDb();
+    db = database.db;
   });
 
-  afterAll(() => closeTestDb(db));
+  afterAll(() => database.close());
 
   it('builds over the tables', () => {
     const { schema } = createSchema(db);

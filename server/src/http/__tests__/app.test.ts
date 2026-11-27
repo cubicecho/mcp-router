@@ -13,10 +13,12 @@ import {
   LoggingMessageNotificationSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConfigStore } from '../../config/store.ts';
 import { upstreamFailed } from '../../core/errors.ts';
 import { SERVER_VERSION } from '../../core/version.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { ECHO_INSTRUCTIONS } from '../../gateway/__tests__/fixtures/echo-instructions.ts';
 import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
@@ -30,25 +32,31 @@ function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Clie
 describe('REST API', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let token: string;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-api-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
@@ -491,25 +499,31 @@ describe('REST API', () => {
 describe('MCP session lifecycle', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let token: string;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-session-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken as string;
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });

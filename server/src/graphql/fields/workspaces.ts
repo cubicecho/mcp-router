@@ -8,6 +8,7 @@ import {
   GraphQLString,
 } from 'graphql';
 import { z } from 'zod';
+import { memberToRow, workspaceToRow } from '../../config/rows.ts';
 import type { Context } from '../../core/context.ts';
 import { codedError } from '../../core/errors.ts';
 import { parseOrThrow } from '../../core/validation.ts';
@@ -129,10 +130,16 @@ function readSaveInput(input: SaveArgs['input']): SaveWorkspace & { slug: string
  * @returns The workspace's id.
  * @throws NOT_FOUND for an id that names no workspace, CONFLICT for a taken slug, BAD_USER_INPUT for a member whose
  * server does not exist or that is listed twice.
+ *
+ * @remarks
+ * Not `upsertWorkspace` from config/writes.ts: that keys on the slug and names members by server name, skipping one
+ * whose server is missing. This one keys on the id (so a rename can move the slug), takes members by server id, and
+ * refuses a missing server. The columns come from the same row mappers.
  */
 async function writeWorkspace(ctx: Context, input: SaveWorkspace & { slug: string }): Promise<string> {
   const { id, members, ...columns } = input;
-  const row = { ...columns, description: columns.description ?? null };
+  // The members are rows of their own, written below.
+  const row = workspaceToRow({ ...columns, members: {} });
   try {
     return await ctx.db.transaction(async (tx) => {
       const [written] =
@@ -144,14 +151,10 @@ async function writeWorkspace(ctx: Context, input: SaveWorkspace & { slug: strin
       }
       await tx.delete(workspaceMembers).where(eq(workspaceMembers.workspaceId, written.id));
       if (members.length > 0) {
-        const memberRows = members.map(({ serverId, enabled, env, args, headers, url }) => ({
+        const memberRows = members.map(({ serverId, ...member }) => ({
+          ...memberToRow(member),
           workspaceId: written.id,
           serverId,
-          enabled,
-          env: env ?? null,
-          args: args ?? null,
-          headers: headers ?? null,
-          url: url ?? null,
         }));
         await tx.insert(workspaceMembers).values(memberRows);
       }

@@ -1,5 +1,5 @@
 import type { ApiDeps } from '../api/deps.ts';
-import type { RouterDb } from '../db/database.ts';
+import type { DB } from '../db/client.ts';
 
 /** What `Context.ip` holds when the socket reports no address. */
 export const UNKNOWN_IP = 'unknown';
@@ -13,7 +13,7 @@ export type Caller = typeof CALLER_OPERATOR;
 /** What every request's context carries, whoever the caller is. The REST routes are built over the same set. */
 export interface ContextDeps extends ApiDeps {
   /** The tables the generated schema and the hand-written writes read and write. */
-  db: RouterDb;
+  db: DB;
   /** When the router started, in ms since the epoch; `routerStatus` counts uptime from it. */
   startedAt: number;
 }

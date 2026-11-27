@@ -12,7 +12,7 @@ or proxies remote ones, and serves every one of them over streamable HTTP:
   per-workspace `env`/`args`/`headers` overrides, so each client gets exactly the tools it needs
 
 Point your MCP clients at the router instead of configuring every server in every client. Manage it all from
-the built-in web UI, or hand-edit the JSON config files.
+the built-in web UI.
 
 ![The Servers page](site/src/assets/screenshots/servers.png)
 
@@ -40,9 +40,9 @@ docker compose up -d
 Open http://localhost:3000, sign in with your token, and install a server from the **Browse** page. Then
 [connect your client](#connecting-mcp-clients).
 
-All state (config, installed server packages, caches) lives in `./data`. The router refuses to start while
-the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into
-`data/config/settings.json`, printing it once to the log (`docker compose logs`).
+All state (the database, installed server packages, caches) lives in `./data`. The router refuses to start
+while the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into its
+database, printing it once to the log (`docker compose logs`).
 
 Or without compose:
 
@@ -123,8 +123,9 @@ process contributes nothing until it does, so reconnect after it wakes to pick t
   session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. A server's elicitation is put
   to the session whose call asked for it. Sampling and roots are not proxied yet
 - One bearer token guards the management API and all MCP endpoints
-- Config is plain JSON under `DATA_DIR/config`. Changes are picked up when the files change, or on
-  **Reload config** in Settings
+- Config lives in a database: an embedded PGlite under `DATA_DIR/pg` by default, or Postgres when
+  `DATABASE_URL` is a `postgres://` URL. A router upgraded from the file-based config imports
+  `DATA_DIR/config` on its first boot and renames the files `*.imported`
 
 ### Workspaces
 
@@ -145,12 +146,12 @@ does the same:
    opens. The window closes itself and the server shows as running. You can also sign in later from the
    server's page or its row in the list (it shows **needs sign-in**).
 
-MCP Router keeps the tokens in `servers/<name>.json` (like other secrets, plaintext at mode 0600, never sent to
+MCP Router keeps the tokens in its database (like other secrets, plaintext, never sent to
 the web UI) and refreshes them on its own. **Sign out** on the server's page forgets them.
 
 The login sends your browser back to `<router>/oauth/callback`. Servers that identify clients by URL (Home
 Assistant does) fetch `<router>/oauth/client-metadata.json`. Both are served without the bearer token. The
-server must be able to reach that address, so set `publicUrl` in settings.json (or on the Settings page) when
+server must be able to reach that address, so set `publicUrl` on the Settings page when
 the router is reached by a different name than the one in your browser. Home Assistant's login also checks
 that the URL you use for it matches its configured Internal or External URL.
 
@@ -186,10 +187,11 @@ The main environment variables:
 
 | Variable | |
 | --- | --- |
-| `MCP_ROUTER_TOKEN` | The bearer token. Generated into settings.json when unset |
+| `MCP_ROUTER_TOKEN` | The bearer token. Generated into the database when unset |
 | `SECURE_LOCAL_NET` | `true` turns auth off. Only on a network you trust |
 | `PORT` / `HOST` | Where to listen (default `3000` on all interfaces) |
 | `DATA_DIR` | Where state lives (`/data` in the image) |
+| `DATABASE_URL` | A `postgres://` URL to use Postgres. Unset uses PGlite in `DATA_DIR/pg` |
 
 Everything else (the keep-alive timeouts, `settings.json`, registries, and the per-server and per-workspace
 files) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
@@ -197,12 +199,12 @@ files) is in [docs/configuration.md](docs/configuration.md). The REST API and th
 
 ## Security notes
 
-- **Secrets are stored in plaintext** in the JSON config files: `env` values, remote-transport headers, OAuth
-  tokens and client secrets, and the auth token. The router writes these files with mode `0600`, but anyone
-  with read access to `DATA_DIR`, or to your Docker bind mount, can read them. Protect the folder accordingly
+- **Secrets are stored in plaintext** in the database: `env` values, remote-transport headers, OAuth
+  tokens and client secrets, and the auth token. Anyone with read access to `DATA_DIR` (the PGlite data
+  dir), to your Docker bind mount, or to the Postgres database can read them. Protect the folder accordingly
   and keep backups equally private.
 - **One bearer token guards everything** (`/api/*` and `/mcp*`). Treat it like a password. Setting
-  `authEnabled: false` in settings.json, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
+  `authEnabled: false` in the settings, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
   entirely. Only do that on a trusted network. The `/mcp` Origin guard still applies with auth off, so a
   malicious web page can't reach the endpoints through DNS rebinding.
 - **Do not expose the router directly to the internet.** It speaks plain HTTP, so the bearer token would

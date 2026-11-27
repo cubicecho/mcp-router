@@ -3,7 +3,8 @@ import path from 'node:path';
 import { type DiscoveredServer, DiscoveredServerState, ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { eq } from 'drizzle-orm';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
-import { closeTestDb, createTestDb, resetTestDb, type TestDb } from '../../db/__tests__/test-db.ts';
+import { createTestDb, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database, DB } from '../../db/client.ts';
 import { servers } from '../../db/tables/servers.ts';
 import { SETTINGS_ROW_ID, settings } from '../../db/tables/settings.ts';
 import { workspaceMembers } from '../../db/tables/workspace-members.ts';
@@ -38,18 +39,20 @@ const FOUND: DiscoveredServer = {
 };
 
 describe('hand-written server fields', () => {
-  let db: TestDb;
+  let database: Database;
+  let db: DB;
   let harness: Harness;
 
   beforeAll(async () => {
-    db = await createTestDb();
+    database = await createTestDb();
+    db = database.db;
   });
 
-  afterAll(() => closeTestDb(db));
+  afterAll(() => database.close());
 
   beforeEach(async () => {
-    await resetTestDb(db);
-    harness = await createHarness(db);
+    await resetTestDb(database);
+    harness = await createHarness(database);
   });
 
   afterEach(async () => {
@@ -109,12 +112,12 @@ describe('hand-written server fields', () => {
 });
 
 describe('hand-written gateway fields', () => {
-  let db: TestDb;
+  let database: Database;
   let harness: Harness;
 
   beforeAll(async () => {
-    db = await createTestDb();
-    harness = await createHarness(db);
+    database = await createTestDb();
+    harness = await createHarness(database);
     // The gateway runs what the store holds, so the echo server is saved the way the gateway reads it.
     await harness.store.saveServer(
       serverConfigSchema.parse({
@@ -134,7 +137,7 @@ describe('hand-written gateway fields', () => {
 
   afterAll(async () => {
     await harness.close();
-    await closeTestDb(db);
+    await database.close();
   });
 
   it("lists a server's tools, a page at a time", async () => {
@@ -176,22 +179,23 @@ describe('hand-written gateway fields', () => {
 });
 
 describe('hand-written router fields', () => {
-  let db: TestDb;
+  let database: Database;
+  let db: DB;
   let harness: Harness;
   const registryFetch = vi.fn<typeof fetch>();
   const found: LanServers = { sync: async () => undefined, list: () => [FOUND], close: async () => undefined };
 
   beforeAll(async () => {
-    db = await createTestDb();
+    database = await createTestDb();
+    db = database.db;
   });
 
-  afterAll(() => closeTestDb(db));
+  afterAll(() => database.close());
 
   beforeEach(async () => {
-    await resetTestDb(db);
-    await db.insert(settings).values({});
+    await resetTestDb(database);
     registryFetch.mockReset();
-    harness = await createHarness(db, { registryClient: new RegistryClient(registryFetch), lanServers: found });
+    harness = await createHarness(database, { registryClient: new RegistryClient(registryFetch), lanServers: found });
   });
 
   afterEach(async () => {

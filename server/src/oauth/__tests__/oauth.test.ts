@@ -7,8 +7,10 @@ import path from 'node:path';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { ConfigStore } from '../../config/store.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { createApp } from '../../http/app.ts';
 import { applyOAuthClient, dropSignInOnMove, OAuthService } from '../service.ts';
@@ -136,31 +138,37 @@ function login(upstream: Upstream, authorizationUrl: string): { code: string; st
 describe('remote OAuth sign-in', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let oauth: OAuthService;
   let manager: GatewayManager;
   let upstream: Upstream;
   let token: string;
   let app: ReturnType<typeof createApp>;
 
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
+
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     vi.spyOn(console, 'warn').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-oauth-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken as string;
     upstream = await startUpstream();
     oauth = new OAuthService(store);
     manager = new GatewayManager(() => store.getSettings(), oauth);
     oauth.setOnChange((name) => manager.resetServer(name));
     await manager.reconcile(store.getServers());
-    app = createApp({ store, manager, oauth, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, store, manager, oauth, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await upstream.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();

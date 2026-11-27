@@ -1,8 +1,9 @@
-import path from 'node:path';
 import { createAdvertiser, watchServers } from '@cubicecho/mcp-discovery/mdns';
 import { TRANSPORT_STREAMABLE_HTTP } from '@mcp-router/shared';
 import {
   authDisabledByEnv,
+  databaseUrl,
+  dbConnectTimeoutMs,
   dataDir as envDataDir,
   envToken,
   listenHost,
@@ -11,6 +12,8 @@ import {
 } from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
 import { errorMessage } from './core/errors.ts';
+import { openDatabase } from './db/client.ts';
+import { waitForDatabase } from './db/wait.ts';
 import { createLanServers } from './discovery/lan-servers.ts';
 import { GatewayManager } from './gateway/manager.ts';
 import { createApp } from './http/app.ts';
@@ -21,11 +24,24 @@ import { OAuthService } from './oauth/service.ts';
 /** Hosts that only this machine can reach. */
 const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 
-/** Loads the config, starts the gateway and the HTTP server, and arranges a graceful stop on SIGTERM or SIGINT. */
+/**
+ * Opens and migrates the database, loads the config, starts the gateway and the HTTP server, and arranges a graceful
+ * stop on SIGTERM or SIGINT.
+ */
 async function main(): Promise<void> {
   refusePlaceholderToken();
   const dataDir = envDataDir();
-  const store = new ConfigStore(dataDir);
+  const database = openDatabase(databaseUrl(), dataDir);
+  if (database.isPostgres) {
+    try {
+      await waitForDatabase(database.db, { connectTimeoutMs: dbConnectTimeoutMs() });
+    } catch (error) {
+      throw new Error(`Could not reach ${database.location}`, { cause: error });
+    }
+  }
+  await database.ensureSchema();
+  console.log(`[db] using ${database.location}`);
+  const store = new ConfigStore({ db: database.db, dataDir });
   await store.init();
 
   const oauth = new OAuthService(store);
@@ -34,12 +50,11 @@ async function main(): Promise<void> {
   oauth.setOnChange((name) => manager.resetServer(name));
   await manager.reconcile(store.getServers(), store.getWorkspaces());
   store.on('change', (state) => {
-    console.log('[config] changed on disk, reconciling servers');
+    console.log('[config] changed, reconciling servers');
     manager.reconcile(state.servers, state.workspaces).catch((err: unknown) => {
       console.warn(`[config] reconcile after a config change failed: ${errorMessage(err)}`);
     });
   });
-  store.startWatching();
 
   const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.
@@ -67,7 +82,7 @@ async function main(): Promise<void> {
     log: console.log,
     watch: (handlers) => watchServers(handlers),
   });
-  // A toggle in the UI writes settings.json, so it arrives as a change like a hand edit.
+  // A toggle in the UI writes the settings, so it arrives as a change.
   store.on('change', () => {
     void advertiser.sync();
     void lanServers.sync();
@@ -76,19 +91,19 @@ async function main(): Promise<void> {
     console.warn(`[discovery] lanAdvertise is on, but the router listens on ${host} only, so it is not announced`);
   }
 
-  const app = createApp({ store, manager, oauth, lanServers });
+  const app = createApp({ store, manager, oauth, lanServers, db: database.db });
   const onListen = () => {
     console.log(`[server] listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
     if (authDisabledByEnv()) {
       console.warn('[auth] SECURE_LOCAL_NET is on: /api and /mcp are open to this network. Private networks only.');
     } else if (settings.authEnabled === false) {
-      console.warn('[auth] authEnabled is false in settings.json: /api and /mcp are open.');
+      console.warn('[auth] authEnabled is false in the settings: /api and /mcp are open.');
     } else if (envToken() !== undefined) {
-      console.log('[auth] bearer token from MCP_ROUTER_TOKEN, which overrides settings.json');
+      console.log('[auth] bearer token from MCP_ROUTER_TOKEN, which overrides the stored one');
     } else {
-      // The path, never the token: boot logs are kept and shipped, and the token is printed once, when it is generated.
-      console.log(`[auth] bearer token is authToken in ${path.join(dataDir, 'config/settings.json')}`);
+      // Where it is, never the token: boot logs are kept and shipped, and the token is printed once, when it is generated.
+      console.log(`[auth] bearer token is auth_token in the settings table of ${database.location}`);
     }
     // After listen, so whoever finds the announcement can already read the catalog.
     void advertiser.sync();
@@ -97,15 +112,17 @@ async function main(): Promise<void> {
   const httpServer = host ? app.listen(port, host, onListen) : app.listen(port, onListen);
   tuneInbound(httpServer);
 
-  // The watcher stops first, so a config edit during the drain starts nothing. The children go last, once no request needs them.
-  // The announcement goes first, so the goodbye is sent while the router can still answer.
+  // The announcement goes first, so the goodbye is sent while the router can still answer. The children go after the
+  // drain, once no request needs them, and the database last, once nothing writes to it.
   stopOnSignals(httpServer, {
     before: async () => {
       await advertiser.close();
       await lanServers.close();
-      await store.close();
     },
-    after: () => manager.stopAll(),
+    after: async () => {
+      await manager.stopAll();
+      await database.close();
+    },
   });
 }
 

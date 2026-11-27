@@ -1,19 +1,8 @@
-import { PGlite } from '@electric-sql/pglite';
+// The database every server test uses: PGlite in memory, migrated with the committed migrations.
 import { getTableName, is, sql, Table } from 'drizzle-orm';
-import { drizzle } from 'drizzle-orm/pglite';
-import { inject } from 'vitest';
-import { relations } from '../relations.ts';
+import { ConfigStore } from '../../config/store.ts';
+import { type Database, MEMORY_STORE, openDatabase } from '../client.ts';
 import * as dbSchema from '../schema.ts';
-
-declare module 'vitest' {
-  interface ProvidedContext {
-    /** The DDL for the current tables, worked out once per run by `global-setup.ts`. */
-    schemaSql: string[];
-  }
-}
-
-/** A database over PGlite in memory, as every test uses. */
-export type TestDb = ReturnType<typeof drizzle<typeof relations>>;
 
 /** Every table in the schema, quoted for a statement that names them all. */
 const TABLE_LIST = Object.values(dbSchema)
@@ -21,32 +10,35 @@ const TABLE_LIST = Object.values(dbSchema)
   .join(', ');
 
 /**
- * Builds a fresh in-memory Postgres with the router's tables in it. A file makes one in `beforeAll`.
+ * Builds a fresh in-memory Postgres with the tables in it.
  *
- * @returns The db.
+ * @returns The database. A file makes one in `beforeAll`, empties it with `resetTestDb` between tests, and closes it in
+ * `afterAll`: booting one takes about a second.
  */
-export async function createTestDb(): Promise<TestDb> {
-  const client = new PGlite('memory://');
-  for (const statement of inject('schemaSql')) {
-    await client.exec(statement);
-  }
-  return drizzle({ client, relations });
+export async function createTestDb(): Promise<Database> {
+  const database = openDatabase(MEMORY_STORE, '');
+  await database.ensureSchema();
+  return database;
 }
 
 /**
- * Empties every table, so the next test starts from the db `createTestDb` returned.
+ * Empties every table, so the next test starts from an empty database.
  *
- * @param db - Test db.
+ * @param database - A database from `createTestDb`.
  */
-export async function resetTestDb(db: TestDb): Promise<void> {
-  await db.execute(sql.raw(`TRUNCATE TABLE ${TABLE_LIST} RESTART IDENTITY CASCADE`));
+export async function resetTestDb(database: Database): Promise<void> {
+  await database.db.execute(sql.raw(`TRUNCATE TABLE ${TABLE_LIST} RESTART IDENTITY CASCADE`));
 }
 
 /**
- * Shuts a test db down. An instance left open holds its whole Postgres in memory until the worker exits.
+ * Builds a store over a test database and runs its first boot.
  *
- * @param db - Test db.
+ * @param database - A database from `createTestDb`, usually just reset.
+ * @param dataDir - The data directory, whose `config` folder is imported when it has files.
+ * @returns The initialised store.
  */
-export async function closeTestDb(db: TestDb): Promise<void> {
-  await db.$client.close();
+export async function createTestStore(database: Database, dataDir: string): Promise<ConfigStore> {
+  const store = new ConfigStore({ db: database.db, dataDir });
+  await store.init();
+  return store;
 }
