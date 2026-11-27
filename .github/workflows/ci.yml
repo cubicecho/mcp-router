@@ -31,8 +31,54 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test
         run: npm test
+      # The web UI's bundle. The server has no build step: it runs from its sources.
       - name: Build
         run: npm run build
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: ci }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      MIGRATIONS_DIR: server/drizzle
+    steps:
+      - uses: actions/checkout@v7
+      # Passes without checking anything until the repo has committed migrations.
+      - name: Find migrations
+        id: migrations
+        run: |
+          if [ -d "$MIGRATIONS_DIR" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No $MIGRATIONS_DIR yet, so there are no migrations to check."
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.migrations.outputs.present == 'true'
+        with:
+          node-version: '26'
+          cache: 'npm'
+      - if: steps.migrations.outputs.present == 'true'
+        run: npm ci
+      - name: Migrations apply
+        if: steps.migrations.outputs.present == 'true'
+        run: npm run db:migrate
+      # drizzle-kit writes nothing when the models and migrations agree.
+      - name: Migrations match the models
+        if: steps.migrations.outputs.present == 'true'
+        run: |
+          npm run db:generate
+          if [ -n "$(git status --porcelain "$MIGRATIONS_DIR")" ]; then
+            git status --porcelain "$MIGRATIONS_DIR"
+            echo "::error::The models changed without a migration. Run npm run db:generate and commit $MIGRATIONS_DIR."
+            exit 1
+          fi
 
   boot:
     runs-on: ubuntu-latest
