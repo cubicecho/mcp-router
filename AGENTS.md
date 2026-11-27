@@ -54,10 +54,10 @@ npm run build-storybook  # static Storybook into app/storybook-static
 npx playwright install chromium   # once per machine — the stories project needs it
 
 # Build / deploy
-npm run build            # shared typecheck → server tsc → app vite build
-npm run start            # node server/dist/index.js (serves app/dist)
+npm run build            # app vite build (the server has no build step)
+npm run start            # node server/src/index.ts (serves app/dist)
 npm run build:docker     # docker build -t mcp-router .
-docker compose up        # run the container; ./data mounted at /data
+docker compose up        # run the container as node; named volume at /data
 ```
 
 ## Tech Stack
@@ -67,7 +67,7 @@ docker compose up        # run the container; ./data mounted at /data
 | **Biome** | Single formatter+linter; enforces `useImportType`, `noUnusedImports` |
 | **Express 5 + @modelcontextprotocol/sdk** | `StreamableHTTPServerTransport` for exposed endpoints; SDK `Client` with stdio/streamable-http transports for downstream servers |
 | **Flat JSON config** | `DATA_DIR/config/{settings,registries}.json` + `config/servers/<name>.json`; hand-editable, watched (chokidar) + `POST /api/reload`; secrets plaintext, files mode 0600 |
-| **Node ≥22.18 type stripping** | Server dev runs `.ts` directly (`node --watch`), no build step; `tsc` with `rewriteRelativeImportExtensions` emits `dist/` for prod — so **use `.ts` extensions in all relative imports** in `server/` and `shared/` |
+| **Node 26 type stripping** | Node 26 everywhere (`engines`, CI, `node:26-slim`). The server runs its `.ts` sources directly in dev, prod and Docker (`node server/src/index.ts`); there is no server build and `tsc` only checks (`noEmit`). `shared/` is imported as raw `.ts` through its workspace link — so **use `.ts` extensions in all relative imports** in `server/` and `shared/`, and erasable syntax only |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes), minus GraphQL — plain REST with shared zod DTOs |
 | **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into settings.json; guards `/api/*` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
 

@@ -19,8 +19,8 @@ hand-editable flat config files.
 | Config | Flat files under `DATA_DIR/config`; watched for changes (chokidar) + explicit `POST /api/reload` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
-| Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
-| Deploy | Single Docker image: build app + server, Express serves `app/dist` statically; `docker-compose.yml` with a `data/` volume |
+| Server runtime | Node 26 type stripping everywhere: `node --watch src/index.ts` in dev, `node server/src/index.ts` in prod/Docker. No server build; `tsc --noEmit` only checks |
+| Deploy | Single `node:26-slim` image running as `USER node`: build the app, copy the server and shared sources, Express serves `app/dist` statically; `docker-compose.yml` with a named volume at `/data` |
 | Shared agent packages | **`@cubicecho/agent-mcp-pool` adopted.** `gateway/manager.ts` is an adapter over its `McpPool`; `gateway/naming.ts` stays local. `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below |
 
 ## Layout & contracts
@@ -437,7 +437,7 @@ pool leaves `naming.ts` untouched, as predicted.
 
 ### Track A — Server (`server/`)
 
-- [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (emits to `dist/`, `rewriteRelativeImportExtensions`), `src/index.ts` entry
+- [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (`noEmit`: Node 26 runs the sources, no build), `src/index.ts` entry
 - [x] A2 Config store (`src/config/`): load/validate/write `settings.json`, `registries.json`, `servers/*.json` via shared schemas; atomic writes (tmp+rename, mode 0600); seed defaults on first run (official registry, generated auth token → log it once); chokidar watcher (debounced) emitting typed change events; `reload()` for the API
 - [x] A3 Auth middleware: bearer check for `/api` and `/mcp`; constant-time compare; skipped when `authEnabled: false`; `GET /api/status` reports authEnabled
 - [x] A4 Registry client (`src/registry/`): fetch + zod-parse `GET {url}/v0/servers` (search, cursor, version=latest) and single-server detail; per-registry base URL; friendly errors for unreachable/invalid registries
@@ -464,8 +464,8 @@ pool leaves `naming.ts` untouched, as predicted.
 
 ### Track C — Deploy & docs
 
-- [x] C1 `Dockerfile`: multi-stage — `npm ci` + build shared/server/app → slim `node:22` runtime with `server/dist`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `VOLUME /data`, `EXPOSE 3000`; needs npm available at runtime (installer shells out to it)
-- [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/healthz`
+- [x] C1 `Dockerfile`: multi-stage — `npm ci` + app vite build → `node:26-slim` runtime with `server/src`, `shared/src`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `/data` chowned to node before `VOLUME /data`, `USER node`, `EXPOSE 3000`, `CMD ["node", "server/src/index.ts"]`; needs npm and uv available at runtime (installer shells out to them)
+- [x] C2 `docker-compose.yml`: single service, named volume at `/data`, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/healthz`
 - [x] C3 `README.md`: what it is, quickstart (docker compose + bare node), config file reference with examples, API + MCP endpoint reference, how to point Claude/other clients at `/mcp` and `/mcp/<name>`, security notes (plaintext secrets, bearer token)
 
 ### Phase 3 — Workspaces (custom aggregates)
