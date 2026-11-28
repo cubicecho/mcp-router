@@ -63,9 +63,9 @@ title: false
       </div>
       <div class="feature">
         <div class="feature-icon">🔐</div>
-        <h3>One token, one door</h3>
-        <p>A single bearer token guards the management API and every MCP endpoint. Disable it for trusted
-          local networks with <code>SECURE_LOCAL_NET=true</code>.</p>
+        <h3>A sign-in for you, a key for each client</h3>
+        <p>You sign in to the UI through your OIDC provider, or straight in on a trusted network with
+          <code>SECURE_LOCAL_NET=true</code>. MCP clients and agents each get an API key, revoked one at a time.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">🖥️</div>
@@ -103,7 +103,7 @@ title: false
       </div>
     </div>
     <p class="flow-caption">
-      The router validates the bearer token, forwards <code>tools</code>/<code>resources</code>/<code>prompts</code>
+      The router checks the client's API key, forwards <code>tools</code>/<code>resources</code>/<code>prompts</code>
       1:1 for per-server routes, and for the aggregate merges every enabled server's capabilities — stripping the
       <code>&lt;server&gt;__</code> prefix on each call to route it back to the owning server.
     </p>

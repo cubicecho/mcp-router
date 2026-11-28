@@ -18,8 +18,16 @@ or the `/admin/mcp` MCP endpoint over it. There are no config files to edit.
 
 | Variable | Default | |
 | --- | --- | --- |
-| `MCP_ROUTER_TOKEN` | generated | Bearer token for `/graphql`, `/admin/mcp` and `/mcp*`. Wins over the stored `authToken`. When neither is set, one is generated into the database on first run and logged once. The placeholder `change-me` is refused |
-| `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) turns bearer auth off for `/graphql`, `/admin/mcp` and `/mcp`, and no token is minted. Overrides `authEnabled`. Only on a network you trust |
+| `BETTER_AUTH_SECRET` | dev secret | Signs UI sessions. Required in production (`NODE_ENV=production`, as in the image): boot refuses one that is unset, shorter than 32 characters or a published placeholder. `openssl rand -hex 32` |
+| `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) signs whoever opens the UI in as the local admin, with no provider. It does not open `/mcp`, `/graphql` or `/admin/mcp` to a request with no credential: MCP clients and agents still send an API key. Only on a network you trust |
+| `I_KNOW_SECURE_LOCAL_NET_IS_PUBLIC` | off | Boot refuses `SECURE_LOCAL_NET` when `publicUrl` is not a private address (localhost, a dotless name, an RFC 1918 or link-local address, `.lan`, `.local`, `.internal`, `.home.arpa`, ...). `true` accepts it anyway |
+| `OIDC_ISSUER` | unset | Sign the UI in through this OpenID Connect provider. Needs `OIDC_CLIENT_ID`; set both or neither. Wins over a provider paired from the UI, which can then not be changed there |
+| `OIDC_CLIENT_ID` | unset | The router's client id at the provider |
+| `OIDC_CLIENT_SECRET` | unset | The client secret. Unset is a public client, which proves itself with PKCE alone |
+| `OIDC_CLIENT_AUTH` | `client_secret_basic` | How the secret is sent: `client_secret_basic` or `client_secret_post`. The provider must expect the same |
+| `OIDC_NAME` | `SSO` | What the login page's button calls the provider |
+| `TRUST_PROXY` | off | How far to believe `X-Forwarded-For`, as Express's `trust proxy` takes it: a hop count (`1`), `true`, or `loopback` / a subnet. Sign-in attempts are throttled per client address, so behind a reverse proxy set it, or every client shares the proxy's budget |
+| `MCP_ROUTER_TOKEN` | unset | The old router token. Imported on boot as an API key with this value (named `MCP_ROUTER_TOKEN`), so clients configured with it keep working. The placeholder `change-me` is refused. A revoked one comes back on the next boot while the variable is set |
 | `PORT` | `3000` | HTTP port. Wins over the stored `port` |
 | `HOST` | all interfaces | Interface to bind. Wins over the stored `host`. `127.0.0.1` restricts it to localhost |
 | `DATABASE_URL` | required | The `postgres://` (or `postgresql://`) URL of the Postgres that holds the config. Boot refuses to start, with a `[db]` message, when it is unset or anything else |
@@ -30,6 +38,11 @@ or the `/admin/mcp` MCP endpoint over it. There are no config files to edit.
 
 Run from source, `npm start` and `npm run dev` also load a `.env` file from the repo root if there is one
 (`cp .env.example .env`). Variables already set in your shell win over `.env`.
+
+**Signing in.** The OIDC redirect URI to register with a provider by hand is `<publicUrl>/api/auth/callback/oidc`
+(the boot log prints it). Without `OIDC_ISSUER`, a provider can be paired by pasting its setup URL on the login page
+of a router with no accounts yet, or in Settings as the admin (the first person to sign in). With no provider and
+no `SECURE_LOCAL_NET`, nobody can sign in to the UI, and boot says so.
 
 **Keep-alive.** Connections are kept open between tool calls, which usually arrive further apart than
 Node's defaults allow for:
@@ -58,7 +71,7 @@ router caches the config in memory and applies its own writes at once. If someth
 (a SQL client, another tool against the same Postgres), tell the router to re-read the database:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" -H 'Content-Type: application/json' \
+curl -X POST -H "Authorization: Bearer $MCP_ROUTER_API_KEY" -H 'Content-Type: application/json' \
   -d '{"query":"mutation { reloadConfig { reloaded serverCount } }"}' \
   http://localhost:3000/graphql
 ```
@@ -73,8 +86,8 @@ against, written as JSON: the form the API and GraphQL take, and the form the ol
 ### Settings
 
 One row. The Settings page and GraphQL's `updateSetting` change the timeouts and session limits, `publicUrl`
-and the network discovery options. The rest (the port, the address, the token, whether auth is on, the router's
-network name, the origins `/mcp` trusts) guards the router itself or needs a restart, so it is set where the
+and the network discovery options; only a signed-in person may, never an API key. The rest (the port, the address,
+the router's network name, the origins `/mcp` trusts) guards the router itself or needs a restart, so it is set where the
 router is deployed: through the environment variables above, or by editing the `settings` table directly and
 restarting.
 
@@ -82,10 +95,11 @@ restarting.
 {
   // HTTP port. The PORT env var wins over this.
   "port": 3000,
-  // Bearer token for /graphql, /admin/mcp and /mcp*. The MCP_ROUTER_TOKEN env var wins.
-  // Generated on first run when auth is enabled and no token exists.
-  "authToken": "a-long-random-secret",
-  // Set false to allow unauthenticated access (trusted networks only!).
+  // Deprecated, and not served by the API. The old router token: boot imports it as an API
+  // key named "Imported router token", with the same value, then clears it.
+  "authToken": null,
+  // Deprecated and ignored (boot warns when it is false): auth is always on. Use
+  // SECURE_LOCAL_NET=true on a trusted network instead. A later release drops both columns.
   "authEnabled": true,
   // Interface to bind. The HOST env var wins. Omit to bind all interfaces
   // (needed for Docker/LAN); set "127.0.0.1" to restrict to localhost.
@@ -113,9 +127,11 @@ restarting.
   // the client's own timeout and its cancellation both reach the server.
   "callTimeoutMs": 600000,
   // The router's address as your browser and a remote server's login reach it.
-  // Used for OAuth sign-in (see "Remote servers that need a login" in the README).
-  // Omit to use the address the web UI is open at; set it behind a proxy that
-  // rewrites hosts.
+  // The OIDC sign-in starts, returns and lands here (its redirect URI is
+  // <publicUrl>/api/auth/callback/oidc), and a remote server's OAuth sign-in comes
+  // back here. Omit to use http://localhost:<port> for sign-in, and the address the
+  // web UI is open at for a remote server's login. Under SECURE_LOCAL_NET it must be
+  // a private address.
   "publicUrl": "https://router.example.com",
   // This router's name on the network, in its Server Cards and mDNS announcement.
   // Written from the hostname on first run, then kept.

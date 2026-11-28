@@ -24,11 +24,21 @@ services:
     environment:
       # The router's config database. Required: boot refuses to start without it.
       DATABASE_URL: postgres://mcp_router:${POSTGRES_PASSWORD:-mcp_router}@postgres:5432/mcp_router
-      # Set a bearer token, OR set SECURE_LOCAL_NET=true to disable auth on a
-      # trusted local network. If neither is set, a token is generated into the
-      # database on first run and printed to the logs.
-      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
+      # Signs UI sessions. Required: the image runs in production, where the
+      # router refuses to start without a strong one. `openssl rand -hex 32`.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET, e.g. openssl rand -hex 32}
+      # true: whoever opens the web UI is signed in as the local admin, with no
+      # OIDC provider. Only on a network you trust. MCP clients still need an API
+      # key, made in the UI's Settings.
       SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
+      # Or sign in through an OIDC provider (or paste its setup URL on the login
+      # page instead). See .env.example for the rest of the OIDC_* variables.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Optional: the old router token, imported on boot as an API key so clients
+      # configured with it keep working.
+      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
     healthcheck:
       # /healthz needs no token and answers 200 once the server is listening.
       test:

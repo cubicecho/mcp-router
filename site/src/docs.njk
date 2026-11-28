@@ -40,22 +40,21 @@ permalink: /docs/
           Migrations run on boot. Manage it from the web UI or <code>/graphql</code>; there are no config files to
           edit. The shapes below are what each row holds, written as JSON.
           If something other than the router writes the tables, have it re-read them:</p>
-        <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" -H 'Content-Type: application/json' \
+        <pre class="code"><code>curl -X POST -H "x-api-key: $MCP_ROUTER_API_KEY" -H 'Content-Type: application/json' \
   -d '{"query":"mutation { reloadConfig { reloaded serverCount } }"}' \
   http://localhost:3000/graphql</code></pre>
 
         <h3 id="settings">Settings</h3>
         <pre class="code"><code>{
   "port": 3000,                 <span class="cmt">// PORT env wins over this</span>
-  "authToken": "a-long-secret", <span class="cmt">// MCP_ROUTER_TOKEN env wins</span>
-  "authEnabled": true,          <span class="cmt">// false = unauthenticated (trusted nets only)</span>
   "allowedOrigins": [],         <span class="cmt">// extra browser Origins allowed to reach /mcp</span>
   "idleTimeoutMs": 300000,      <span class="cmt">// default stdio idle shutdown (ms)</span>
   "sessionIdleTimeoutMs": 1800000, <span class="cmt">// reclaim an idle MCP session after this (ms)</span>
   "maxSessions": 1000           <span class="cmt">// cap on live sessions; LRU-evicted past it</span>
 }</code></pre>
-        <p>One row. The Settings page edits the timeouts, <code>publicUrl</code> and network discovery; the port,
-          address, token and auth switch are set through the environment.</p>
+        <p>One row. The Settings page edits the timeouts, <code>publicUrl</code> and network discovery; the port and
+          address are set through the environment. The old <code>authToken</code> is imported as an API key on
+          boot and cleared; <code>authEnabled</code> is ignored.</p>
         <p>The optional <code>host</code> setting (or <code>HOST</code> env) picks the bind interface. Leave it
           <strong>unset to bind all interfaces</strong> — that's what Docker and LAN exposure need, so the
           published port stays reachable. Set it to <code>127.0.0.1</code> only for a bare-metal,
@@ -129,7 +128,7 @@ permalink: /docs/
           <code>pg_dump</code>, plus <code>DATA_DIR/servers</code> for the installed npm packages.</p>
 
         <h2 id="api">GraphQL API</h2>
-        <p>The router is managed through GraphQL at <code>POST /graphql</code>, with the bearer token; the same
+        <p>The router is managed through GraphQL at <code>POST /graphql</code>, with your session in the UI or an API key elsewhere; the same
           schema is offered to agents as MCP tools at <code>/admin/mcp</code>. There is no REST API. Every field
           describes itself: outside production, open <code>/graphql</code> in a browser for GraphiQL. A refused
           operation carries its reason in <code>extensions.code</code>.</p>
@@ -146,6 +145,9 @@ permalink: /docs/
               <tr><td>Try a tool, resource or prompt</td><td><code>callServerTool</code>, <code>readServerResource</code>, <code>getServerPrompt</code></td></tr>
               <tr><td>Workspaces</td><td><code>workspaces</code>, <code>saveWorkspace</code>, <code>deleteWorkspace</code>, and the <code>workspace…</code> forms of the above</td></tr>
               <tr><td>Re-read config from the database</td><td><code>reloadConfig</code></td></tr>
+              <tr><td>Sign in, and who is signed in</td><td><code>authConfig</code>, <code>signInOnTrustedNetwork</code>, <code>verifyOneTimeToken</code>, <code>me</code>, <code>signOut</code></td></tr>
+              <tr><td>Pair an OIDC provider</td><td><code>ssoSetup</code>, <code>pairSso</code>, <code>unpairSso</code></td></tr>
+              <tr><td>API keys (a person only)</td><td><code>apiKeys</code>, <code>createApiKey</code>, <code>revokeApiKey</code></td></tr>
             </tbody>
           </table>
         </div>
@@ -161,16 +163,19 @@ permalink: /docs/
             </tbody>
           </table>
         </div>
-        <p>Both speak streamable HTTP and require the bearer token (unless <code>authEnabled</code> is false).
-          Disabled servers return 404; auth failures return 401 before any MCP handling.</p>
+        <p>They speak streamable HTTP and take an API key, as <code>Authorization: Bearer</code> or
+          <code>x-api-key</code>; a UI session never opens them. Disabled servers return 404; a missing or dead key
+          returns 401 before any MCP handling.</p>
 
         <h2 id="security">Security notes</h2>
         <ul class="notes">
           <li><strong>Secrets are plaintext</strong> in the database (env values, remote headers, OAuth tokens,
-            the auth token). Anyone who can read the Postgres database, its volume or a dump of it can read them.
+            the OIDC pairing's secret); API keys are stored as hashes. Anyone who can read the Postgres database, its volume or a dump of it can read them.
             Protect it, and its backups.</li>
-          <li><strong>One bearer token guards everything.</strong> Treat it like a password. Set it via
-            <code>MCP_ROUTER_TOKEN</code>.</li>
+          <li><strong>An API key is a password.</strong> Give each client its own and revoke one that leaks. Keys
+            can't make or revoke keys, end sessions, change sign-in or edit settings: only a signed-in person can.
+            <code>SECURE_LOCAL_NET=true</code> makes the network the credential for the UI, so only on a private
+            one.</li>
           <li><strong>Don't expose the router directly to the internet</strong> — it speaks plain HTTP. Put it
             behind a TLS-terminating reverse proxy, or bind to localhost / a private network.</li>
           <li><strong>Installed servers run as child processes</strong> with the env you configure. Installing a
