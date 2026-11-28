@@ -1,19 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
-import { clearToken, setToken } from '@/lib/auth';
-import { routerStatus } from '@/storybook/fixtures';
-import { pending } from '@/storybook/mock-api';
+import { STORY_SESSION } from '@/storybook/mock-api';
 import { ConnectCard } from './connect-card.tsx';
 
-const STATUS = 'GET /api/status';
 const ENDPOINT = 'http://router.example.test/mcp/filesystem';
-const TOKEN = 'story-token-123';
-
-/** Signs the story in before it renders, as a browser that already holds the token. */
-function withStoredToken(): () => void {
-  setToken(TOKEN);
-  return clearToken;
-}
 
 const meta = {
   component: ConnectCard,
@@ -22,7 +12,6 @@ const meta = {
     label: 'filesystem',
     description: 'Point an MCP client directly at filesystem (tools keep their original names).',
   },
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: true }) } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -34,52 +23,25 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const WithAuthOffLeavesOutTheHeader: Story = {
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: false }) } },
+export const AsksForAnApiKey: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('heading', { name: 'Connect a client', level: 2 })).toBeVisible();
     await expect(canvas.getByText(/Point an MCP client directly at filesystem/)).toBeVisible();
-    await expect(await canvas.findByText(`claude mcp add --transport http filesystem ${ENDPOINT}`)).toBeVisible();
-    await expect(canvas.queryByText(/treat them as secrets/)).not.toBeInTheDocument();
-    await expect(canvas.queryByRole('button', { name: 'Reveal token' })).not.toBeInTheDocument();
-  },
-};
-
-export const WithoutAStoredTokenShowsAPlaceholder: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText(/--header "Authorization: Bearer <YOUR_TOKEN>"/)).toBeVisible();
-    await expect(canvas.getByText(/include your bearer token placeholder/)).toBeVisible();
-    await expect(canvas.queryByRole('button', { name: 'Reveal token' })).not.toBeInTheDocument();
-  },
-};
-
-export const AssumesAuthUntilTheRouterAnswers: Story = {
-  parameters: { api: { [STATUS]: pending() } },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/Authorization: Bearer <YOUR_TOKEN>/)).toBeVisible();
-  },
-};
-
-export const MasksTheTokenUntilRevealed: Story = {
-  beforeEach: withStoredToken,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Authorization: Bearer ••••••••••••/)).toBeVisible();
-    await expect(canvas.queryByText(new RegExp(TOKEN))).not.toBeInTheDocument();
-    await expect(canvas.getByText(/include your bearer token — treat them as secrets/)).toBeVisible();
-
-    await userEvent.click(canvas.getByRole('button', { name: 'Reveal token' }));
-    await expect(canvas.getByText(new RegExp(`Authorization: Bearer ${TOKEN}`))).toBeVisible();
-
-    await userEvent.click(canvas.getByRole('button', { name: 'Hide token' }));
-    await expect(canvas.queryByText(new RegExp(TOKEN))).not.toBeInTheDocument();
+    await expect(
+      canvas.getByText(
+        `claude mcp add --transport http filesystem ${ENDPOINT} --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText('Replace <YOUR_API_KEY> with a key from Settings → API keys. Every client needs one.'),
+    ).toBeVisible();
+    // The operator's own session is never handed to a client.
+    await expect(canvas.queryByText(new RegExp(STORY_SESSION))).not.toBeInTheDocument();
   },
 };
 
 export const ShowsASnippetPerClient: Story = {
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: false }) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true');

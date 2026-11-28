@@ -1,10 +1,16 @@
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm } from 'node:fs/promises';
 import { hostname, tmpdir } from 'node:os';
 import path from 'node:path';
 import { hostSlug } from '@cubicecho/mcp-discovery';
-import type { ServerConfig } from '@mcp-router/shared';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../store.ts';
+import { DEFAULT_REGISTRY, type ServerConfig } from '@mcp-router/shared';
+import { eq } from 'drizzle-orm';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
+import { servers } from '../../db/tables/servers.ts';
+import { settings } from '../../db/tables/settings.ts';
+import { workspaceMembers } from '../../db/tables/workspace-members.ts';
+import type { ConfigStore } from '../store.ts';
 
 const TEST_SERVER: ServerConfig = {
   name: 'echo',
@@ -16,171 +22,124 @@ const TEST_SERVER: ServerConfig = {
 };
 
 describe('ConfigStore', () => {
+  let database: Database;
   let dataDir: string;
   let store: ConfigStore;
   const envToken = process.env.MCP_ROUTER_TOKEN;
 
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
+
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
+    vi.spyOn(console, 'log').mockImplementation(() => {});
+    await resetTestDb(database);
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-test-'));
-    store = new ConfigStore(dataDir);
+    store = await createTestStore(database, dataDir);
   });
 
   afterEach(async () => {
     if (envToken !== undefined) {
       process.env.MCP_ROUTER_TOKEN = envToken;
     }
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
-  it('seeds settings with a generated auth token and the official registry on first run', async () => {
-    const log = vi.spyOn(console, 'log').mockImplementation(() => {});
-    await store.init();
-
-    const settings = store.getSettings();
-    expect(settings.authEnabled).toBe(true);
-    expect(settings.authToken).toMatch(/^[0-9a-f]{64}$/);
-    expect(log).toHaveBeenCalledWith(expect.stringContaining(settings.authToken as string));
-
-    const settingsFile = path.join(dataDir, 'config', 'settings.json');
-    const onDisk = JSON.parse(await readFile(settingsFile, 'utf8'));
-    expect(onDisk.authToken).toBe(settings.authToken);
-    const mode = (await stat(settingsFile)).mode & 0o777;
-    expect(mode).toBe(0o600);
-
-    expect(store.getRegistries()).toEqual([{ name: 'official', url: 'https://registry.modelcontextprotocol.io' }]);
+  it('seeds settings and the official registry on first run, with no router token: callers use API keys', async () => {
+    expect(store.getSettings().authToken).toBeNull();
+    const [row] = await database.db.select().from(settings);
+    expect(row?.authToken).toBeNull();
+    expect(store.getRegistries()).toEqual([DEFAULT_REGISTRY]);
   });
 
   it('names the router after its hostname on first run, then keeps the name', async () => {
-    await store.init();
-    const settingsFile = path.join(dataDir, 'config', 'settings.json');
-    const first = JSON.parse(await readFile(settingsFile, 'utf8'));
-    expect(first.instanceId).toBe(hostSlug(hostname(), 'router'));
-    await writeFile(settingsFile, JSON.stringify({ ...first, instanceId: 'kept' }));
+    expect(store.getSettings().instanceId).toBe(hostSlug(hostname(), 'router'));
+    await database.db.update(settings).set({ instanceId: 'kept' });
     await store.reload();
     expect(store.getSettings().instanceId).toBe('kept');
   });
 
-  it('does not generate a token when MCP_ROUTER_TOKEN is set', async () => {
-    process.env.MCP_ROUTER_TOKEN = 'env-token';
-    await store.init();
-    expect(store.getSettings().authToken).toBeNull();
-  });
-
-  it('round-trips server configs through disk and reload', async () => {
-    await store.init();
+  it('round-trips server configs through the database', async () => {
     await store.saveServer(TEST_SERVER);
     expect(store.getServer('echo')?.env.API_KEY).toBe('secret');
 
-    const fresh = new ConfigStore(dataDir);
-    await fresh.init();
+    const fresh = await createTestStore(database, dataDir);
     expect(fresh.getServer('echo')).toEqual(TEST_SERVER);
 
     await fresh.deleteServer('echo');
     const reloaded = await store.reload();
     expect(reloaded.servers).toHaveLength(0);
-    await fresh.close();
   });
 
-  it('preserves unknown keys in hand-edited server files', async () => {
-    await store.init();
-    await writeFile(
-      path.join(dataDir, 'config', 'servers', 'echo.json'),
-      JSON.stringify({ ...TEST_SERVER, myNote: 'keep me' }),
-    );
-    await store.reload();
-    const config = store.getServer('echo') as ServerConfig & { myNote?: string };
-    expect(config.myNote).toBe('keep me');
-    await store.saveServer(config);
-    const onDisk = JSON.parse(await readFile(path.join(dataDir, 'config', 'servers', 'echo.json'), 'utf8'));
-    expect(onDisk.myNote).toBe('keep me');
-  });
-
-  it('skips invalid server files with an error instead of failing the whole load', async () => {
-    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
-    await store.init();
+  it('emits change after its own writes and after a reload', async () => {
+    const changes: string[][] = [];
+    store.on('change', (state) => changes.push(state.servers.map((server) => server.name)));
     await store.saveServer(TEST_SERVER);
-    await writeFile(path.join(dataDir, 'config', 'servers', 'broken.json'), '{ "name": "NOT VALID!!" }');
-    await writeFile(path.join(dataDir, 'config', 'servers', 'not-json.json'), 'nope');
     await store.reload();
-    expect(store.getServers().map((s) => s.name)).toEqual(['echo']);
-    expect(error).toHaveBeenCalledTimes(2);
-  });
-
-  it('does not keep a server or workspace whose file could not be written', async () => {
-    await store.init();
-    // A directory where the file belongs makes the final rename fail.
-    await mkdir(path.join(dataDir, 'config', 'servers', 'echo.json'));
-    await mkdir(path.join(dataDir, 'config', 'workspaces', 'team.json'), { recursive: true });
-
-    await expect(store.saveServer(TEST_SERVER)).rejects.toThrow();
-    expect(store.getServer('echo')).toBeUndefined();
-
-    await expect(store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: {} })).rejects.toThrow();
-    expect(store.getWorkspace('team')).toBeUndefined();
-  });
-
-  it('does not keep a registry change that could not be written', async () => {
-    await store.init();
-    const registriesFile = path.join(dataDir, 'config', 'registries.json');
-    await rm(registriesFile);
-    await mkdir(registriesFile);
-
-    await expect(store.addRegistry({ name: 'mine', url: 'https://registry.example.test' })).rejects.toThrow();
-    expect(store.getRegistries().map((r) => r.name)).toEqual(['official']);
-
-    await expect(store.removeRegistry('official')).rejects.toThrow();
-    expect(store.getRegistries().map((r) => r.name)).toEqual(['official']);
-  });
-
-  it('deletes a server whose file is not named after it, so a reload does not bring it back', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await store.init();
-    await writeFile(path.join(dataDir, 'config', 'servers', 'hand-named.json'), JSON.stringify(TEST_SERVER));
-    await store.reload();
-    expect(store.getServer('echo')).toBeDefined();
-
     await store.deleteServer('echo');
+    expect(changes).toEqual([['echo'], ['echo'], []]);
+  });
+
+  it('picks up a row written straight to the table on reload', async () => {
+    await database.db.insert(servers).values({ ...TEST_SERVER, name: 'direct' });
+    expect(store.getServer('direct')).toBeUndefined();
     await store.reload();
+    expect(store.getServer('direct')?.transport).toEqual(TEST_SERVER.transport);
+  });
+
+  it('skips an invalid server row with an error instead of failing the whole load', async () => {
+    const error = vi.spyOn(console, 'error').mockImplementation(() => {});
+    await store.saveServer(TEST_SERVER);
+    await database.db.insert(servers).values({ ...TEST_SERVER, name: 'NOT VALID!!' });
+    await store.reload();
+    expect(store.getServers().map((server) => server.name)).toEqual(['echo']);
+    expect(error).toHaveBeenCalledWith(expect.stringContaining('[db] ignoring invalid server "NOT VALID!!"'));
+  });
+
+  it('keeps a server change that failed validation out of memory and the database', async () => {
+    await expect(store.saveServer({ ...TEST_SERVER, name: 'Bad Name' })).rejects.toThrow();
     expect(store.getServers()).toEqual([]);
-    expect(await readdir(path.join(dataDir, 'config', 'servers'))).toEqual([]);
+    expect(await database.db.select().from(servers)).toEqual([]);
   });
 
-  it('saves a server whose file is not named after it into its own file, leaving no second copy', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await store.init();
-    await writeFile(path.join(dataDir, 'config', 'servers', 'hand-named.json'), JSON.stringify(TEST_SERVER));
-    await store.reload();
+  it('stores workspace members by server, skipping one that names no server', async () => {
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+    await store.saveServer(TEST_SERVER);
+    const saved = await store.saveWorkspace({
+      name: 'Team',
+      slug: 'team',
+      enabled: true,
+      members: { echo: { enabled: true, env: { API_KEY: 'team' } }, ghost: { enabled: true } },
+    });
+    expect(saved.members).toEqual({ echo: { enabled: true, env: { API_KEY: 'team' } } });
+    expect(warn).toHaveBeenCalledWith(expect.stringMatching(/^\[db\] workspace "team" names server "ghost"/));
+    expect(await database.db.select().from(workspaceMembers)).toHaveLength(1);
+  });
 
+  it('keeps memberships when a server is replaced, and drops them when it is deleted', async () => {
+    await store.saveServer(TEST_SERVER);
+    await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: { echo: { enabled: true } } });
     await store.saveServer({ ...TEST_SERVER, enabled: false });
-    expect(await readdir(path.join(dataDir, 'config', 'servers'))).toEqual(['echo.json']);
-    await store.reload();
-    expect(store.getServer('echo')?.enabled).toBe(false);
+    expect(Object.keys(store.getWorkspace('team')?.members ?? {})).toEqual(['echo']);
+    await store.deleteServer('echo');
+    expect(store.getWorkspace('team')?.members).toEqual({});
   });
 
-  it('deletes a workspace whose file is not named after it', async () => {
-    vi.spyOn(console, 'warn').mockImplementation(() => {});
-    await store.init();
-    const dir = path.join(dataDir, 'config', 'workspaces');
-    await mkdir(dir, { recursive: true });
-    await writeFile(
-      path.join(dir, 'hand-named.json'),
-      JSON.stringify({ name: 'Team', slug: 'team', enabled: true, members: {} }),
-    );
-    await store.reload();
-    expect(store.getWorkspace('team')).toBeDefined();
-
+  it('replaces a workspace by slug, and deletes it with its members', async () => {
+    await store.saveServer(TEST_SERVER);
+    await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: { echo: { enabled: true } } });
+    await store.saveWorkspace({ name: 'Team two', slug: 'team', enabled: false, members: {} });
+    expect(store.getWorkspaces()).toEqual([{ name: 'Team two', slug: 'team', enabled: false, members: {} }]);
     await store.deleteWorkspace('team');
-    await store.reload();
     expect(store.getWorkspaces()).toEqual([]);
-    expect(await readdir(dir)).toEqual([]);
   });
 
-  it('throws a friendly error when settings.json is invalid', async () => {
-    await store.init();
-    await writeFile(path.join(dataDir, 'config', 'settings.json'), '{ "port": "not-a-number" }');
-    await expect(store.reload()).rejects.toThrow(/settings\.json failed validation/);
+  it('throws a friendly error when the settings row is invalid', async () => {
+    await database.db.update(settings).set({ port: -1 }).where(eq(settings.port, store.getSettings().port));
+    await expect(store.reload()).rejects.toThrow(/settings row failed validation/);
   });
 });

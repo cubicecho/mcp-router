@@ -1,16 +1,8 @@
-import {
-  type InstallRequest,
-  type OAuthClientRequest,
-  ServerRuntimeState,
-  type ServerStatus,
-  SourceType,
-  serverNameSchema,
-  TRANSPORT_STDIO,
-  TRANSPORT_STREAMABLE_HTTP,
-} from '@mcp-router/shared';
+import { SourceType, serverNameSchema, TRANSPORT_STDIO, TRANSPORT_STREAMABLE_HTTP } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { type OAuthClientInput, ServerRuntimeState } from '@/__generated__/graphql';
 import { InputField, TextareaField, useAppForm } from '@/components/app-form';
 import { Collapsible } from '@/components/collapsible';
 import { DialogLayout } from '@/components/dialog-layout';
@@ -22,6 +14,7 @@ import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Textarea } from '@/components/ui/textarea';
+import type { InstalledServer, InstallInput } from '@/lib/api';
 import { argsFromLines } from '@/lib/arg-lines';
 import { importPastedServer } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
@@ -62,8 +55,8 @@ function urlError(value: string): string | undefined {
 function oauthClientChange(
   clientId: string,
   clientSecret: string,
-  current?: string,
-): OAuthClientRequest | null | undefined {
+  current?: string | null,
+): OAuthClientInput | null | undefined {
   const id = clientId.trim();
   const secret = clientSecret.trim();
   if (!id) {
@@ -124,7 +117,7 @@ export function AddServerDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** When provided, the dialog edits this server (prefilled) instead of creating one. */
-  server?: ServerStatus;
+  server?: InstalledServer;
 }) {
   const install = useInstallServer();
   const update = useUpdateServer();
@@ -179,7 +172,7 @@ export function AddServerDialog({
           onOpenChange(false);
           return;
         }
-        const body: InstallRequest = {
+        const body: InstallInput = {
           name: serverNameSchema.parse(value.name),
           source: { type: SourceType.Remote },
           transport: built,

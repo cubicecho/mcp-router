@@ -1,11 +1,11 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, discoveredServer, remoteServer } from '@/storybook/fixtures';
+import { appRoutes, discoveredServer, remoteServer, serverRow } from '@/storybook/fixtures';
 import { apiError, apiRequest } from '@/storybook/mock-api';
 import { AddFoundServerDialog } from './add-found-server-dialog.tsx';
 
-const INSTALL_ROUTE = 'POST /api/servers';
+const INSTALL_ROUTE = 'InstallServer';
 const found = discoveredServer();
 
 const meta = {
@@ -13,7 +13,7 @@ const meta = {
   args: { server: found, open: true, onOpenChange: fn() },
   parameters: {
     a11y: { test: 'error' },
-    api: { ...appRoutes(), [INSTALL_ROUTE]: remoteServer({ name: 'skills' }) },
+    api: { ...appRoutes(), [INSTALL_ROUTE]: { installServer: serverRow(remoteServer({ name: 'skills' })) } },
   },
 } satisfies Meta<typeof AddFoundServerDialog>;
 export default meta;
@@ -38,12 +38,14 @@ export const AddsItWithTheTokenAsABearerHeader: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
-        name: 'skills',
-        source: { type: 'remote' },
-        transport: { type: 'streamable-http', url: found.url, headers: { Authorization: 'Bearer secret-token' } },
-        env: {},
-        enabled: true,
-        discovered: { key: found.key, cardName: found.cardName },
+        input: {
+          name: 'skills',
+          source: { type: 'remote' },
+          transport: { type: 'streamable-http', url: found.url, headers: { Authorization: 'Bearer secret-token' } },
+          env: {},
+          enabled: true,
+          discovered: { key: found.key, cardName: found.cardName },
+        },
       }),
     );
     await waitFor(() => expect(body.getByText('Added skills')).toBeVisible());
@@ -71,7 +73,9 @@ export const AddsOneThatNeedsNoToken: Story = {
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(
         INSTALL_ROUTE,
-        expect.objectContaining({ transport: { type: 'streamable-http', url: found.url, headers: {} } }),
+        expect.objectContaining({
+          input: expect.objectContaining({ transport: { type: 'streamable-http', url: found.url, headers: {} } }),
+        }),
       ),
     );
   },

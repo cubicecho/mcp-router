@@ -1,16 +1,16 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { stdioServer } from '@/storybook/fixtures';
+import { serverRow, stdioServer } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { PackageInstallCard } from './package-install-card.tsx';
 
-const INSTALL_ROUTE = 'POST /api/servers';
+const INSTALL_ROUTE = 'InstallServer';
 
 const meta = {
   component: PackageInstallCard,
   args: { ecosystem: 'npm', onInstalled: fn() },
-  parameters: { api: { [INSTALL_ROUTE]: stdioServer({ name: 'weather-mcp' }) } },
+  parameters: { api: { [INSTALL_ROUTE]: { installServer: serverRow(stdioServer({ name: 'weather-mcp' })) } } },
   decorators: [
     (Story) => (
       <div className="p-6">
@@ -47,10 +47,12 @@ export const InstallsTheNamedPackage: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
-        name: 'weather-mcp',
-        source: { type: 'npm', package: '@example/weather-mcp', version: '1.2.0' },
-        env: { WEATHER_API_KEY: 'abc123' },
-        enabled: true,
+        input: {
+          name: 'weather-mcp',
+          source: { type: 'npm', package: '@example/weather-mcp', version: '1.2.0' },
+          env: { WEATHER_API_KEY: 'abc123' },
+          enabled: true,
+        },
       }),
     );
     await waitFor(() => expect(body.getByText('Installed weather-mcp')).toBeVisible());
@@ -62,7 +64,7 @@ export const InstallsTheNamedPackage: Story = {
 
 export const InstallsFromPyPiUnderATypedName: Story = {
   args: { ecosystem: 'pypi' },
-  parameters: { api: { [INSTALL_ROUTE]: stdioServer({ name: 'fetch' }) } },
+  parameters: { api: { [INSTALL_ROUTE]: { installServer: serverRow(stdioServer({ name: 'fetch' })) } } },
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('heading', { name: 'Install from PyPI' })).toBeVisible();
@@ -72,10 +74,12 @@ export const InstallsFromPyPiUnderATypedName: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
-        name: 'fetch',
-        source: { type: 'pypi', package: 'mcp-server-fetch' },
-        env: {},
-        enabled: true,
+        input: {
+          name: 'fetch',
+          source: { type: 'pypi', package: 'mcp-server-fetch' },
+          env: {},
+          enabled: true,
+        },
       }),
     );
     await waitFor(() => expect(args.onInstalled).toHaveBeenCalledWith('fetch'));

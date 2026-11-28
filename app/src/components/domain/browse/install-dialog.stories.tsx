@@ -1,11 +1,11 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { registryServer, stdioServer } from '@/storybook/fixtures';
+import { registryServer, serverRow, stdioServer } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { InstallDialog } from './install-dialog.tsx';
 
-const INSTALL_ROUTE = 'POST /api/servers';
+const INSTALL_ROUTE = 'InstallServer';
 const REMOTE_URL = 'https://weather.example.test/mcp';
 
 const meta = {
@@ -17,7 +17,7 @@ const meta = {
     onOpenChange: fn(),
     onInstalled: fn(),
   },
-  parameters: { api: { [INSTALL_ROUTE]: stdioServer({ name: 'weather' }) } },
+  parameters: { api: { [INSTALL_ROUTE]: { installServer: serverRow(stdioServer({ name: 'weather' })) } } },
 } satisfies Meta<typeof InstallDialog>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -46,11 +46,13 @@ export const InstallsWithTheFilledInVariables: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
-        name: 'weather',
-        source: { type: 'registry', registry: 'official', serverName: 'io.github.example/weather', version: '1.2.0' },
-        packageSelector: '0',
-        env: { WEATHER_API_KEY: 'abc123', UNITS: 'metric' },
-        enabled: true,
+        input: {
+          name: 'weather',
+          source: { type: 'registry', registry: 'official', serverName: 'io.github.example/weather', version: '1.2.0' },
+          packageSelector: '0',
+          env: { WEATHER_API_KEY: 'abc123', UNITS: 'metric' },
+          enabled: true,
+        },
       }),
     );
     await waitFor(() => expect(body.getByText('Installed weather')).toBeVisible());
@@ -90,10 +92,9 @@ export const ChoosingARemoteDropsThePackageVariables: Story = {
 
     await userEvent.click(dialog.getByRole('button', { name: 'Install' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(
-        INSTALL_ROUTE,
-        expect.objectContaining({ packageSelector: 'remote:0', env: {} }),
-      ),
+      expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
+        input: expect.objectContaining({ packageSelector: 'remote:0', env: {} }),
+      }),
     );
   },
 };

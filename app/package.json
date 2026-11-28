@@ -5,6 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite --port 3000",
+    "codegen": "graphql-codegen-esm --config codegen.ts",
     "build": "tsc --noEmit -p tsconfig.json && vite build",
     "test": "vitest run -c vitest.config.ts",
     "test:watch": "vitest -c vitest.config.ts",
@@ -13,6 +14,7 @@
   },
   "dependencies": {
     "@cubicecho/agent-mcp-pool": "^3.16.2",
+    "@graphql-typed-document-node/core": "^3.2.0",
     "@mcp-router/shared": "*",
     "@radix-ui/react-slot": "^1.5.0",
     "@tanstack/react-form": "^1.33.5",
@@ -21,6 +23,7 @@
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "cmdk": "^1.1.1",
+    "graphql": "16.13.2",
     "lucide-react": "^1.70.0",
     "radix-ui": "^1.8.1",
     "react": "^19.2.7",
@@ -30,6 +33,9 @@
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@graphql-codegen/cli": "^8.0.0",
+    "@graphql-codegen/client-preset": "^7.0.1",
+    "@graphql-codegen/schema-ast": "^7.0.0",
     "@storybook/addon-a11y": "^10.6.1",
     "@storybook/addon-vitest": "^10.6.1",
     "@storybook/react-vite": "^10.6.1",

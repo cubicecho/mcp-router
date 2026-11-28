@@ -1,7 +1,7 @@
-import { type ActivityEntry, CallVia } from '@mcp-router/shared';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { CallVia } from '@/__generated__/graphql';
 import { CardLayout } from '@/components/card-layout';
 import { CollapsibleRow } from '@/components/collapsible-row';
 import { Combobox } from '@/components/combobox';
@@ -13,12 +13,19 @@ import { Alert } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Trash2 } from '@/components/ui/icons';
-import { type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
+import { type ActivityEntry, type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
 import { endpointPath } from '@/lib/endpoint';
 import { formatAbsoluteTime, formatRelativeTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { DataBlock } from './json-view.tsx';
+
+/** What each door a call came in by reads as. */
+const VIA_LABELS = {
+  [CallVia.Direct]: 'direct',
+  [CallVia.Aggregate]: 'aggregate',
+  [CallVia.Ui]: 'ui',
+} as const satisfies Record<CallVia, string>;
 
 /**
  * Collapsible row for one recorded MCP call.
@@ -28,7 +35,7 @@ import { DataBlock } from './json-view.tsx';
  */
 function ActivityRow({ entry }: { entry: ActivityEntry }) {
   const [open, setOpen] = useState(false);
-  const hasDetail = entry.params !== undefined || entry.result !== undefined || entry.error !== undefined;
+  const hasDetail = entry.params !== null || entry.result !== null || entry.error !== null;
 
   return (
     <CollapsibleRow
@@ -39,7 +46,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
       actionSlot={
         <>
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
-          {entry.via !== CallVia.Direct && <Badge variant="outline">{entry.via}</Badge>}
+          {entry.via !== CallVia.Direct && <Badge variant="outline">{VIA_LABELS[entry.via]}</Badge>}
           <span className="text-foreground/60 text-xs tabular-nums">{entry.durationMs}ms</span>
           <span className="text-foreground/60 text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
             {formatRelativeTime(entry.at)}
@@ -50,8 +57,8 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
         hasDetail ? (
           <>
             {entry.error && <Alert variant="destructive" title="Error" description={entry.error} />}
-            {entry.params !== undefined && <DataBlock value={entry.params} label="Request" />}
-            {entry.result !== undefined && <DataBlock value={entry.result} label="Response" />}
+            {entry.params !== null && <DataBlock value={entry.params} label="Request" />}
+            {entry.result !== null && <DataBlock value={entry.result} label="Response" />}
           </>
         ) : undefined
       }

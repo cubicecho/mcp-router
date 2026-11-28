@@ -1,5 +1,5 @@
 // Every fixed value someone might tune, as plain data. Nothing here computes, reads the environment or imports.
-// What an operator can change at run time lives in settings.json (`SETTINGS_DEFAULTS` in the shared package).
+// What an operator can change at run time lives in the settings row (`SETTINGS_DEFAULTS` in the shared package).
 
 /** Settings for the HTTP doors. */
 export interface HttpSettings {
@@ -13,7 +13,7 @@ export interface HttpSettings {
    * allow. `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` overrides it.
    */
   outboundKeepAliveTimeoutMs: number;
-  /** Largest JSON body /api and /mcp accept, as `express.json` reads it. */
+  /** Largest JSON body /graphql, /admin/mcp and /mcp accept, as `express.json` reads it. */
   bodyLimit: string;
   /** How long in-flight requests get to finish after a stop signal, in seconds. Open streams are cut after it. */
   drainSeconds: number;
@@ -33,18 +33,85 @@ export const HTTP_DEFAULTS: Readonly<HttpSettings> = Object.freeze({
   shutdownDeadlineSeconds: 8,
 });
 
-/** Settings for the config files under DATA_DIR/config. */
-export interface ConfigSettings {
-  /** How long config-file changes are gathered before one reload, in ms. */
-  watchDebounceMs: number;
-  /** Random bytes in a generated auth token. It is stored as twice as many hex characters. */
-  authTokenBytes: number;
+/** Settings for the sign-in throttle. */
+export interface RateLimitSettings {
+  /** Failed attempts allowed per key inside one window. One that succeeds is given back. */
+  maxAttempts: number;
+  /** How long a failed attempt counts against its key. */
+  windowMinutes: number;
+  /** Past this many keys, a hit sweeps out the ones whose window has passed. */
+  sweepAtKeys: number;
 }
 
-/** The fixed config-file settings this build ships with. */
-export const CONFIG_DEFAULTS: Readonly<ConfigSettings> = Object.freeze({
-  watchDebounceMs: 300,
-  authTokenBytes: 32,
+/** The fixed sign-in throttle this build ships with. */
+export const RATE_LIMIT_DEFAULTS: Readonly<RateLimitSettings> = Object.freeze({
+  maxAttempts: 5,
+  windowMinutes: 15,
+  sweepAtKeys: 10_000,
+});
+
+/** Sign-in and credential settings. */
+export interface AuthSettings {
+  /** How long a session lasts after it was last used. Long: there is no password to fall back on. */
+  sessionTtlDays: number;
+  /** Shortest signing secret production accepts, in characters. `openssl rand -hex 32` gives twice this. */
+  minSecretLength: number;
+  /** Whether opening the UI signs in as the local admin. `SECURE_LOCAL_NET` overrides it. */
+  secureLocalNet: boolean;
+  /** How long the token an OIDC callback hands the UI works: the hop from the callback to `/auth/sso`. */
+  oneTimeTokenTtlMinutes: number;
+  /** What the login page's OIDC button calls the provider. `OIDC_NAME` overrides it. */
+  oidcName: string;
+  /** How a confidential OIDC client sends its secret. `OIDC_CLIENT_AUTH` overrides it. */
+  oidcClientAuth: 'client_secret_basic' | 'client_secret_post';
+  /** How long pairing waits on the provider before calling it unreachable, in ms. */
+  oidcPairingTimeoutMs: number;
+}
+
+/** The fixed sign-in settings this build ships with. */
+export const AUTH_DEFAULTS: Readonly<AuthSettings> = Object.freeze({
+  sessionTtlDays: 30,
+  minSecretLength: 32,
+  secureLocalNet: false,
+  oneTimeTokenTtlMinutes: 3,
+  oidcName: 'SSO',
+  // The default the OIDC spec names.
+  oidcClientAuth: 'client_secret_basic',
+  oidcPairingTimeoutMs: 10_000,
+});
+
+/**
+ * API keys for machine callers. The longest name and lifetime are the shared package's, since the UI's form is held to
+ * them too.
+ */
+export interface KeySettings {
+  /** Random characters in a new key, after its prefix. */
+  length: number;
+}
+
+/** The fixed API key settings this build ships with. */
+export const KEY_DEFAULTS: Readonly<KeySettings> = Object.freeze({
+  length: 48,
+});
+
+/** Settings for reaching Postgres at boot. */
+export interface DatabaseSettings {
+  /** How long boot waits for Postgres before giving up, in ms. `DB_CONNECT_TIMEOUT_MS` overrides it. */
+  connectTimeoutMs: number;
+  /** The wait before the first retry, in ms. */
+  firstRetryDelayMs: number;
+  /** The longest wait between two retries, in ms. */
+  maxRetryDelayMs: number;
+  /** How much the wait grows after each failed attempt. */
+  retryBackoffFactor: number;
+}
+
+/** The fixed database settings this build ships with. */
+export const DATABASE_DEFAULTS: Readonly<DatabaseSettings> = Object.freeze({
+  connectTimeoutMs: 60_000,
+  firstRetryDelayMs: 500,
+  maxRetryDelayMs: 5_000,
+  retryBackoffFactor: 2,
 });
 
 /** Settings for the downstream connections and the MCP sessions in front of them. */
@@ -130,4 +197,47 @@ export const OAUTH_DEFAULTS: Readonly<OAuthSettings> = Object.freeze({
   clientName: 'MCP Router',
   callbackPath: '/oauth/callback',
   clientMetadataPath: '/oauth/client-metadata.json',
+});
+
+/** Bounds on one GraphQL operation. */
+export interface OperationLimitSettings {
+  /** Rows a list returns when the request names no `limit`. */
+  defaultPageSize: number;
+  /** The largest `limit` a request may ask for. */
+  maxPageSize: number;
+  /** Deepest selection accepted. */
+  maxDepth: number;
+  /** Aliases per operation. */
+  maxAliases: number;
+  /** Cost per operation. One full page of rows with about 10 fields fits. A page of full pages doesn't. */
+  maxCost: number;
+  /** What a field costs when nothing prices it. */
+  defaultFieldCost: number;
+}
+
+/** The fixed GraphQL operation limits this build ships with. */
+export const OPERATION_LIMIT_DEFAULTS: Readonly<OperationLimitSettings> = Object.freeze({
+  defaultPageSize: 50,
+  maxPageSize: 500,
+  maxDepth: 8,
+  maxAliases: 15,
+  maxCost: 10_000,
+  defaultFieldCost: 1,
+});
+
+/** Bounds on the router's own MCP door, /admin/mcp. */
+export interface McpSettings {
+  /** Levels of relations a tool's selection includes. Deeper pulls whole relations into the agent's context. */
+  selectionDepth: number;
+  /** Largest schema one tool may have, in bytes of JSON. */
+  maxToolSchemaBytes: number;
+  /** Largest `tools/list` response, in bytes of JSON. */
+  maxToolListBytes: number;
+}
+
+/** The fixed /admin/mcp bounds this build ships with. */
+export const MCP_DEFAULTS: Readonly<McpSettings> = Object.freeze({
+  selectionDepth: 1,
+  maxToolSchemaBytes: 40_000,
+  maxToolListBytes: 250_000,
 });

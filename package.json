@@ -5,7 +5,7 @@
   "description": "MCP Router - install MCP servers from registries/npm and re-expose them over streamable HTTP",
   "type": "module",
   "engines": {
-    "node": ">=22.18"
+    "node": ">=26"
   },
   "workspaces": [
     "shared",
@@ -16,30 +16,41 @@
     "dev": "concurrently \"npm run dev:server\" \"npm run dev:app\"",
     "dev:app": "npm run dev -w app",
     "dev:server": "npm run dev -w server",
-    "build": "npm run build -w shared && npm run build -w server && npm run build -w app",
+    "build": "npm run codegen && npm run build -w app",
     "build:app": "npm run build -w app",
-    "build:server": "npm run build -w server",
     "build:docker": "docker build -t mcp-router .",
-    "start": "NODE_ENV=production node --env-file-if-exists=.env server/dist/index.js",
+    "start": "NODE_ENV=production node --env-file-if-exists=.env server/src/index.ts",
     "lint": "biome lint .",
     "lint:fix": "biome lint --write .",
     "format": "biome format --write .",
     "format:check": "biome format .",
-    "check": "npm run check:biome && npm run check:types",
+    "codegen": "npm run codegen -w server && npm run codegen -w app",
+    "check": "npm run codegen && npm run check:biome && npm run check:types",
     "check:biome": "biome check --write .",
     "check:fix": "biome check --write .",
     "check:types": "tsc --noEmit -p shared/tsconfig.json && tsc --noEmit -p server/tsconfig.json && tsc --noEmit -p app/tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "db:generate": "npm run db:generate -w server",
+    "db:migrate": "npm run db:migrate -w server",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d --wait",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
     "storybook": "npm run storybook -w app",
     "build-storybook": "npm run build-storybook -w app",
-    "clean": "rm -rf node_modules shared/dist server/dist app/dist"
+    "clean": "rm -rf node_modules app/dist"
   },
   "devDependencies": {
     "@biomejs/biome": "2.5.11",
-    "@types/node": "^22.13.0",
+    "@types/node": "^26.6.11",
     "concurrently": "^9.1.2",
     "typescript": "^7.0.2",
     "vitest": "^4.1.11"
+  },
+  "overrides": {
+    "drizzle-orm": "1.0.0-rc.5",
+    "graphql": "16.13.2"
+  },
+  "dependencies": {
+    "drizzle-orm": "1.0.0-rc.5"
   }
 }

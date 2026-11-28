@@ -1,9 +1,10 @@
-import { type InstallRequest, serverNameSchema, suggestServerName } from '@mcp-router/shared';
+import { serverNameSchema, suggestServerName } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { KeyValueRows } from '@/components/domain/key-value/rows';
+import type { InstallInput } from '@/lib/api';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
@@ -52,7 +53,7 @@ export function PackageInstallCard({
   const form = useAppForm({
     defaultValues: { pkg: '', version: '', name: '', envRows: [] as KeyValueRow[] },
     onSubmit: async ({ value, formApi }) => {
-      const body: InstallRequest = {
+      const body: InstallInput = {
         name: serverNameSchema.parse(effectiveName(value.name, value.pkg)),
         source: { type: ecosystem, package: value.pkg.trim(), version: value.version.trim() || undefined },
         env: rowsToRecord(value.envRows, { skipEmptyValues: true }),

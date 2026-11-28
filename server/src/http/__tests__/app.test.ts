@@ -1,4 +1,4 @@
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
@@ -13,51 +13,88 @@ import {
   LoggingMessageNotificationSchema,
 } from '@modelcontextprotocol/sdk/types.js';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost, mintTestKey } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
+import type { ConfigStore } from '../../config/store.ts';
 import { upstreamFailed } from '../../core/errors.ts';
 import { SERVER_VERSION } from '../../core/version.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { ECHO_INSTRUCTIONS } from '../../gateway/__tests__/fixtures/echo-instructions.ts';
 import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { createApp } from '../app.ts';
 
-/** Stand a stub in for a server's downstream client, at the one door a route sends a request through. */
+/** Stand a stub in for a server's downstream client, at the one door a resolver sends a request through. */
 function stubDownstream(manager: GatewayManager, stub: Partial<Record<keyof Client, unknown>>) {
   vi.spyOn(manager, 'withClient').mockImplementation(async (_name, run) => run(stub as unknown as Client));
 }
 
-describe('REST API', () => {
+/** A remote server that is never reached: every test that calls it stubs its downstream client. */
+const HOSTED = serverConfigSchema.parse({
+  name: 'hosted',
+  source: { type: 'remote' },
+  transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+});
+
+describe('the management API over /graphql', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
-    dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-api-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
-    token = store.getSettings().authToken as string;
+    dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-app-'));
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
 
   const authed = (req: request.Test) => req.set('Authorization', `Bearer ${token}`);
 
-  it('requires auth on /api and /mcp', async () => {
-    expect((await request(app).get('/api/status')).status).toBe(401);
+  /**
+   * Posts one operation to /graphql with the token.
+   *
+   * @param query - The operation.
+   * @param [variables] - Its variables.
+   * @returns The answer's body: `data`, and `errors` when it was refused.
+   */
+  const gql = async (query: string, variables?: Record<string, unknown>) =>
+    (await authed(request(app).post('/graphql')).send({ query, variables })).body;
+
+  /** Saves `HOSTED` and has the gateway take it in. */
+  const addHosted = async () => {
+    await store.saveServer(HOSTED);
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
+  };
+
+  it('requires a credential on /graphql and /mcp, and serves no /api', async () => {
+    const anonymous = await request(app).post('/graphql').send({ query: '{ routerStatus { version } }' });
+    expect(anonymous.body.errors[0].extensions.code).toBe(ErrorCode.Unauthenticated);
     expect((await request(app).post('/mcp').send({})).status).toBe(401);
+    expect((await authed(request(app).get('/api/servers'))).status).toBe(404);
   });
 
   it('answers /healthz without a token', async () => {
@@ -67,130 +104,20 @@ describe('REST API', () => {
   });
 
   it('reports router status', async () => {
-    const res = await authed(request(app).get('/api/status'));
-    expect(res.status).toBe(200);
-    expect(res.body).toMatchObject({ version: SERVER_VERSION, serverCount: 0, runningCount: 0, authEnabled: true });
+    const { data } = await gql('{ routerStatus { version serverCount runningCount } }');
+    expect(data.routerStatus).toEqual({ version: SERVER_VERSION, serverCount: 0, runningCount: 0 });
   });
 
-  it('manages registries with validation and conflict handling', async () => {
-    const list = await authed(request(app).get('/api/registries'));
-    expect(list.body).toEqual([{ name: 'official', url: 'https://registry.modelcontextprotocol.io' }]);
-
-    const bad = await authed(request(app).post('/api/registries')).send({ name: 'x', url: 'not-a-url' });
-    expect(bad.status).toBe(400);
-    expect(bad.body.error).toBe('Validation failed');
-
-    const created = await authed(request(app).post('/api/registries')).send({ name: 'mine', url: 'https://r.example' });
-    expect(created.status).toBe(201);
-
-    const dup = await authed(request(app).post('/api/registries')).send({ name: 'mine', url: 'https://r.example' });
-    expect(dup.status).toBe(409);
-    expect(dup.body.code).toBe(ErrorCode.Conflict);
-
-    const removed = await authed(request(app).delete('/api/registries/mine'));
-    expect(removed.status).toBe(204);
-    expect((await authed(request(app).delete('/api/registries/mine'))).status).toBe(404);
+  it('stops serving a server on /mcp once it is disabled', async () => {
+    await addHosted();
+    const { errors } = await gql('mutation { updateServer(name: "hosted", input: { enabled: false }) { enabled } }');
+    expect(errors).toBeUndefined();
+    expect((await authed(request(app).post('/mcp/hosted')).send({})).status).toBe(404);
+    expect((await authed(request(app).post('/mcp/nope')).send({})).status).toBe(404);
   });
 
-  it('installs a remote server, updates it and deletes it', async () => {
-    const install = await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-      env: { KEY: 'v1' },
-    });
-    expect(install.status).toBe(201);
-    expect(install.body.state).toBe('stopped');
-    expect(install.body.config.name).toBe('hosted');
-
-    const conflict = await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-    expect(conflict.status).toBe(409);
-
-    const patched = await authed(request(app).patch('/api/servers/hosted')).send({
-      env: { KEY: 'v2' },
-      enabled: false,
-    });
-    expect(patched.status).toBe(200);
-    expect(patched.body.config.env.KEY).toBe('v2');
-    expect(patched.body.config.enabled).toBe(false);
-    expect(store.getServer('hosted')?.env.KEY).toBe('v2');
-
-    // Disabled servers 404 on their MCP route.
-    const mcp = await authed(request(app).post('/mcp/hosted')).send({});
-    expect(mcp.status).toBe(404);
-
-    const deleted = await authed(request(app).delete('/api/servers/hosted'));
-    expect(deleted.status).toBe(204);
-    expect((await authed(request(app).get('/api/servers/hosted'))).status).toBe(404);
-  });
-
-  it('derives a name for a pypi install that gives none', async () => {
-    const created = await authed(request(app).post('/api/servers')).send({
-      source: { type: 'pypi', package: 'mcp-server-fetch' },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.config).toMatchObject({
-      name: 'mcp-server-fetch',
-      transport: { type: 'stdio', command: 'uvx', args: ['mcp-server-fetch'] },
-    });
-  });
-
-  it('serves and clears in-memory activity for a known server', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
-    const empty = await authed(request(app).get('/api/servers/hosted/activity'));
-    expect(empty.status).toBe(200);
-    expect(empty.body).toEqual({ entries: [] });
-
-    // Records surface newest-first via the manager (the proxy path is covered elsewhere).
-    manager.recordActivity('hosted', {
-      at: new Date().toISOString(),
-      via: 'direct',
-      method: 'tools/call',
-      target: 'echo',
-      ok: true,
-      durationMs: 3,
-      params: { name: 'echo' },
-      result: { ok: true },
-    });
-
-    const listed = await authed(request(app).get('/api/servers/hosted/activity'));
-    expect(listed.body.entries).toHaveLength(1);
-    expect(listed.body.entries[0]).toMatchObject({ method: 'tools/call', target: 'echo', ok: true });
-    expect(typeof listed.body.entries[0].id).toBe('number');
-
-    const cleared = await authed(request(app).delete('/api/servers/hosted/activity'));
-    expect(cleared.status).toBe(204);
-    expect((await authed(request(app).get('/api/servers/hosted/activity'))).body.entries).toEqual([]);
-
-    expect((await authed(request(app).get('/api/servers/nope/activity'))).status).toBe(404);
-  });
-
-  it('validates tool-call requests before connecting', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
-    expect((await authed(request(app).post('/api/servers/nope/tools/call')).send({ name: 't' })).status).toBe(404);
-
-    const bad = await authed(request(app).post('/api/servers/hosted/tools/call')).send({});
-    expect(bad.status).toBe(400);
-    expect(bad.body.error).toBe('Validation failed');
-  });
-
-  it('passes a connect failure and its backoff through with distinct statuses', async () => {
-    // Written straight to the store: POST /api/servers installs, and this one
-    // is a hand-written child that only has to fail.
+  it('passes a connect failure and its backoff through with distinct codes', async () => {
+    // Written straight to the store: installServer installs, and this one is a hand-written child that only has to fail.
     await store.saveServer(
       serverConfigSchema.parse({
         name: 'boom',
@@ -204,49 +131,34 @@ describe('REST API', () => {
     );
     await manager.reconcile(store.getServers());
 
-    // A tried-and-failed connect is a 502 carrying the child's own stderr; the
-    // next one, still inside the crash backoff, is a 503 — the route must not
-    // collapse the two, because "try again later" and "it is broken" are
-    // different answers.
-    const failed = await authed(request(app).get('/api/servers/boom/tools'));
-    expect(failed.status).toBe(502);
-    expect(failed.body.detail).toContain('ModuleNotFoundError: no module named x');
+    // A tried-and-failed connect carries the child's own stderr; the next one, still inside the crash backoff, is
+    // UNAVAILABLE. They must not collapse: "try again later" and "it is broken" are different answers.
+    const failed = await gql('{ serverTools(name: "boom") { name } }');
+    expect(failed.errors[0].extensions.code).toBe(ErrorCode.UpstreamFailed);
+    expect(failed.errors[0].extensions.detail).toContain('ModuleNotFoundError: no module named x');
 
-    const backedOff = await authed(request(app).get('/api/servers/boom/tools'));
-    expect(backedOff.status).toBe(503);
-    expect(backedOff.body.error).toMatch(/backed off/);
+    const backedOff = await gql('{ serverTools(name: "boom") { name } }');
+    expect(backedOff.errors[0].extensions.code).toBe(ErrorCode.Unavailable);
+    expect(backedOff.errors[0].message).toMatch(/backed off/);
   });
 
-  it('lists resources and prompts from a connected server', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
+  it('lists resources and prompts from a connected server, and none when it lacks them', async () => {
+    await addHosted();
     stubDownstream(manager, {
       listResources: async () => ({ resources: [{ uri: 'file:///a.txt', name: 'A' }] }),
-      listResourceTemplates: async () => ({
-        resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }],
-      }),
+      listResourceTemplates: async () => ({ resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }] }),
       listPrompts: async () => ({ prompts: [{ name: 'greet', description: 'Say hi' }] }),
     });
-
-    const resources = await authed(request(app).get('/api/servers/hosted/resources'));
-    expect(resources.status).toBe(200);
-    expect(resources.body.resources).toEqual([{ uri: 'file:///a.txt', name: 'A' }]);
-    expect(resources.body.resourceTemplates).toEqual([{ uriTemplate: 'file:///{path}', name: 'Files' }]);
-
-    const prompts = await authed(request(app).get('/api/servers/hosted/prompts'));
-    expect(prompts.status).toBe(200);
-    expect(prompts.body.prompts).toEqual([{ name: 'greet', description: 'Say hi' }]);
-  });
-
-  it('returns empty lists when the downstream lacks resources/prompts', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
+    const listed = await gql(`{
+      serverResources(name: "hosted") { resources { uri name } resourceTemplates { uriTemplate name } }
+      serverPrompts(name: "hosted") { name description }
+    }`);
+    expect(listed.data).toEqual({
+      serverResources: {
+        resources: [{ uri: 'file:///a.txt', name: 'A' }],
+        resourceTemplates: [{ uriTemplate: 'file:///{path}', name: 'Files' }],
+      },
+      serverPrompts: [{ name: 'greet', description: 'Say hi' }],
     });
 
     const unsupported = () =>
@@ -256,26 +168,15 @@ describe('REST API', () => {
       listResourceTemplates: unsupported,
       listPrompts: unsupported,
     });
-
-    const resources = await authed(request(app).get('/api/servers/hosted/resources'));
-    expect(resources.status).toBe(200);
-    expect(resources.body).toEqual({ resources: [], resourceTemplates: [] });
-
-    const prompts = await authed(request(app).get('/api/servers/hosted/prompts'));
-    expect(prompts.status).toBe(200);
-    expect(prompts.body).toEqual({ prompts: [] });
-
-    expect((await authed(request(app).get('/api/servers/nope/resources'))).status).toBe(404);
-    expect((await authed(request(app).get('/api/servers/nope/prompts'))).status).toBe(404);
+    const empty = await gql(`{
+      serverResources(name: "hosted") { resources { uri } resourceTemplates { uriTemplate } }
+      serverPrompts(name: "hosted") { name }
+    }`);
+    expect(empty.data).toEqual({ serverResources: { resources: [], resourceTemplates: [] }, serverPrompts: [] });
   });
 
-  it('reads a resource and gets a prompt from the UI, recording both to activity', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
+  it('reads a resource and gets a prompt for the UI, recording both to activity', async () => {
+    await addHosted();
     const readResource = vi.fn(async ({ uri }: { uri: string }) => ({ contents: [{ uri, text: 'hello' }] }));
     const getPrompt = vi.fn(
       async ({ name, arguments: args }: { name: string; arguments?: Record<string, string> }) => ({
@@ -283,139 +184,34 @@ describe('REST API', () => {
         messages: [{ role: 'user', content: { type: 'text', text: args?.topic ?? '' } }],
       }),
     );
-    stubDownstream(manager, {
-      readResource,
-      getPrompt,
-    });
+    stubDownstream(manager, { readResource, getPrompt });
 
-    const read = await authed(request(app).post('/api/servers/hosted/resources/read')).send({ uri: 'file:///a.txt' });
-    expect(read.status).toBe(200);
-    expect(read.body.contents[0]).toMatchObject({ uri: 'file:///a.txt', text: 'hello' });
+    const read = await gql('mutation { readServerResource(name: "hosted", uri: "file:///a.txt") { contents } }');
+    expect(read.data.readServerResource.contents[0]).toMatchObject({ uri: 'file:///a.txt', text: 'hello' });
     expect(readResource).toHaveBeenCalledWith({ uri: 'file:///a.txt' });
 
-    const got = await authed(request(app).post('/api/servers/hosted/prompts/get')).send({
-      name: 'greet',
-      arguments: { topic: 'weather' },
-    });
-    expect(got.status).toBe(200);
-    expect(got.body.description).toBe('prompt greet');
+    const got = await gql(
+      'mutation($args: JSON) { getServerPrompt(name: "hosted", prompt: "greet", arguments: $args) { description messages } }',
+      { args: { topic: 'weather' } },
+    );
+    expect(got.data.getServerPrompt.description).toBe('prompt greet');
     expect(getPrompt).toHaveBeenCalledWith({ name: 'greet', arguments: { topic: 'weather' } });
 
     // Both UI invocations land in the activity log, newest first.
-    const activity = await authed(request(app).get('/api/servers/hosted/activity'));
-    expect(activity.body.entries.map((e: { method: string }) => e.method)).toEqual(['prompts/get', 'resources/read']);
-    expect(activity.body.entries.every((e: { via: string; ok: boolean }) => e.via === 'ui' && e.ok)).toBe(true);
-  });
-
-  it('validates resource-read and prompt-get requests, and 404s unknown servers', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
-    expect((await authed(request(app).post('/api/servers/hosted/resources/read')).send({})).status).toBe(400);
-    expect((await authed(request(app).post('/api/servers/hosted/prompts/get')).send({})).status).toBe(400);
-    expect((await authed(request(app).post('/api/servers/nope/resources/read')).send({ uri: 'x' })).status).toBe(404);
-    expect((await authed(request(app).post('/api/servers/nope/prompts/get')).send({ name: 'x' })).status).toBe(404);
-  });
-
-  it('updates the idle timeout via PATCH /api/settings and persists it', async () => {
-    const before = await authed(request(app).get('/api/status'));
-    expect(before.body.idleTimeoutMs).toBe(5 * 60 * 1000);
-
-    const bad = await authed(request(app).patch('/api/settings')).send({ idleTimeoutMs: -1 });
-    expect(bad.status).toBe(400);
-
-    const patched = await authed(request(app).patch('/api/settings')).send({ idleTimeoutMs: 120_000 });
-    expect(patched.status).toBe(200);
-    expect(patched.body).toEqual({ idleTimeoutMs: 120_000, lanAdvertise: false, lanDiscovery: true });
-    expect(store.getSettings().idleTimeoutMs).toBe(120_000);
-    // The token must survive a settings merge.
-    expect(store.getSettings().authToken).toBe(token);
-
-    const after = await authed(request(app).get('/api/status'));
-    expect(after.body.idleTimeoutMs).toBe(120_000);
-  });
-
-  it('404s for unknown servers and registries', async () => {
-    expect((await authed(request(app).get('/api/servers/nope'))).status).toBe(404);
-    expect((await authed(request(app).get('/api/registries/nope/servers'))).status).toBe(404);
-    expect((await authed(request(app).post('/mcp/nope')).send({})).status).toBe(404);
-  });
-
-  it('manages workspaces: auto-slug, member validation, rename, and endpoint gating', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-
-    // Members must reference existing servers.
-    const badMember = await authed(request(app).post('/api/workspaces')).send({
-      name: 'Acme',
-      members: { ghost: {} },
-    });
-    expect(badMember.status).toBe(400);
-
-    // Slug is derived from the name; response carries the derived endpoint path.
-    const created = await authed(request(app).post('/api/workspaces')).send({
-      name: 'Acme Backend',
-      members: { hosted: { headers: { 'X-Env': 'prod' } } },
-    });
-    expect(created.status).toBe(201);
-    expect(created.body.slug).toBe('acme-backend');
-    expect(created.body.path).toBe('/mcp/w/acme-backend');
-    expect(store.getWorkspace('acme-backend')?.members.hosted?.headers).toEqual({ 'X-Env': 'prod' });
-
-    const dup = await authed(request(app).post('/api/workspaces')).send({ name: 'Acme Backend' });
-    expect(dup.status).toBe(409);
-
-    const list = await authed(request(app).get('/api/workspaces'));
-    expect(list.body).toHaveLength(1);
-
-    // The workspace endpoint is reachable while enabled...
-    expect((await authed(request(app).post('/mcp/w/acme-backend')).send({})).status).not.toBe(404);
-
-    // Renaming re-derives the slug (and moves the URL); the old slug is gone.
-    const renamed = await authed(request(app).patch('/api/workspaces/acme-backend')).send({ name: 'Renamed' });
-    expect(renamed.status).toBe(200);
-    expect(renamed.body.slug).toBe('renamed');
-    expect(store.getWorkspace('acme-backend')).toBeUndefined();
-    expect(store.getWorkspace('renamed')).toBeDefined();
-
-    // A description is kept by an edit that leaves it out, and cleared by an empty one.
-    await authed(request(app).patch('/api/workspaces/renamed')).send({ description: 'Team servers' });
-    await authed(request(app).patch('/api/workspaces/renamed')).send({ members: {} });
-    expect(store.getWorkspace('renamed')?.description).toBe('Team servers');
-    const cleared = await authed(request(app).patch('/api/workspaces/renamed')).send({ description: '' });
-    expect(cleared.body.description).toBeUndefined();
-    expect(store.getWorkspace('renamed')?.description).toBeUndefined();
-
-    // Disabling 404s the endpoint without deleting the workspace.
-    await authed(request(app).patch('/api/workspaces/renamed')).send({ enabled: false });
-    expect((await authed(request(app).post('/mcp/w/renamed')).send({})).status).toBe(404);
-    expect(store.getWorkspace('renamed')?.enabled).toBe(false);
-
-    const deleted = await authed(request(app).delete('/api/workspaces/renamed'));
-    expect(deleted.status).toBe(204);
-    expect((await authed(request(app).get('/api/workspaces/renamed'))).status).toBe(404);
+    const entries = manager.getActivity('hosted');
+    expect(entries.map((entry) => entry.method)).toEqual(['prompts/get', 'resources/read']);
+    expect(entries.every((entry) => entry.via === 'ui' && entry.ok)).toBe(true);
   });
 
   it('logs a UI call the manager refused, and one that waited on a connect', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
+    await addHosted();
 
-    // A server that would not connect answers with the manager's own status.
+    // A server that would not connect answers with the manager's own code.
     vi.spyOn(manager, 'withClient').mockRejectedValueOnce(
       upstreamFailed('Failed to connect to server "hosted"', 'stderr tail'),
     );
-    const refused = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
-    expect(refused.status).toBe(502);
-    expect(refused.body.code).toBe(ErrorCode.UpstreamFailed);
+    const refused = await gql('mutation { callServerTool(name: "hosted", tool: "echo") { isError } }');
+    expect(refused.errors[0].extensions.code).toBe(ErrorCode.UpstreamFailed);
     expect(manager.getActivity('hosted')).toMatchObject([
       {
         via: 'ui',
@@ -432,18 +228,36 @@ describe('REST API', () => {
       await new Promise((resolve) => setTimeout(resolve, 60));
       return run({ callTool } as unknown as Client);
     });
-    const slow = await authed(request(app).post('/api/servers/hosted/tools/call')).send({ name: 'echo' });
-    expect(slow.status).toBe(200);
+    const slow = await gql('mutation { callServerTool(name: "hosted", tool: "echo") { content isError } }');
+    expect(slow.data.callServerTool).toEqual({ content: [], isError: false });
     expect(manager.getActivity('hosted')[0]?.durationMs).toBeGreaterThanOrEqual(50);
   });
 
+  it('gates a workspace endpoint on its being enabled, and moves it with its slug', async () => {
+    await addHosted();
+    const { data } = await gql('{ servers { id } }');
+    const members = [{ serverId: data.servers[0].id }];
+    const save = async (input: Record<string, unknown>) =>
+      (await gql('mutation($input: SaveWorkspaceInput!) { saveWorkspace(input: $input) { id slug } }', { input })).data
+        .saveWorkspace;
+
+    const created = await save({ name: 'Acme Backend', members });
+    expect(created.slug).toBe('acme-backend');
+    expect((await authed(request(app).post('/mcp/w/acme-backend')).send({})).status).not.toBe(404);
+
+    await save({ id: created.id, name: 'Renamed', slug: 'renamed', members });
+    expect(store.getWorkspace('acme-backend')).toBeUndefined();
+    expect((await authed(request(app).post('/mcp/w/acme-backend')).send({})).status).toBe(404);
+
+    await save({ id: created.id, name: 'Renamed', slug: 'renamed', enabled: false, members });
+    expect((await authed(request(app).post('/mcp/w/renamed')).send({})).status).toBe(404);
+    expect(store.getWorkspace('renamed')?.enabled).toBe(false);
+  });
+
   it("runs a workspace's UI calls against the member's own instance, under its exposed name", async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'hosted',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: 'https://mcp.example.com/mcp', headers: {} },
-    });
-    await authed(request(app).post('/api/workspaces')).send({ name: 'Team', members: { hosted: {} } });
+    await addHosted();
+    await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: { hosted: { enabled: true } } });
+    await manager.reconcile(store.getServers(), store.getWorkspaces());
     const memberKey = workspaceInstanceKey('team', 'hosted');
 
     const callTool = vi.fn(async () => ({ content: [{ type: 'text', text: 'boom' }], isError: true }));
@@ -454,62 +268,107 @@ describe('REST API', () => {
     stubDownstream(manager, { callTool, readResource, listTools });
 
     // The listing is namespaced, and its count belongs to the member's instance, not the base server.
-    const tools = await authed(request(app).get('/api/workspaces/team/tools'));
-    expect(tools.body.tools.map((tool: { name: string }) => tool.name)).toEqual(['hosted__echo']);
+    const tools = await gql('{ workspaceTools(slug: "team") { name } }');
+    expect(tools.data.workspaceTools).toEqual([{ name: 'hosted__echo' }]);
     expect(manager.status(memberKey)?.toolCount).toBe(1);
     expect(manager.status('hosted')?.toolCount).toBeUndefined();
 
-    // A tool that resolves with isError still answers 200, and is logged as a failure with its text.
-    const called = await authed(request(app).post('/api/workspaces/team/tools/call')).send({
-      name: 'hosted__echo',
-      arguments: { a: 1 },
-    });
-    expect(called.status).toBe(200);
+    // A tool that resolves with isError is still an answer, and is logged as a failure with its text.
+    const called = await gql(
+      'mutation { callWorkspaceTool(slug: "team", tool: "hosted__echo", arguments: { a: 1 }) { content isError } }',
+    );
+    expect(called.data.callWorkspaceTool).toEqual({ content: [{ type: 'text', text: 'boom' }], isError: true });
     expect(callTool).toHaveBeenCalledWith({ name: 'echo', arguments: { a: 1 } });
 
-    // A downstream that throws is a 502, logged with the thrown message.
-    const read = await authed(request(app).post('/api/workspaces/team/resources/read')).send({
-      uri: 'hosted__file:///a.txt',
-    });
-    expect(read.status).toBe(502);
+    // A downstream that throws is UPSTREAM_FAILED, logged with the thrown message.
+    const read = await gql(
+      'mutation { readWorkspaceResource(slug: "team", uri: "hosted__file:///a.txt") { contents } }',
+    );
+    expect(read.errors[0].extensions.code).toBe(ErrorCode.UpstreamFailed);
     expect(readResource).toHaveBeenCalledWith({ uri: 'file:///a.txt' });
 
     // A name that resolves to no member is the caller's error, and is not logged anywhere.
-    const unknown = await authed(request(app).post('/api/workspaces/team/tools/call')).send({ name: 'ghost__echo' });
-    expect(unknown.status).toBe(400);
+    const unknown = await gql('mutation { callWorkspaceTool(slug: "team", tool: "ghost__echo") { isError } }');
+    expect(unknown.errors[0].extensions.code).toBe(ErrorCode.BadUserInput);
 
-    const activity = await authed(request(app).get('/api/workspaces/team/activity'));
-    expect(activity.body.entries).toMatchObject([
-      { via: 'ui', method: 'resources/read', target: 'file:///a.txt', ok: false, error: 'down' },
-      { via: 'ui', method: 'tools/call', target: 'echo', ok: false, error: 'boom' },
+    const activity = await gql('{ workspaceActivity(slug: "team") { via method target ok error } }');
+    expect(activity.data.workspaceActivity).toMatchObject([
+      { via: 'UI', method: 'resources/read', target: 'file:///a.txt', ok: false, error: 'down' },
+      { via: 'UI', method: 'tools/call', target: 'echo', ok: false, error: 'boom' },
     ]);
     expect(manager.getActivity(memberKey)).toHaveLength(2);
     expect(manager.getActivity('hosted')).toEqual([]);
   });
 });
 
+describe('the built web UI', () => {
+  let dataDir: string;
+  let database: Database;
+  let manager: GatewayManager;
+  let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    delete process.env.MCP_ROUTER_TOKEN;
+    database = await createTestDb();
+    dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-spa-'));
+    const appDist = path.join(dataDir, 'dist');
+    await mkdir(appDist);
+    await writeFile(path.join(appDist, 'index.html'), '<!doctype html><title>MCP Router</title>');
+    const store = await createTestStore(database, dataDir);
+    manager = new GatewayManager(() => store.getSettings());
+    const authHost = await createTestAuthHost(database.db);
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: appDist });
+  });
+
+  afterAll(async () => {
+    await manager.stopAll();
+    await rm(dataDir, { recursive: true, force: true });
+    await database.close();
+  });
+
+  it("serves the UI's page for its own routes, /api included, and never for a backend path", async () => {
+    for (const route of ['/', '/servers/docs', '/api/servers']) {
+      const res = await request(app).get(route);
+      expect(res.status).toBe(200);
+      expect(res.text).toContain('<title>MCP Router</title>');
+    }
+    for (const route of ['/graphql', '/admin/mcp', '/mcp', '/mcp/docs', '/oauth/callback']) {
+      const res = await request(app).get(route);
+      expect(res.text).not.toContain('<title>MCP Router</title>');
+    }
+  });
+});
+
 describe('MCP session lifecycle', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-session-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
-    token = store.getSettings().authToken as string;
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });

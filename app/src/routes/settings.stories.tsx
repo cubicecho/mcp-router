@@ -1,12 +1,14 @@
 import { ErrorCode, HttpStatus, MS_PER_MINUTE } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { LanServerState } from '@/__generated__/graphql';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
 import {
   appRoutes,
   discoveredServer,
   discovery,
+  lanServersAnswer,
   reloadResult,
-  routerStatus,
   settingsResult,
 } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
@@ -32,13 +34,33 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+export const ShowsHowTheOperatorSignsIn: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvasElement, 'Sign-in');
+    await expect(await canvas.findByRole('heading', { name: 'Sign-in', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText('Heautou')).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+  },
+};
+
+export const ShowsTheApiKeys: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvasElement, 'API keys');
+    await expect(await canvas.findByRole('heading', { name: 'API keys', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText('Claude Code')).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+  },
+};
+
 export const ShowsTheRouterStatus: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: 'Settings' })).toBeVisible();
     await expect(await canvas.findByText('2.7.1')).toBeVisible();
     await expect(canvas.getByText('1/2 running')).toBeVisible();
-    await expect(canvas.getByText('disabled')).toBeVisible();
+    await expect(canvas.getByText('API key required')).toBeVisible();
     await expect(canvas.getByRole('textbox', { name: TIMEOUT_LABEL })).toHaveValue('5');
     // Nothing to save until the timeout changes.
     await expect(canvas.getByRole('button', { name: 'Save' })).toBeDisabled();
@@ -50,17 +72,16 @@ export const ShowsTheRouterStatus: Story = {
   },
 };
 
-export const WithAuthOn: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/status': routerStatus({ authEnabled: true }) } },
+export const SaysMcpClientsNeedAKey: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText('enabled')).toBeVisible();
-    await expect(canvas.queryByText('disabled')).not.toBeInTheDocument();
+    await expect(await canvas.findByText('API key required')).toBeVisible();
+    await expect(canvas.getByText(/Your sign-in does not open it\./)).toBeVisible();
   },
 };
 
 export const WhileLoading: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/status': pending() } },
+  parameters: { api: { ...appRoutes(), RouterStatus: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: 'Router' })).toBeVisible();
@@ -76,20 +97,20 @@ export const WhenTheStatusFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/status': apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'settings.json is unreadable'),
+      RouterStatus: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'the database is unreachable'),
     },
   },
   play: async ({ canvasElement }) => {
     const alert = within(await within(canvasElement).findByRole('alert'));
     await expect(alert.getByText('Could not load status')).toBeVisible();
-    await expect(alert.getByText('settings.json is unreadable')).toBeVisible();
+    await expect(alert.getByText('the database is unreachable')).toBeVisible();
     await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible();
   },
 };
 
 export const SavesTheIdleTimeout: Story = {
   parameters: {
-    api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ idleTimeoutMs: NEW_TIMEOUT_MS }) },
+    api: { ...appRoutes(), UpdateSetting: { updateSetting: settingsResult({ idleTimeoutMs: NEW_TIMEOUT_MS }) } },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -99,7 +120,7 @@ export const SavesTheIdleTimeout: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { idleTimeoutMs: NEW_TIMEOUT_MS }),
+      expect(apiRequest).toHaveBeenCalledWith('UpdateSetting', { set: { idleTimeoutMs: NEW_TIMEOUT_MS } }),
     );
     await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Idle timeout saved')).toBeVisible());
   },
@@ -114,7 +135,7 @@ export const RefusesATimeoutThatIsNotPositive: Story = {
 
     await expect(input).toBeInvalid();
     await expect(canvas.getByRole('button', { name: 'Save' })).toBeDisabled();
-    await expect(apiRequest).not.toHaveBeenCalledWith('PATCH /api/settings', expect.anything());
+    await expect(apiRequest).not.toHaveBeenCalledWith('UpdateSetting', expect.anything());
   },
 };
 
@@ -122,7 +143,7 @@ export const WhenSavingFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'PATCH /api/settings': apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'settings.json is read-only'),
+      UpdateSetting: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'the settings row is locked'),
     },
   },
   play: async ({ canvasElement }) => {
@@ -133,7 +154,7 @@ export const WhenSavingFails: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(within(canvasElement.ownerDocument.body).getByText('settings.json is read-only')).toBeVisible(),
+      expect(within(canvasElement.ownerDocument.body).getByText('the settings row is locked')).toBeVisible(),
     );
     // What was typed is kept, to be tried again.
     await expect(input).toHaveValue(String(NEW_TIMEOUT_MINUTES));
@@ -141,13 +162,13 @@ export const WhenSavingFails: Story = {
 };
 
 export const ReloadsTheConfig: Story = {
-  parameters: { api: { ...appRoutes(), 'POST /api/reload': reloadResult() } },
+  parameters: { api: { ...appRoutes(), ReloadConfig: { reloadConfig: reloadResult() } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await openTab(canvasElement, 'Configuration');
     await userEvent.click(await canvas.findByRole('button', { name: 'Reload config' }));
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('POST /api/reload', undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('ReloadConfig', {}));
     await waitFor(() =>
       expect(within(canvasElement.ownerDocument.body).getByText('Configuration reloaded')).toBeVisible(),
     );
@@ -156,7 +177,10 @@ export const ReloadsTheConfig: Story = {
 
 export const SavesThePublicUrl: Story = {
   parameters: {
-    api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ publicUrl: 'https://router.example.com' }) },
+    api: {
+      ...appRoutes(),
+      UpdateSetting: { updateSetting: settingsResult({ publicUrl: 'https://router.example.com' }) },
+    },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -165,7 +189,7 @@ export const SavesThePublicUrl: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Save public URL' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { publicUrl: 'https://router.example.com' }),
+      expect(apiRequest).toHaveBeenCalledWith('UpdateSetting', { set: { publicUrl: 'https://router.example.com' } }),
     );
     await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Public URL saved')).toBeVisible());
   },
@@ -182,7 +206,7 @@ export const RefusesAPublicUrlThatIsNotAUrl: Story = {
 };
 
 export const TurnsOnTheNetworkAnnouncement: Story = {
-  parameters: { api: { ...appRoutes(), 'PATCH /api/settings': settingsResult({ lanAdvertise: true }) } },
+  parameters: { api: { ...appRoutes(), UpdateSetting: { updateSetting: settingsResult({ lanAdvertise: true }) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await openTab(canvasElement, 'Network');
@@ -191,7 +215,7 @@ export const TurnsOnTheNetworkAnnouncement: Story = {
     await expect(canvas.getByRole('switch', { name: 'Look for servers on the network' })).toBeChecked();
     await expect(canvas.getByText(/MCP Router on nas/)).toBeVisible();
     await userEvent.click(announce);
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { lanAdvertise: true }));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('UpdateSetting', { set: { lanAdvertise: true } }));
     const body = within(canvasElement.ownerDocument.body);
     await waitFor(() => expect(body.getByText('Announcing the router')).toBeVisible());
   },
@@ -201,8 +225,8 @@ export const OffersADismissedServerAgain: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/discovery': discovery({ servers: [discoveredServer({ state: 'dismissed' })] }),
-      'POST /api/discovery/dismissed': discovery(),
+      LanServers: lanServersAnswer({ servers: [discoveredServer({ state: LanServerState.Dismissed })] }),
+      SetLanServerDismissed: { setLanServerDismissed: discovery() },
     },
   },
   play: async ({ canvasElement }) => {
@@ -211,9 +235,10 @@ export const OffersADismissedServerAgain: Story = {
     await expect(await canvas.findByRole('heading', { name: 'Dismissed servers' })).toBeVisible();
     await userEvent.click(await canvas.findByRole('button', { name: 'Offer again: MCP Skills on nas' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('POST /api/discovery/dismissed', {
+      expect(apiRequest).toHaveBeenCalledWith('SetLanServerDismissed', {
         key: discoveredServer().key,
         dismissed: false,
+        limit: PAGE_DEFAULTS.lanServers,
       }),
     );
     await waitFor(() => expect(canvas.queryByRole('button', { name: 'Offer again: MCP Skills on nas' })).toBeNull());

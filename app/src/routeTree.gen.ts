@@ -12,10 +12,12 @@ import { Route as rootRouteImport } from './routes/__root'
 import { Route as WorkspacesRouteImport } from './routes/workspaces'
 import { Route as SettingsRouteImport } from './routes/settings'
 import { Route as RegistriesRouteImport } from './routes/registries'
+import { Route as LoginRouteImport } from './routes/login'
 import { Route as BrowseRouteImport } from './routes/browse'
 import { Route as IndexRouteImport } from './routes/index'
 import { Route as WorkspacesSlugRouteImport } from './routes/workspaces_.$slug'
 import { Route as ServersNameRouteImport } from './routes/servers.$name'
+import { Route as AuthSsoRouteImport } from './routes/auth.sso'
 
 const WorkspacesRoute = WorkspacesRouteImport.update({
   id: '/workspaces',
@@ -30,6 +32,11 @@ const SettingsRoute = SettingsRouteImport.update({
 const RegistriesRoute = RegistriesRouteImport.update({
   id: '/registries',
   path: '/registries',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const LoginRoute = LoginRouteImport.update({
+  id: '/login',
+  path: '/login',
   getParentRoute: () => rootRouteImport,
 } as any)
 const BrowseRoute = BrowseRouteImport.update({
@@ -52,22 +59,31 @@ const ServersNameRoute = ServersNameRouteImport.update({
   path: '/servers/$name',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthSsoRoute = AuthSsoRouteImport.update({
+  id: '/auth/sso',
+  path: '/auth/sso',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/login': typeof LoginRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
+  '/auth/sso': typeof AuthSsoRoute
   '/servers/$name': typeof ServersNameRoute
   '/workspaces/$slug': typeof WorkspacesSlugRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/login': typeof LoginRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
+  '/auth/sso': typeof AuthSsoRoute
   '/servers/$name': typeof ServersNameRoute
   '/workspaces/$slug': typeof WorkspacesSlugRoute
 }
@@ -75,9 +91,11 @@ export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
   '/browse': typeof BrowseRoute
+  '/login': typeof LoginRoute
   '/registries': typeof RegistriesRoute
   '/settings': typeof SettingsRoute
   '/workspaces': typeof WorkspacesRoute
+  '/auth/sso': typeof AuthSsoRoute
   '/servers/$name': typeof ServersNameRoute
   '/workspaces_/$slug': typeof WorkspacesSlugRoute
 }
@@ -86,27 +104,33 @@ export interface FileRouteTypes {
   fullPaths:
     | '/'
     | '/browse'
+    | '/login'
     | '/registries'
     | '/settings'
     | '/workspaces'
+    | '/auth/sso'
     | '/servers/$name'
     | '/workspaces/$slug'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
     | '/browse'
+    | '/login'
     | '/registries'
     | '/settings'
     | '/workspaces'
+    | '/auth/sso'
     | '/servers/$name'
     | '/workspaces/$slug'
   id:
     | '__root__'
     | '/'
     | '/browse'
+    | '/login'
     | '/registries'
     | '/settings'
     | '/workspaces'
+    | '/auth/sso'
     | '/servers/$name'
     | '/workspaces_/$slug'
   fileRoutesById: FileRoutesById
@@ -114,9 +138,11 @@ export interface FileRouteTypes {
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
   BrowseRoute: typeof BrowseRoute
+  LoginRoute: typeof LoginRoute
   RegistriesRoute: typeof RegistriesRoute
   SettingsRoute: typeof SettingsRoute
   WorkspacesRoute: typeof WorkspacesRoute
+  AuthSsoRoute: typeof AuthSsoRoute
   ServersNameRoute: typeof ServersNameRoute
   WorkspacesSlugRoute: typeof WorkspacesSlugRoute
 }
@@ -142,6 +168,13 @@ declare module '@tanstack/react-router' {
       path: '/registries'
       fullPath: '/registries'
       preLoaderRoute: typeof RegistriesRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/login': {
+      id: '/login'
+      path: '/login'
+      fullPath: '/login'
+      preLoaderRoute: typeof LoginRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/browse': {
@@ -172,15 +205,24 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ServersNameRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/auth/sso': {
+      id: '/auth/sso'
+      path: '/auth/sso'
+      fullPath: '/auth/sso'
+      preLoaderRoute: typeof AuthSsoRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
   BrowseRoute: BrowseRoute,
+  LoginRoute: LoginRoute,
   RegistriesRoute: RegistriesRoute,
   SettingsRoute: SettingsRoute,
   WorkspacesRoute: WorkspacesRoute,
+  AuthSsoRoute: AuthSsoRoute,
   ServersNameRoute: ServersNameRoute,
   WorkspacesSlugRoute: WorkspacesSlugRoute,
 }

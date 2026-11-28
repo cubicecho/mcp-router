@@ -3,8 +3,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { cardConnection, parseAiCatalog, parseServerCard } from '@cubicecho/mcp-discovery';
 import request from 'supertest';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { ConfigStore } from '../../config/store.ts';
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
+import type { ConfigStore } from '../../config/store.ts';
+import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
 import { createApp } from '../../http/app.ts';
 import { ROUTER_ROLE_META_KEY } from '../endpoints.ts';
@@ -12,15 +16,23 @@ import { ROUTER_ROLE_META_KEY } from '../endpoints.ts';
 describe('discovery documents', () => {
   let dataDir: string;
   let store: ConfigStore;
+  let database: Database;
+  let authHost: AuthHost;
   let manager: GatewayManager;
   let app: ReturnType<typeof createApp>;
+
+  beforeAll(async () => {
+    database = await createTestDb();
+  });
+
+  afterAll(() => database.close());
 
   beforeEach(async () => {
     delete process.env.MCP_ROUTER_TOKEN;
     vi.spyOn(console, 'log').mockImplementation(() => {});
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-discovery-'));
-    store = new ConfigStore(dataDir);
-    await store.init();
+    await resetTestDb(database);
+    store = await createTestStore(database, dataDir);
     await store.updateSettings({ instanceId: 'nas' });
     await store.saveServer({
       name: 'context7',
@@ -40,12 +52,12 @@ describe('discovery documents', () => {
     });
     await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: {} });
     manager = new GatewayManager(() => store.getSettings());
-    app = createApp({ store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    authHost = await createTestAuthHost(database.db);
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
     await manager.stopAll();
-    await store.close();
     await rm(dataDir, { recursive: true, force: true });
     vi.restoreAllMocks();
   });
@@ -73,18 +85,15 @@ describe('discovery documents', () => {
     expect(aggregate._meta?.[ROUTER_ROLE_META_KEY]).toBe('aggregate');
   });
 
-  it('asks for the router token when auth is on, and points at the address the client used', async () => {
+  it('asks for an API key, and points at the address the client used', async () => {
     const response = await request(app).get('/mcp/w/team/server-card').set('Host', 'nas.local:3000');
     expect(cardConnection(parseServerCard(response.body, 'test'))).toEqual({
       url: 'http://nas.local:3000/mcp/w/team',
       requiredHeaders: ['Authorization'],
     });
-    await store.updateSettings({ authEnabled: false });
-    const open = await request(app).get('/mcp/w/team/server-card');
-    expect(cardConnection(parseServerCard(open.body, 'test'))?.requiredHeaders).toEqual([]);
   });
 
-  it('keeps /mcp itself behind the token', async () => {
+  it('keeps /mcp itself behind an API key', async () => {
     expect((await request(app).post('/mcp').send({})).status).toBe(401);
   });
 });

@@ -1,8 +1,7 @@
-import type { ServerResource, ServerResourceTemplate } from '@mcp-router/shared';
 import { InputField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/empty-state';
 import { Badge } from '@/components/ui/badge';
-import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
+import { type CapabilityScope, type McpResource, type McpResourceTemplate, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityResources, useReadResource } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './list.tsx';
 
@@ -84,13 +83,13 @@ function ResourceRow({ scope, data }: { scope: CapabilityScope; data: ResourceRo
  * @param resource - The resource as the server listed it.
  * @returns The row data, labelled by the resource's name, or its URI when it has none.
  */
-function toRow(resource: ServerResource): ResourceRowData {
+function toRow(resource: McpResource): ResourceRowData {
   return {
     label: resource.name ?? resource.uri,
     uri: resource.uri,
     isTemplate: false,
-    description: resource.description,
-    mimeType: resource.mimeType,
+    description: resource.description ?? undefined,
+    mimeType: resource.mimeType ?? undefined,
   };
 }
 
@@ -100,13 +99,13 @@ function toRow(resource: ServerResource): ResourceRowData {
  * @param template - The template as the server listed it.
  * @returns The row data, flagged as a template and labelled by its name, or its URI template when it has none.
  */
-function templateToRow(template: ServerResourceTemplate): ResourceRowData {
+function templateToRow(template: McpResourceTemplate): ResourceRowData {
   return {
     label: template.name ?? template.uriTemplate,
     uri: template.uriTemplate,
     isTemplate: true,
-    description: template.description,
-    mimeType: template.mimeType,
+    description: template.description ?? undefined,
+    mimeType: template.mimeType ?? undefined,
   };
 }
 

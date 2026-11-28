@@ -1,6 +1,6 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { needsSignInServer, remoteServer, stdioServer } from '@/storybook/fixtures';
+import { DOCS_ID, needsSignInServer, remoteServer, serverRuntime, stdioServer } from '@/storybook/fixtures';
 import { apiRequest } from '@/storybook/mock-api';
 import { ServerList } from './list.tsx';
 
@@ -20,27 +20,27 @@ export const ListsEveryServer: Story = {
 };
 
 export const RestartsFromTheRowMenu: Story = {
-  parameters: { api: { 'POST /api/servers/filesystem/restart': stdioServer() } },
+  parameters: { api: { RestartServer: { restartServer: serverRuntime(stdioServer()) } } },
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Actions for filesystem' }));
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(await body.findByRole('menuitem', { name: 'Restart' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('POST /api/servers/filesystem/restart', undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('RestartServer', { name: 'filesystem' }));
     // The menu hides the rest of the page from assistive tech until it has finished closing.
     await waitFor(() => expect(body.queryByRole('menu')).not.toBeInTheDocument());
   },
 };
 
 export const DeletesOnlyAfterConfirming: Story = {
-  parameters: { api: { 'DELETE /api/servers/docs': null } },
+  parameters: { api: { DeleteServer: { deleteServer: { id: DOCS_ID } } } },
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Actions for docs' }));
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(await body.findByRole('menuitem', { name: 'Delete' }));
-    await expect(apiRequest).not.toHaveBeenCalledWith('DELETE /api/servers/docs', undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith('DeleteServer', { name: 'docs' });
     const dialog = within(await body.findByRole('alertdialog'));
     await userEvent.click(dialog.getByRole('button', { name: /delete/i }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DELETE /api/servers/docs', undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DeleteServer', { name: 'docs' }));
   },
 };
 

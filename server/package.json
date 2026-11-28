@@ -5,22 +5,43 @@
   "type": "module",
   "scripts": {
     "dev": "DATA_DIR=../data PORT=3001 node --env-file-if-exists=../.env --watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
-    "test": "vitest run"
+    "test": "vitest run",
+    "codegen": "node src/graphql/write-schema.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate"
   },
   "dependencies": {
+    "@better-auth/api-key": "^1.7.28",
+    "@casl/ability": "^7.1.3",
     "@cubicecho/agent-mcp-pool": "^3.16.2",
+    "@cubicecho/graphql-better-auth": "^1.1.0",
+    "@cubicecho/graphql-mcp": "^3.1.0",
     "@cubicecho/mcp-discovery": "^0.5.0",
+    "@escape.tech/graphql-armor-max-aliases": "^2.6.2",
+    "@escape.tech/graphql-armor-max-depth": "^2.4.2",
     "@mcp-router/shared": "*",
     "@modelcontextprotocol/sdk": "^1.0.0",
+    "@vantreeseba/drizzle-graphql": "^19.1.1",
+    "@vantreeseba/graphql-casl": "^1.11.0",
+    "better-auth": "^1.7.28",
     "bonjour-service": "^1.4.4",
-    "chokidar": "^4.0.0",
+    "drizzle-orm": "1.0.0-rc.5",
     "express": "^5.0.0",
+    "graphql": "16.13.2",
+    "graphql-middleware": "^6.1.35",
+    "graphql-query-complexity": "^2.0.0",
+    "graphql-scalars": "^2.0.1",
+    "graphql-yoga": "^5.24.6",
+    "pg": "^8.23.1",
     "zod": "^4.6.5"
   },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.17",
     "@types/express": "^5.0.0",
+    "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.0",
+    "drizzle-kit": "1.0.0-rc.5",
+    "jose": "^6.2.18",
     "supertest": "^7.0.0"
   }
 }

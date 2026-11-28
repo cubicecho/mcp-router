@@ -1,15 +1,9 @@
-import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
-import { existsSync } from 'node:fs';
-import { chmod, mkdir, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
 import { hostname } from 'node:os';
 import path from 'node:path';
 import { hostSlug } from '@cubicecho/mcp-discovery';
 import {
-  DEFAULT_REGISTRY,
-  type RegistriesFile,
   type Registry,
-  registriesFileSchema,
   type ServerConfig,
   type SettingsFile,
   serverConfigSchema,
@@ -17,18 +11,29 @@ import {
   type WorkspaceConfig,
   workspaceConfigSchema,
 } from '@mcp-router/shared';
-import { type FSWatcher, watch } from 'chokidar';
-import { effectiveAuth } from '../auth/middleware.ts';
-import { CONFIG_DEFAULTS } from '../core/defaults.ts';
-import { conflict, errorMessage, notFound } from '../core/errors.ts';
-
-/** Owner read and write only: these files hold the auth token and API keys in plain text. */
-const CONFIG_FILE_MODE = 0o600;
+import { asc, eq } from 'drizzle-orm';
+import { errorMessage } from '../core/errors.ts';
+import type { DB } from '../db/client.ts';
+import { registries } from '../db/tables/registries.ts';
+import { servers } from '../db/tables/servers.ts';
+import { SETTINGS_ROW_ID, type SettingsRow, settings } from '../db/tables/settings.ts';
+import { workspaceMembers } from '../db/tables/workspace-members.ts';
+import { workspaces } from '../db/tables/workspaces.ts';
+import { seedDatabase } from './import.ts';
+import {
+  type NamedMemberRow,
+  registryFromRow,
+  serverFromRow,
+  settingsFromRow,
+  settingsToRow,
+  workspaceFromRows,
+} from './rows.ts';
+import { upsertServer, upsertWorkspace } from './writes.ts';
 
 /** The instance id written when the hostname has nothing usable in it. */
 const FALLBACK_INSTANCE_ID = 'router';
 
-/** Everything the config files hold, as last loaded. */
+/** Everything the database holds, as last loaded. */
 export interface ConfigState {
   settings: SettingsFile;
   registries: Registry[];
@@ -36,96 +41,65 @@ export interface ConfigState {
   workspaces: WorkspaceConfig[];
 }
 
+/** What a store reads and writes. */
+export interface ConfigStoreDeps {
+  db: DB;
+  /** The data directory. On first boot the config files in its `config` folder are imported. */
+  dataDir: string;
+}
+
 /**
- * Owns the flat config files under DATA_DIR/config: settings.json, registries.json, servers/<name>.json and
- * workspaces/<slug>.json.
+ * Owns the router's config: the settings row and the registries, servers, workspaces and workspace_members tables.
  *
  * @remarks
- * All writes are atomic (tmp file + chmod 0600 + rename). Emits a typed 'change' event, debounced, when the files
- * change on disk while it is watching.
+ * Reads are served from memory, loaded by `init` and `reload`. Every write goes to the database first, then reloads
+ * memory from it, then emits a typed 'change' event. Anything else that writes the tables calls `reload()` after it
+ * commits, which emits 'change' too.
  */
 export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   readonly dataDir: string;
-  /** `<dataDir>/config`. */
+  /** `<dataDir>/config`, where an older router kept its files. Read once, on first boot. */
   readonly configDir: string;
-  /** `<configDir>/servers`, one file per server. */
-  readonly serversDir: string;
-  /** `<configDir>/workspaces`, one file per workspace. */
-  readonly workspacesDir: string;
 
+  private readonly db: DB;
   private settings: SettingsFile = settingsFileSchema.parse({});
   private registries: Registry[] = [];
   private servers = new Map<string, ServerConfig>();
   private workspaces = new Map<string, WorkspaceConfig>();
-  /** The file each server was read from, by name, when that is not `servers/<name>.json`. */
-  private strayServerFiles = new Map<string, string>();
-  /** The file each workspace was read from, by slug, when that is not `workspaces/<slug>.json`. */
-  private strayWorkspaceFiles = new Map<string, string>();
-  private watcher: FSWatcher | null = null;
-  private watchDebounce: NodeJS.Timeout | null = null;
 
   /**
-   * Works out the config paths; nothing is read or created until `init`.
+   * Holds the database; nothing is read or written until `init`.
    *
-   * @param dataDir - The data directory; config lives in its `config` folder.
+   * @param deps - The database, and the data directory.
    */
-  constructor(dataDir: string) {
+  constructor({ db, dataDir }: ConfigStoreDeps) {
     super();
+    this.db = db;
     this.dataDir = dataDir;
     this.configDir = path.join(dataDir, 'config');
-    this.serversDir = path.join(this.configDir, 'servers');
-    this.workspacesDir = path.join(this.configDir, 'workspaces');
   }
 
-  /** Create directories, seed defaults on first run and load everything. */
+  /** On an empty database, import the config files (or seed defaults), then load everything. */
   async init(): Promise<void> {
-    await mkdir(this.serversDir, { recursive: true });
-    await mkdir(this.workspacesDir, { recursive: true });
+    const isEmpty = (await this.readSettingsRow()) === undefined;
+    if (isEmpty) {
+      await seedDatabase(this.db, this.configDir);
+    }
     await this.loadAll();
   }
 
   /**
-   * Re-read every config file from disk.
+   * Re-reads everything from the database and emits 'change'. Whatever writes the tables directly calls this after
+   * it commits.
    *
-   * @returns The new state. Rejects when settings.json or registries.json is invalid; a bad server or workspace
-   * file is logged and skipped.
+   * @returns The new state. Rejects when the settings row is invalid; an invalid server or workspace is logged and
+   * skipped.
    */
   async reload(): Promise<ConfigState> {
     await this.loadAll();
-    return this.snapshot();
-  }
-
-  /** Start watching the config dir; emits 'change' (debounced) after reloading. A no-op when already watching. */
-  startWatching(): void {
-    if (this.watcher) {
-      return;
-    }
-    this.watcher = watch(this.configDir, { ignoreInitial: true, depth: 2 });
-    this.watcher.on('all', () => {
-      if (this.watchDebounce) {
-        clearTimeout(this.watchDebounce);
-      }
-      this.watchDebounce = setTimeout(() => {
-        this.watchDebounce = null;
-        this.reload()
-          .then((state) => this.emit('change', state))
-          .catch((err: unknown) => {
-            console.error(`[config] reload after a file change failed: ${errorMessage(err)}`);
-          });
-      }, CONFIG_DEFAULTS.watchDebounceMs);
-    });
-  }
-
-  /** Stop watching the config dir and drop any reload still waiting on the debounce. */
-  async close(): Promise<void> {
-    if (this.watchDebounce) {
-      clearTimeout(this.watchDebounce);
-      this.watchDebounce = null;
-    }
-    if (this.watcher) {
-      await this.watcher.close();
-      this.watcher = null;
-    }
+    const state = this.snapshot();
+    this.emit('change', state);
+    return state;
   }
 
   /**
@@ -154,7 +128,7 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   /**
    * Lists the registries.
    *
-   * @returns The registries in file order.
+   * @returns The registries in the order they were added.
    */
   getRegistries(): Registry[] {
     return this.registries;
@@ -190,69 +164,39 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   }
 
   /**
-   * Merge a partial settings update, persist settings.json, and apply it in memory.
+   * Merges a partial settings update and stores it.
    *
    * @param patch - The fields to change; the rest keep their values.
    * @returns The merged settings. Throws, changing nothing, when the result fails validation.
    */
   async updateSettings(patch: Partial<SettingsFile>): Promise<SettingsFile> {
     const next = settingsFileSchema.parse({ ...this.settings, ...patch });
-    await this.writeJsonAtomic(path.join(this.configDir, 'settings.json'), next);
-    this.settings = next;
-    return next;
+    await this.writeSettings(next);
+    await this.reload();
+    return this.settings;
   }
 
   /**
-   * Adds a registry and persists registries.json.
+   * Creates or replaces a server config. Replacing keeps the server's workspace memberships.
    *
-   * @param registry - The registry to add. Throws a 409 when its name is taken.
-   */
-  async addRegistry(registry: Registry): Promise<void> {
-    if (this.getRegistry(registry.name)) {
-      throw conflict(`Registry "${registry.name}" already exists`);
-    }
-    const next = [...this.registries, registry];
-    await this.writeRegistries(next);
-    this.registries = next;
-  }
-
-  /**
-   * Removes a registry and persists registries.json.
-   *
-   * @param name - The registry to remove. Throws a 404 when there is none by that name.
-   */
-  async removeRegistry(name: string): Promise<void> {
-    if (!this.getRegistry(name)) {
-      throw notFound(`Unknown registry "${name}"`);
-    }
-    const next = this.registries.filter((r) => r.name !== name);
-    await this.writeRegistries(next);
-    this.registries = next;
-  }
-
-  /**
-   * Creates or replaces a server config, in memory and in its file.
-   *
-   * @param config - The config; its `name` is the key and the file name.
-   * @returns The config as validated. Throws when it fails validation.
+   * @param config - The config; its `name` is the key.
+   * @returns The config as stored. Throws when it fails validation.
    */
   async saveServer(config: ServerConfig): Promise<ServerConfig> {
     const parsed = serverConfigSchema.parse(config);
-    await this.writeJsonAtomic(this.serverFile(parsed.name), parsed);
-    await this.removeStrayFile(this.strayServerFiles, parsed.name);
-    this.servers.set(parsed.name, parsed);
-    return parsed;
+    await this.db.transaction((tx) => upsertServer(tx, parsed));
+    await this.reload();
+    return this.servers.get(parsed.name) ?? parsed;
   }
 
   /**
-   * Removes a server config, from memory and from disk.
+   * Removes a server config, and with it the server's place in every workspace.
    *
    * @param name - The server's name; an unknown one is not an error.
    */
   async deleteServer(name: string): Promise<void> {
-    await rm(this.serverFile(name), { force: true });
-    await this.removeStrayFile(this.strayServerFiles, name);
-    this.servers.delete(name);
+    await this.db.delete(servers).where(eq(servers.name, name));
+    await this.reload();
   }
 
   /**
@@ -275,79 +219,52 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   }
 
   /**
-   * Creates or replaces a workspace config, in memory and in its file.
+   * Creates or replaces a workspace config with exactly the members it names.
    *
-   * @param config - The config; its `slug` is the key and the file name.
-   * @returns The config as validated. Throws when it fails validation.
+   * @param config - The config; its `slug` is the key. A member naming no existing server is not stored (logged).
+   * @returns The config as stored. Throws when it fails validation.
    */
   async saveWorkspace(config: WorkspaceConfig): Promise<WorkspaceConfig> {
     const parsed = workspaceConfigSchema.parse(config);
-    await this.writeJsonAtomic(this.workspaceFile(parsed.slug), parsed);
-    await this.removeStrayFile(this.strayWorkspaceFiles, parsed.slug);
-    this.workspaces.set(parsed.slug, parsed);
-    return parsed;
+    await this.db.transaction((tx) => upsertWorkspace(tx, parsed));
+    await this.reload();
+    return this.workspaces.get(parsed.slug) ?? parsed;
   }
 
   /**
-   * Removes a workspace config, from memory and from disk.
+   * Removes a workspace config and its memberships.
    *
    * @param slug - The workspace's slug; an unknown one is not an error.
    */
   async deleteWorkspace(slug: string): Promise<void> {
-    await rm(this.workspaceFile(slug), { force: true });
-    await this.removeStrayFile(this.strayWorkspaceFiles, slug);
-    this.workspaces.delete(slug);
+    await this.db.delete(workspaces).where(eq(workspaces.slug, slug));
+    await this.reload();
   }
 
   /**
-   * Persists a registry list to registries.json.
+   * Reads the one settings row.
    *
-   * @param registries - The whole list to write.
+   * @returns The row, or undefined when there is none yet.
    */
-  private async writeRegistries(registries: Registry[]): Promise<void> {
-    const file: RegistriesFile = { registries };
-    await this.writeJsonAtomic(path.join(this.configDir, 'registries.json'), file);
+  private async readSettingsRow(): Promise<SettingsRow | undefined> {
+    const [row] = await this.db.select().from(settings).where(eq(settings.id, SETTINGS_ROW_ID));
+    return row;
   }
 
   /**
-   * Removes the misnamed file an entry was read from, once its own file has been written or removed.
+   * Stores settings in the one settings row, creating it when it is missing.
    *
-   * @param strayFiles - The misnamed files by key; the key's entry is dropped.
-   * @param key - The server name or workspace slug.
-   *
-   * @remarks
-   * Without this a hand-named file would come back on the next reload, undoing a delete or shadowing a save.
+   * @param value - Validated settings.
    */
-  private async removeStrayFile(strayFiles: Map<string, string>, key: string): Promise<void> {
-    const stray = strayFiles.get(key);
-    if (stray === undefined) {
-      return;
-    }
-    await rm(stray, { force: true });
-    strayFiles.delete(key);
+  private async writeSettings(value: SettingsFile): Promise<void> {
+    const values = settingsToRow(value);
+    await this.db
+      .insert(settings)
+      .values({ id: SETTINGS_ROW_ID, ...values })
+      .onConflictDoUpdate({ target: settings.id, set: { ...values, updatedAt: new Date() } });
   }
 
-  /**
-   * Names the file a server's config is kept in.
-   *
-   * @param name - The server's name.
-   * @returns The path of `servers/<name>.json`.
-   */
-  private serverFile(name: string): string {
-    return path.join(this.serversDir, `${name}.json`);
-  }
-
-  /**
-   * Names the file a workspace's config is kept in.
-   *
-   * @param slug - The workspace's slug.
-   * @returns The path of `workspaces/<slug>.json`.
-   */
-  private workspaceFile(slug: string): string {
-    return path.join(this.workspacesDir, `${slug}.json`);
-  }
-
-  /** Replaces everything in memory with what the files hold, seeding settings.json and registries.json when absent. */
+  /** Replaces everything in memory with what the database holds. */
   private async loadAll(): Promise<void> {
     this.settings = await this.loadSettings();
     this.registries = await this.loadRegistries();
@@ -356,158 +273,83 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   }
 
   /**
-   * Reads settings.json, writing it when it is absent or a bearer token had to be generated.
+   * Reads the settings row, storing it when the instance id had to be filled in.
    *
-   * @returns The settings. Throws when the file is not valid JSON or fails validation.
-   *
-   * @remarks
-   * A token is generated, and printed that one time, when auth is on and neither the file nor `MCP_ROUTER_TOKEN`
-   * holds one.
+   * @returns The settings. Throws when the row fails validation.
    */
   private async loadSettings(): Promise<SettingsFile> {
-    const file = path.join(this.configDir, 'settings.json');
-    let settings: SettingsFile;
-    let dirty = false;
-    if (existsSync(file)) {
-      settings = this.parseFile(file, await readFile(file, 'utf8'), settingsFileSchema.parse.bind(settingsFileSchema));
-    } else {
-      settings = settingsFileSchema.parse({});
-      dirty = true;
+    const row = await this.readSettingsRow();
+    let loaded: SettingsFile;
+    try {
+      loaded = row === undefined ? settingsFileSchema.parse({}) : settingsFromRow(row);
+    } catch (cause) {
+      throw new Error(`The settings row failed validation: ${errorMessage(cause)}`, { cause });
     }
-    const auth = effectiveAuth(settings);
-    // Auth is on and neither settings.json nor MCP_ROUTER_TOKEN holds a token.
-    if (auth.enabled && !auth.token) {
-      settings.authToken = randomBytes(CONFIG_DEFAULTS.authTokenBytes).toString('hex');
-      dirty = true;
-      // The one time the token is printed: first run, when nobody has seen it yet.
-      console.log(`[auth] generated a bearer token and saved it to ${file}:\n  ${settings.authToken}`);
-    }
+    const next = { ...loaded };
     // Kept once written, so renaming the machine does not change the router's identity on the network.
-    if (settings.instanceId === undefined) {
-      settings.instanceId = hostSlug(hostname(), FALLBACK_INSTANCE_ID);
-      dirty = true;
+    if (next.instanceId === undefined) {
+      next.instanceId = hostSlug(hostname(), FALLBACK_INSTANCE_ID);
     }
-    if (dirty) {
-      await this.writeJsonAtomic(file, settings);
+    const isChanged = row === undefined || next.instanceId !== loaded.instanceId;
+    if (isChanged) {
+      await this.writeSettings(next);
     }
-    return settings;
+    return next;
   }
 
   /**
-   * Reads registries.json, seeding it with the default registry when it is absent.
+   * Reads the registries.
    *
-   * @returns The registries. Throws when the file is not valid JSON or fails validation.
+   * @returns The registries, oldest first. Throws when a row fails validation.
    */
   private async loadRegistries(): Promise<Registry[]> {
-    const file = path.join(this.configDir, 'registries.json');
-    if (!existsSync(file)) {
-      const seeded: RegistriesFile = { registries: [DEFAULT_REGISTRY] };
-      await this.writeJsonAtomic(file, seeded);
-      return seeded.registries;
-    }
-    const parsed = this.parseFile(
-      file,
-      await readFile(file, 'utf8'),
-      registriesFileSchema.parse.bind(registriesFileSchema),
-    );
-    return parsed.registries;
+    const rows = await this.db.select().from(registries).orderBy(asc(registries.createdAt), asc(registries.name));
+    return rows.map(registryFromRow);
   }
 
   /**
-   * Reads every `servers/*.json`, logging and skipping a file that is invalid.
+   * Reads every server, logging and skipping a row that fails validation.
    *
-   * @returns The configs by the `name` inside each file, which wins over a file name that disagrees.
+   * @returns The configs by name.
    */
   private async loadServers(): Promise<Map<string, ServerConfig>> {
-    const servers = new Map<string, ServerConfig>();
-    this.strayServerFiles = new Map();
-    const files = (await readdir(this.serversDir)).filter((f) => f.endsWith('.json'));
-    for (const file of files.sort()) {
-      const fullPath = path.join(this.serversDir, file);
+    const loaded = new Map<string, ServerConfig>();
+    for (const row of await this.db.select().from(servers)) {
       try {
-        const config = this.parseFile(
-          fullPath,
-          await readFile(fullPath, 'utf8'),
-          serverConfigSchema.parse.bind(serverConfigSchema),
-        );
-        if (`${config.name}.json` !== file) {
-          console.warn(`[config] server config ${fullPath} has name "${config.name}" that does not match its filename`);
-          this.strayServerFiles.set(config.name, fullPath);
-        }
-        servers.set(config.name, config);
-      } catch (err) {
-        // A single broken (hand-edited) server file must not take the router down; report and skip it.
-        console.error(`[config] ignoring invalid server config ${fullPath}: ${errorMessage(err)}`);
+        loaded.set(row.name, serverFromRow(row));
+      } catch (error) {
+        // One bad row must not take the router down; report and skip it.
+        console.error(`[db] ignoring invalid server "${row.name}": ${errorMessage(error)}`);
       }
     }
-    return servers;
+    return loaded;
   }
 
   /**
-   * Reads every `workspaces/*.json`, logging and skipping a file that is invalid.
+   * Reads every workspace with its members, logging and skipping one that fails validation.
    *
-   * @returns The configs by the `slug` inside each file, which wins over a file name that disagrees.
+   * @returns The configs by slug.
    */
   private async loadWorkspaces(): Promise<Map<string, WorkspaceConfig>> {
-    const workspaces = new Map<string, WorkspaceConfig>();
-    this.strayWorkspaceFiles = new Map();
-    const files = (await readdir(this.workspacesDir)).filter((f) => f.endsWith('.json'));
-    for (const file of files.sort()) {
-      const fullPath = path.join(this.workspacesDir, file);
+    const memberRows = await this.db
+      .select({ serverName: servers.name, member: workspaceMembers })
+      .from(workspaceMembers)
+      .innerJoin(servers, eq(workspaceMembers.serverId, servers.id))
+      .orderBy(asc(servers.name));
+    const membersByWorkspace = new Map<string, NamedMemberRow[]>();
+    for (const row of memberRows) {
+      const members = membersByWorkspace.get(row.member.workspaceId) ?? [];
+      membersByWorkspace.set(row.member.workspaceId, [...members, row]);
+    }
+    const loaded = new Map<string, WorkspaceConfig>();
+    for (const row of await this.db.select().from(workspaces)) {
       try {
-        const config = this.parseFile(
-          fullPath,
-          await readFile(fullPath, 'utf8'),
-          workspaceConfigSchema.parse.bind(workspaceConfigSchema),
-        );
-        if (`${config.slug}.json` !== file) {
-          console.warn(
-            `[config] workspace config ${fullPath} has slug "${config.slug}" that does not match its filename`,
-          );
-          this.strayWorkspaceFiles.set(config.slug, fullPath);
-        }
-        workspaces.set(config.slug, config);
-      } catch (err) {
-        // A single broken (hand-edited) workspace file must not take the router down; report and skip it.
-        console.error(`[config] ignoring invalid workspace config ${fullPath}: ${errorMessage(err)}`);
+        loaded.set(row.slug, workspaceFromRows(row, membersByWorkspace.get(row.id) ?? []));
+      } catch (error) {
+        // One bad row must not take the router down; report and skip it.
+        console.error(`[db] ignoring invalid workspace "${row.slug}": ${errorMessage(error)}`);
       }
     }
-    return workspaces;
-  }
-
-  /**
-   * Parses and validates one config file's text.
-   *
-   * @typeParam T - The validated shape.
-   * @param file - The file's path, named in the error.
-   * @param raw - The file's text.
-   * @param parse - Validates the parsed JSON; throws to reject it.
-   * @returns The validated value. Throws an Error naming the file when the JSON or the validation fails.
-   */
-  private parseFile<T>(file: string, raw: string, parse: (value: unknown) => T): T {
-    let json: unknown;
-    try {
-      json = JSON.parse(raw);
-    } catch (cause) {
-      throw new Error(`${file} is not valid JSON: ${errorMessage(cause)}`, { cause });
-    }
-    try {
-      return parse(json);
-    } catch (cause) {
-      throw new Error(`${file} failed validation: ${errorMessage(cause)}`, { cause });
-    }
-  }
-
-  /**
-   * Writes a value as JSON atomically: tmp file in the same dir, chmod 0600, rename over the target.
-   *
-   * @param file - The target path.
-   * @param value - What to serialise, with two-space indent and a trailing newline.
-   */
-  private async writeJsonAtomic(file: string, value: unknown): Promise<void> {
-    const tmp = `${file}.${process.pid}.${Date.now()}.tmp`;
-    await writeFile(tmp, `${JSON.stringify(value, null, 2)}\n`, { mode: CONFIG_FILE_MODE });
-    await chmod(tmp, CONFIG_FILE_MODE);
-    await rename(tmp, file);
+    return loaded;
   }
 }

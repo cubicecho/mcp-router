@@ -3,8 +3,8 @@
 An MCP gateway/router: install MCP servers from registries or npm, run them
 locally (stdio) or point at remote ones (streamable HTTP), and re-expose every
 one of them over streamable HTTP — per-server routes, one merged aggregate, and
-per-**workspace** custom aggregates. Managed through a React web UI and
-hand-editable flat config files.
+per-**workspace** custom aggregates. Managed through a React web UI; state lives
+in Postgres (`DATABASE_URL`, required).
 
 ## Decisions (locked)
 
@@ -12,15 +12,15 @@ hand-editable flat config files.
 | --- | --- |
 | Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-workspace custom aggregates `/mcp/w/<slug>` |
 | Workspaces | Custom aggregates: a named subset of servers at `/mcp/w/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `w:<slug>:<server>`), so a workspace scope is fully independent of a server's global enabled state; effective enabled = `workspace.enabled && member.enabled` |
-| Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into `settings.json` on first run); protects `/api/*` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
+| Auth | better-auth ^1.7 over the same Postgres (`server/src/auth/`), as ai-router does it. **People** sign in to the UI through an OIDC provider (better-auth `genericOAuth`: `OIDC_ISSUER`/`OIDC_CLIENT_ID` in the environment, which wins, or one paired from a setup URL by Dynamic Client Registration and kept in `oidc_settings`); the callback hands the UI a one-time token it swaps for a bearer session over GraphQL (`verifyOneTimeToken`); sessions live in Postgres. `SECURE_LOCAL_NET=true` signs whoever opens the UI in as the local admin (`signInOnTrustedNetwork`), and boot refuses it when `publicUrl` is not a private address unless `I_KNOW_SECURE_LOCAL_NET_IS_PUBLIC=true`. **Machines** (agents, MCP clients) send an `@better-auth/api-key` key as `Authorization: Bearer` or `x-api-key`. The caller role comes from the credential, read once in `createContextFactory`: a session is `operator`, a key `agent`, neither nobody. The proxied `/mcp*` take a key only, except under `SECURE_LOCAL_NET`, which opens them without one (as before keys). An agent may do everything but manage keys, read or end sessions, change sign-in and edit settings. Who may pair a provider: the admin (the first account), or anyone while there are no accounts. Sign-in steps are throttled per address (`ctx.limiter`). better-auth's REST routes are not mounted: its endpoints are GraphQL fields (`@cubicecho/graphql-better-auth`), and only the OIDC start and callback are Express routes. The old router token (`settings.authToken`, `MCP_ROUTER_TOKEN`) is imported on boot as an API key with the same value; `authEnabled` is ignored |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
-| Secrets | Plaintext values in the JSON config files, written with mode 0600 |
-| Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's config file, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
-| Config | Flat files under `DATA_DIR/config`; watched for changes (chokidar) + explicit `POST /api/reload` |
+| Secrets | Plaintext values in the database (the servers' `env`, headers and `oauth` columns, the OIDC pairing's client secret). API keys are stored as hashes; sessions as better-auth's random tokens |
+| Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's row, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
+| Config | Drizzle tables (`server/src/db/tables/`), migrations committed in `server/drizzle/` and run on boot. Postgres only: boot refuses to start, with a `[db]` message, unless `DATABASE_URL` is a `postgres://` or `postgresql://` URL, always waits for it (`waitForDatabase`), and in production forces TLS for a host the internet could reach (`requiresSsl`: not for private/LAN hosts or an explicit `sslmode`). PGlite is for tests only (an in-memory database per test file). The compose files run `postgres:17` beside the router. `ConfigStore` caches it in memory and emits `change` after every write; anything else that writes the tables calls `store.reload()`, as the `reloadConfig` mutation does. On first boot with an empty database the old `DATA_DIR/config` files are imported once and renamed `*.imported` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
-| Server runtime | Node ≥22.18 type stripping in dev (`node --watch src/index.ts`), `tsc` build (`rewriteRelativeImportExtensions`) for prod/Docker |
-| Deploy | Single Docker image: build app + server, Express serves `app/dist` statically; `docker-compose.yml` with a `data/` volume |
+| Server runtime | Node 26 type stripping everywhere: `node --watch src/index.ts` in dev, `node server/src/index.ts` in prod/Docker. No server build; `tsc --noEmit` only checks |
+| Deploy | Single `node:26-slim` image running as `USER node`: build the app, copy the server and shared sources, Express serves `app/dist` statically; `docker-compose.yml` with a named volume at `/data` |
 | Shared agent packages | **`@cubicecho/agent-mcp-pool` adopted.** `gateway/manager.ts` is an adapter over its `McpPool`; `gateway/naming.ts` stays local. `@cubicecho/agent-core` is an OpenAI-compatible agent loop and this repo makes no LLM calls — still out, see below |
 
 ## Layout & contracts
@@ -28,22 +28,27 @@ hand-editable flat config files.
 ```
 mcp-router/
 ├── shared/          # zod schemas + types (DONE — the contract, see shared/src/)
-│   ├── config.ts    #   settings.json / registries.json / servers/<name>.json / workspaces/<slug>.json schemas
+│   ├── config.ts    #   settings / registry / server / workspace config schemas (validated on every row read)
 │   ├── registry.ts  #   MCP registry API response schemas
-│   └── api.ts       #   REST DTOs (/api/*)
+│   └── api.ts       #   what /graphql checks inputs against, gateway status, the HTTP error envelope
 ├── server/          # Express + MCP SDK backend        [Track A]
 ├── app/             # Vite + React + shadcn web UI     [Track B]
 ├── Dockerfile, docker-compose.yml, README.md           [Track C]
-└── data/            # runtime, gitignored: config/, servers/<name>/ (npm prefixes), logs
+└── data/            # runtime, gitignored: servers/<name>/ (npm prefixes), caches, logs
 ```
 
-### Flat config files (`DATA_DIR/config`, default `./data/config`)
+### Config tables (one row per entry; the shapes are the shared schemas)
 
-- `settings.json` — port, authToken, authEnabled, default idleTimeoutMs,
-  connectTimeoutMs, default callTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
-  callbacks; the UI's origin when unset)
-- `registries.json` — `{ registries: [{ name, url }] }`, seeded with `official`
-- `servers/<name>.json` — one file per installed server (`serverConfigSchema`):
+- `settings` (one row) — port, default idleTimeoutMs, connectTimeoutMs, default callTimeoutMs, session TTL/cap,
+  publicUrl (the router's address: the OIDC sign-in's base and a remote's OAuth callback; `http://localhost:<port>`
+  for sign-in, and the UI's origin for a remote's callback, when unset). `authToken` and `authEnabled` are
+  deprecated and not served: boot imports `authToken` as an API key and clears it, and ignores `authEnabled`
+- better-auth's tables — `users` (with `role`: admin or user; the first account is the admin), `sessions`,
+  `accounts`, `verifications` (OIDC state, one-time tokens), `apikeys` (the api-key plugin's; `reference_id` is the
+  maker's user id, or `router` for an imported token), and `oidc_settings` (the paired provider, one row or none).
+  None is in the generated GraphQL schema
+- `registries` — `{ name, url }`, seeded with `official`
+- `servers` — one row per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
   command/args | streamable-http url/headers), env (plaintext), envMeta (UI hints
   from the registry), idleTimeoutMs, callTimeoutMs, oauth (a remote's sign-in: typed-in
@@ -51,9 +56,10 @@ mcp-router/
   redirectUri, tokens, tokensSavedAt — plaintext, never sent to the UI). npm packages install into
   `servers/<name>/` and run as `node <bin>`; pypi packages run as `uvx <pkg>`
   (uv resolves/caches on spawn, no install dir)
-- `workspaces/<slug>.json` — one file per workspace (`workspaceConfigSchema`): name,
-  slug (matches the filename), enabled, description, `members` — a map of server
-  name → `{ enabled, env?, args?, headers?, url? }`. Overrides merge over the
+- `workspaces` + `workspace_members` — one row per workspace (`workspaceConfigSchema`): name,
+  slug, enabled, description; `members` — a map of server
+  name → `{ enabled, env?, args?, headers?, url? }`, stored as `workspace_members` rows by server id
+  (deleting a server deletes its memberships; a member naming no server is not stored). Overrides merge over the
   base server config (`env`/`headers` shallow-merged, `args`/`url` replaced) for
   that workspace's instance only; `url` re-points a remote member's
   streamable-http endpoint (e.g. to scope a shared upstream to a workspace path);
@@ -62,7 +68,7 @@ mcp-router/
 ### Health (`/healthz`, no auth)
 
 `GET /healthz` answers `200 { ok: true, version }` (`Health`) once the server is listening. It sits in front of
-the auth middleware so Docker's healthcheck, the CI boot job and a load balancer can call it without a token,
+every credential check so Docker's healthcheck, the CI boot job and a load balancer can call it without a key,
 and it reports nothing else.
 
 ### Discovery documents (no auth)
@@ -76,42 +82,90 @@ when auth is on (never its value), and carries `_meta["io.github.cubicecho.mcp-r
 (`aggregate` | `server` | `workspace`), plus `…/upstream` with the registry name for a registry-installed server.
 Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are built in `server/src/discovery/endpoints.ts`.
 
-### Management REST API (`/api`, bearer auth)
+### No REST API
 
-| Method & path | Purpose |
+The management REST API under `/api` is gone (issue #91): the UI and agents use `/graphql` and its MCP door
+`/admin/mcp`. A GET under `/api` is now one of the UI's own paths, so the SPA fallback answers it with the page; any
+other method is a 404. Each route's replacement:
+
+| Was | Now |
 | --- | --- |
-| `GET /api/status` | RouterStatus |
-| `GET /api/registries` / `POST` / `DELETE /api/registries/:name` | manage registries |
-| `GET /api/registries/:name/servers?search=&cursor=&limit=` | proxy search of the registry (`RegistryListResponse`) |
-| `GET /api/registries/:name/servers/:serverName` | registry entry detail (latest version) |
-| `GET /api/servers` | `ServerStatus[]` (config + runtime state) |
-| `POST /api/servers` | install (`InstallRequest`: from registry entry, raw npm package, or remote URL) |
-| `GET /api/servers/:name` | single `ServerStatus` |
-| `PATCH /api/servers/:name` | `UpdateServerRequest` (env, enabled, transport, …) → persists to its JSON file |
-| `DELETE /api/servers/:name` | stop, delete config file, remove `data/servers/<name>` install dir |
-| `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
-| `POST /api/servers/:name/oauth/check` | ask a remote, without a token, whether it wants a login; `ServerStatus` (`needs-auth` when it does) |
-| `POST /api/servers/:name/oauth/start` | `OAuthStartRequest { origin }` → `OAuthStartResponse { authorizationUrl?, signedIn }` |
-| `DELETE /api/servers/:name/oauth` | sign out: forget tokens and the registered client (a typed-in client stays) |
-| `GET /api/servers/:name/tools` | connect (spawning if needed) and list downstream tools |
-| `GET /api/servers/:name/resources` | connect and list downstream resources + resource templates (empty when unsupported) |
-| `POST /api/servers/:name/resources/read` | read one resource by URI from the UI (`ResourceReadRequest`); recorded to activity as via 'ui' |
-| `GET /api/servers/:name/prompts` | connect and list downstream prompts (empty when unsupported) |
-| `POST /api/servers/:name/prompts/get` | get one prompt with arguments from the UI (`PromptGetRequest`); recorded to activity as via 'ui' |
-| `GET /api/servers/:name/activity` / `DELETE` | in-memory log of proxied calls (`ActivityResponse`) for the Activity tab; DELETE clears it |
-| `GET /api/workspaces` | `WorkspaceStatus[]` (config + derived endpoint `path`) |
-| `POST /api/workspaces` | create (`CreateWorkspaceRequest`); slug auto-derived from name, 409 on collision, 400 if a member references a missing server |
-| `GET /api/workspaces/:slug` | single `WorkspaceStatus` |
-| `PATCH /api/workspaces/:slug` | `UpdateWorkspaceRequest` (name, enabled, description, members); a name change re-derives the slug and moves the file/endpoint |
-| `DELETE /api/workspaces/:slug` | delete the workspace file (underlying servers untouched) |
-| `POST /api/reload` | re-read all config from disk, reconcile running processes |
+| `GET /api/status` | `routerStatus` |
+| `GET` / `POST /api/registries`, `DELETE /api/registries/:name` | `registries`, `createRegistry`, `deleteRegistry` |
+| `GET /api/registries/:name/servers`, `…/servers/:serverName` | `registryServers(registry, search, cursor)`, `registryServer(registry, name)` |
+| `GET /api/servers`, `GET /api/servers/:name` | `servers`, `server(where)`, with `serverRuntimes` / `serverRuntime(name)` for the live state |
+| `POST /api/servers`, `PATCH` / `DELETE /api/servers/:name` | `installServer`, `updateServer(name)`, `deleteServer(name)` |
+| `POST /api/servers/:name/restart` | `restartServer(name)` |
+| `POST …/oauth/check`, `POST …/oauth/start`, `DELETE …/oauth` | `checkServerOAuth`, `startServerOAuth(name, origin)`, `signOutServerOAuth` |
+| `GET /api/servers/:name/{tools,resources,prompts}` | `serverTools`, `serverResources`, `serverPrompts` |
+| `POST /api/servers/:name/tools/call` | `callServerTool(name, tool, arguments)` |
+| `POST /api/servers/:name/resources/read` | `readServerResource(name, uri)` |
+| `POST /api/servers/:name/prompts/get` | `getServerPrompt(name, prompt, arguments)` |
+| `GET` / `DELETE /api/servers/:name/activity` | `serverActivity`, `clearServerActivity` |
+| `GET` / `POST /api/workspaces`, `GET` / `PATCH` / `DELETE /api/workspaces/:slug` | `workspaces`, `workspace(where)`, `saveWorkspace`, `deleteWorkspace` |
+| `GET /api/workspaces/:slug/{tools,resources,prompts,activity}`, `DELETE …/activity` | `workspaceTools`, `workspaceResources`, `workspacePrompts`, `workspaceActivity`, `clearWorkspaceActivity` |
+| `POST /api/workspaces/:slug/{tools/call,resources/read,prompts/get}` | `callWorkspaceTool`, `readWorkspaceResource`, `getWorkspacePrompt` |
+| `PATCH /api/settings` | `updateSetting` |
+| `GET /api/discovery`, `POST /api/discovery/dismissed` | `lanServers`, `setLanServerDismissed(key, dismissed)` |
+| `POST /api/reload` | `reloadConfig` |
 
-Errors: non-2xx with `{ error, code, detail? }`. `code` is one of the shared `ErrorCode` values
-(`BAD_USER_INPUT` 400, `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409,
-`INTERNAL` 500, `UPSTREAM_FAILED` 502, `UNAVAILABLE` 503, `UPSTREAM_TIMEOUT` 504); callers branch
-on it, never on the `error` text. Validation via the shared zod schemas.
+The HTTP doors that remain (`/mcp*`, the auth and origin guards, a malformed body) still refuse with the JSON
+envelope `{ error, code, detail? }` (`ApiError`), with the status the code maps to: `BAD_USER_INPUT` 400,
+`UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409, `INTERNAL` 500, `UPSTREAM_FAILED` 502,
+`UNAVAILABLE` 503, `UPSTREAM_TIMEOUT` 504.
 
-### MCP endpoints (streamable HTTP, bearer auth)
+### Management GraphQL (`/graphql`) and its MCP door (`/admin/mcp`), session or API key
+
+The router's whole management API, over the same database the `ConfigStore` reads: `createApp`
+requires the Drizzle `db`, and index.ts passes the one it opened. Both sit behind the same
+`express.json` cap (`HTTP_DEFAULTS.bodyLimit`); `/admin/mcp` also behind the Origin guard and a guard that answers a
+request with neither a session nor a key with 401. `/graphql` takes anonymous requests, for signing in, and
+permissions refuse every other field to them as UNAUTHENTICATED. GraphiQL is served at `/graphql` outside production.
+They serve one permissioned schema (`server/src/graphql/build-schema.ts`) through one context factory
+(`createContextFactory` in `core/context.ts`), which reads the caller from the credential (`auth/caller.ts`):
+`x-api-key` is only ever a key; a bearer with the `mcpr_` prefix is a key; any other bearer is tried as a session,
+then as a key (an imported token has no prefix). Two different keys in one request are BAD_USER_INPUT.
+
+- **Schema:** drizzle-graphql `buildSchema` over `server/src/db/schema.ts` (create/update/delete
+  prefixes, singular type names, `complexity: true`, page sizes from `OPERATION_LIMIT_DEFAULTS`),
+  plus hand-written fields for what no table holds, and better-auth's endpoints (`auth/endpoints.ts`). `servers.oauth`,
+  `settings.authToken` and `settings.authEnabled` are never readable, and better-auth's tables are not served. `features.nestedWrites` is off: a workspace's members can't be replaced through a nested
+  update (the NOT NULL `workspace_id` leaves only `create`/`connect`), so `saveWorkspace` does it.
+- **Generated writes** (single-row forms only; every bulk `createXs`/`updateXs`/`deleteXs`/`…Many`
+  is FORBIDDEN): `createRegistry`/`updateRegistry`/`deleteRegistry`, `createWorkspace`/`updateWorkspace`/
+  `deleteWorkspace`, `createWorkspaceMember`/`updateWorkspaceMember`/`deleteWorkspaceMember`,
+  `updateSetting` (a person only; only the settings the UI edits; the port, host, `instanceId` and
+  `allowedOrigins` are refused, and so is a public `publicUrl` under `SECURE_LOCAL_NET`). `createServer` exists but is FORBIDDEN: servers come from
+  `installServer`. `onWrite` hooks check each written row against the shared zod schemas
+  (BAD_USER_INPUT) and, once the write commits, call `store.reload()`, whose `change` reconciles the
+  gateway (`reconcileOnChange` in `gateway/reconcile.ts`, wired at boot). Hand-written writes that answer with
+  gateway state also await `applyConfig`, which queues behind that reconcile.
+- **Hand-written queries:** `routerStatus`, `serverRuntimes`, `serverRuntime(name)`,
+  `serverTools`/`serverResources`/`serverPrompts`/`serverActivity(name)`,
+  `workspaceTools`/`workspaceResources`/`workspacePrompts`/`workspaceActivity(slug)`,
+  `registryServers(registry, search, cursor)`, `registryServer(registry, name)`, `lanServers`.
+  Every list takes `limit` (default `defaultPageSize`, capped at `maxPageSize`) and is priced as a page.
+- **Hand-written mutations:** `installServer`, `updateServer(name)`, `deleteServer(name)`,
+  `restartServer`, `clearServerActivity`, `startServerOAuth(name, origin)`, `checkServerOAuth`,
+  `signOutServerOAuth`, `saveWorkspace` (a workspace and its whole member list, one transaction),
+  `clearWorkspaceActivity`, `reloadConfig`, `setLanServerDismissed(key, dismissed)`.
+- **Try-it calls:** `callServerTool(name, tool, arguments)`, `readServerResource(name, uri)`,
+  `getServerPrompt(name, prompt, arguments)`, and `callWorkspaceTool` / `readWorkspaceResource` /
+  `getWorkspacePrompt(slug, …)`, which take the `<server>__`-prefixed name and run on that member's
+  workspace instance (a prefix naming no member is BAD_USER_INPUT). They answer `McpToolResult
+  { content, structuredContent, isError }`, `McpResourceContents { contents }` and `McpPromptMessages
+  { description, messages }`, the open-ended parts as JSON; a tool that reports its own failure answers
+  `isError: true`, a server that fails is UPSTREAM_FAILED. Each is recorded to the activity log under
+  via `ui` (`gateway/ui-calls.ts`). They are not in `ADMIN_TOOLS`: an agent calls a server's tools on `/mcp`.
+- **Bounds:** depth, aliases and cost per operation (`OPERATION_LIMIT_DEFAULTS`, refused as
+  `QUERY_TOO_COMPLEX`); a `limit` over `maxPageSize` is drizzle-graphql's `DRIZZLE_LIMIT_EXCEEDED`.
+  `/admin/mcp` offers the tools in `ADMIN_TOOLS` (`graphql/admin-mcp.ts`), bounded by `MCP_DEFAULTS`.
+- **Errors:** `GraphQLError` with `extensions.code` from the shared `ErrorCode` (the envelope's codes,
+  plus `QUERY_TOO_COMPLEX`), and the diagnostics, such as a child's stderr, in `extensions.detail`; anything uncoded is masked by Yoga and logged with a `[graphql]` tag,
+  never with the operation's variables.
+- `npm run codegen` prints the served schema to `server/__generated__/schema.graphql` (gitignored).
+
+### MCP endpoints (streamable HTTP, API key)
 
 - `POST/GET/DELETE /mcp/<name>` — proxy to that server: tools, resources,
   resource templates, prompts, completions, logging, and resource subscriptions
@@ -208,12 +262,12 @@ The same second step Codex and Claude Code do for a login-gated MCP server (e.g.
 Home Assistant's `/api/mcp`): the server is added by URL, then signed in from the
 browser. The router is the OAuth client; the browser only carries the redirect.
 
-1. **Add.** `POST /api/servers` as for any remote. The add dialog then calls
-   `POST /api/servers/:name/oauth/check`, which sends an unauthenticated
+1. **Add.** `installServer` as for any remote. The add dialog then calls
+   `checkServerOAuth(name)`, which sends an unauthenticated
    `initialize` and reads only the status: a `401` marks the server `needs-auth`
    and the dialog stays open on a "Sign in" step.
 2. **Start.** The UI opens a blank window on the click (so it is not a blocked
-   popup), then `POST …/oauth/start { origin }`. The router reads the 401's
+   popup), then `startServerOAuth(name, origin)`. The router reads the 401's
    `WWW-Authenticate` hints, runs the SDK's `auth()` with a provider bound to an
    in-memory flow (random `state`, PKCE verifier, 10-minute TTL), and returns the
    authorization URL; the UI points the window at it.
@@ -224,9 +278,8 @@ browser. The router is the OAuth client; the browser only carries the redirect.
    would refuse — because the redirect URI shares its origin, which is what an
    IndieAuth-style login such as Home Assistant checks); otherwise RFC 7591
    dynamic registration. `<base>` is `settings.publicUrl`, else the UI's origin.
-4. **Callback.** `GET /oauth/callback?code&state` — mounted before the bearer
-   guard, like `/healthz`; the single-use `state` is its credential. It exchanges
-   the code, writes the tokens to `servers/<name>.json`, drops every connection of
+4. **Callback.** `GET /oauth/callback?code&state` — public, like `/healthz`; the single-use `state` is its credential. It exchanges
+   the code, writes the tokens to the server's row, drops every connection of
    the server (base and workspace instances) so the next use dials with them, and
    answers a page that `postMessage`s `{ type: 'mcp-router-oauth', server, ok }`
    to the UI's origin and closes. `GET /oauth/client-metadata.json` is public too.
@@ -296,8 +349,8 @@ model:
   connections, not usage.
 - **HTTP mapping.** `McpPoolError` codes become statuses: `unknown-server` and
   `disabled` → 404, `backoff` → 503, anything else → 502 with the child's stderr
-  as `detail`. `api/calls.ts` passes an `HttpError` through untouched so a route
-  cannot flatten the 503 back into a 502.
+  as `detail`. `gateway/ui-calls.ts` passes an `HttpError` through untouched so a
+  try-it call cannot flatten the 503 back into a 502, and `handField` carries the code over to GraphQL.
 
 Two behaviours changed with the adoption, both accepted:
 
@@ -437,15 +490,16 @@ pool leaves `naming.ts` untouched, as predicted.
 
 ### Track A — Server (`server/`)
 
-- [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (emits to `dist/`, `rewriteRelativeImportExtensions`), `src/index.ts` entry
+- [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (`noEmit`: Node 26 runs the sources, no build), `src/index.ts` entry
 - [x] A2 Config store (`src/config/`): load/validate/write `settings.json`, `registries.json`, `servers/*.json` via shared schemas; atomic writes (tmp+rename, mode 0600); seed defaults on first run (official registry, generated auth token → log it once); chokidar watcher (debounced) emitting typed change events; `reload()` for the API
+- [x] A2b Database (#91, step 1): the config store reads and writes Drizzle tables (Postgres via `DATABASE_URL`, required; `waitForDatabase` at boot, migrations run on boot; PGlite in tests only), emits `change` after its writes and on `reload()`; the watcher and chokidar are gone; first boot on an empty database imports `DATA_DIR/config` in one transaction and renames the files `*.imported`
 - [x] A3 Auth middleware: bearer check for `/api` and `/mcp`; constant-time compare; skipped when `authEnabled: false`; `GET /api/status` reports authEnabled
 - [x] A4 Registry client (`src/registry/`): fetch + zod-parse `GET {url}/v0/servers` (search, cursor, version=latest) and single-server detail; per-registry base URL; friendly errors for unreachable/invalid registries
 - [x] A5 Installer (`src/installer/`): `npm install --prefix data/servers/<name> <pkg>@<ver>` via execFile (no shell); derive stdio transport: resolve installed package `bin` → `node <binPath>` (+ registry runtimeArguments/packageArguments where value is fixed); map registry `environmentVariables` → `envMeta`; build `ServerConfig` from an `InstallRequest` for all three source types; uninstall = rm install dir
 - [x] A6 Process/connection manager (`src/gateway/manager.ts`): per-server downstream MCP `Client` — stdio: lazy spawn (`StdioClientTransport`, env = process env allowlist + config env), idle timer, restart-on-crash backoff, capture stderr tail for `lastError`; remote: `StreamableHTTPClientTransport` with headers; expose `getClient(name)`, `status(name)`, `stop(name)`, `reconcile(configs)` for reload
 - [x] A7 Per-server MCP endpoint (`src/gateway/route.ts`): `StreamableHTTPServerTransport` per session at `/mcp/:name`; proxy tools/resources/prompts list + call/read/get to the downstream client; propagate downstream errors as MCP errors
 - [x] A8 Aggregate MCP endpoint (`/mcp`): merged capability lists with `<server>__` prefix; route calls by prefix; skip (and log) servers that fail to connect rather than failing the whole list
-- [x] A9 Management REST API (`src/api/`): all routes from the table above, zod-validated, wired to config store + installer + manager; JSON error envelope
+- [x] A9 Management REST API (`src/api/`, removed in G3: see "No REST API"): every route, zod-validated, wired to config store + installer + manager; JSON error envelope
 - [x] A10 Static serving: in production serve `app/dist` with SPA fallback (exclude `/api`, `/mcp`); dev uses Vite proxy
 - [x] A11 Server tests (Vitest): config store round-trip + validation, auth middleware, installer transport derivation (mock execFile), registry client parsing (fixture from the real API), aggregate namespacing/routing logic
 
@@ -464,8 +518,8 @@ pool leaves `naming.ts` untouched, as predicted.
 
 ### Track C — Deploy & docs
 
-- [x] C1 `Dockerfile`: multi-stage — `npm ci` + build shared/server/app → slim `node:22` runtime with `server/dist`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `VOLUME /data`, `EXPOSE 3000`; needs npm available at runtime (installer shells out to it)
-- [x] C2 `docker-compose.yml`: single service, `./data:/data` bind mount, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/healthz`
+- [x] C1 `Dockerfile`: multi-stage — `npm ci` + app vite build → `node:26-slim` runtime with `server/src`, `shared/src`, `app/dist`, production node_modules; `ENV DATA_DIR=/data`, `/data` chowned to node before `VOLUME /data`, `USER node`, `EXPOSE 3000`, `CMD ["node", "server/src/index.ts"]`; needs npm and uv available at runtime (installer shells out to them)
+- [x] C2 `docker-compose.yml`: single service, named volume at `/data`, `MCP_ROUTER_TOKEN` via env/`.env`, restart policy, healthcheck on `/healthz`
 - [x] C3 `README.md`: what it is, quickstart (docker compose + bare node), config file reference with examples, API + MCP endpoint reference, how to point Claude/other clients at `/mcp` and `/mcp/<name>`, security notes (plaintext secrets, bearer token)
 
 ### Phase 3 — Workspaces (custom aggregates)
@@ -482,7 +536,7 @@ pool leaves `naming.ts` untouched, as predicted.
   base-only views (`statusAll`/`enabledNames`/`runningCount`) exclude workspace keys
 - [x] P4 Workspace MCP endpoint `/mcp/w/:slug` (reuses `createAggregateServer` with
   workspace-scoped `getClient`/`serverNames`); 404 on disabled/unknown workspace
-- [x] P5 REST API: `/api/workspaces` CRUD (auto-slug, collision + member-exists
+- [x] P5 REST API (removed in G3): `/api/workspaces` CRUD (auto-slug, collision + member-exists
   validation, rename-re-slugs); every `reconcile` call now passes workspaces
 - [x] P6 Web UI: Workspaces nav item + `/workspaces` list route (URL + copy, server
   count, enabled badge, edit/delete); `WorkspaceDialog` (name→slug preview, member
@@ -585,8 +639,7 @@ notifications, DELETE termination. These are the remaining items.
   (default 1000) before minting a new one. No background timer (nothing to tear
   down). Covered by fake-clock idle-reclaim and cap-eviction tests in `api.test.ts`.
 - [x] H2 **Origin validation / DNS-rebinding protection.** `createOriginMiddleware`
-  (`auth.ts`) now fronts `/mcp` (before auth, so it applies even when
-  `SECURE_LOCAL_NET` drops auth): requests with no `Origin` (native clients) or a
+  (`auth.ts`) now fronts `/mcp` (before the credential check, so it applies whatever a request carries): requests with no `Origin` (native clients) or a
   loopback origin pass, plus any `settings.allowedOrigins`; a foreign origin — what
   a DNS-rebound browser page carries — gets 403. A `HOST` env / `settings.host`
   lets operators bind `127.0.0.1` (default still binds all interfaces for
@@ -660,3 +713,17 @@ Design notes and the mDNS convention are in `@cubicecho/mcp-discovery`'s SPECS.m
   again" for dismissed servers.
 - [x] D4 **End to end, 2026-11-05:** mcp-skills-manager advertising on the LAN; the router offered `/mcp` and its
   workspace, the UI added `/mcp` with its token, and the router served its tools as `skills__*` on `/mcp`.
+
+### Phase 8 — GraphQL replaces REST (issue #91)
+
+- [x] G1 **Server:** `/graphql` and `/admin/mcp` over the database, with a hand-written field for everything the
+  REST routes did that CRUD can't (see "Management GraphQL" above).
+- [x] G2 **App:** the client reads and writes through `/graphql` with typed documents from codegen.
+- [x] G3 **Server:** the try-it calls as mutations (`callServerTool` and its siblings); `/api` unmounted and
+  `server/src/api/` deleted. The reconcile helpers moved to `gateway/reconcile.ts`, the error middleware to
+  `http/`, the test-call logic to `gateway/ui-calls.ts`; the REST-only DTOs left `shared/src/api.ts`.
+- [x] G4 **Server:** better-auth (issue #91, step 4). The operator signs in through OIDC (env or paired from a setup
+  URL) or as the local admin under `SECURE_LOCAL_NET`, with sessions in Postgres; machine callers use api-key plugin
+  keys on `/mcp*`, `/graphql` and `/admin/mcp`; the caller role (`operator`/`agent`) comes from the credential; key
+  management, sessions, sign-in setup and settings are a person's. The old router token is imported as a key. See
+  the Auth decision above.

@@ -1,24 +1,32 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
-import { activityEntry, promptsResponse, resourcesResponse, routerStatus, toolsResponse } from '@/storybook/fixtures';
+import {
+  resourcesResponse,
+  routerStatus,
+  serverCapabilityAnswers,
+  workspaceCapabilityAnswers,
+} from '@/storybook/fixtures';
 import type { ApiRoutes } from '@/storybook/mock-api';
 import { CapabilityTabs } from './tabs.tsx';
 
-/** Everything the five tabs ask of one server or workspace. */
-function capabilityRoutes(base: string): ApiRoutes {
+/**
+ * Everything the five tabs ask of one server or workspace.
+ *
+ * @param kind - Whose tabs: a server's or a workspace's operations are answered.
+ * @returns The answers.
+ */
+function capabilityRoutes(kind: 'server' | 'workspace'): ApiRoutes {
+  const answers = { resources: resourcesResponse() };
   return {
-    'GET /api/status': routerStatus(),
-    [`GET ${base}/tools`]: toolsResponse(),
-    [`GET ${base}/resources`]: resourcesResponse(),
-    [`GET ${base}/prompts`]: promptsResponse(),
-    [`GET ${base}/activity`]: { entries: [activityEntry()] },
+    RouterStatus: { routerStatus: routerStatus() },
+    ...(kind === 'server' ? serverCapabilityAnswers(answers) : workspaceCapabilityAnswers(answers)),
   };
 }
 
 const meta = {
   component: CapabilityTabs,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: capabilityRoutes('/api/servers/filesystem') },
+  parameters: { api: capabilityRoutes('server') },
   decorators: [
     (Story) => (
       <div className="max-w-4xl p-6">
@@ -77,14 +85,16 @@ export const ConnectsStraightToAServer: Story = {
       canvas.getByText('Point an MCP client directly at filesystem (tools keep their original names).'),
     ).toBeVisible();
     await expect(
-      await canvas.findByText(`claude mcp add --transport http filesystem ${window.location.origin}/mcp/filesystem`),
+      await canvas.findByText(
+        `claude mcp add --transport http filesystem ${window.location.origin}/mcp/filesystem --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
     ).toBeVisible();
   },
 };
 
 export const ConnectsToAWorkspaceAggregate: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
-  parameters: { api: capabilityRoutes('/api/workspaces/research') },
+  parameters: { api: capabilityRoutes('workspace') },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('button', { name: /read_file/ })).toBeVisible();
@@ -92,7 +102,9 @@ export const ConnectsToAWorkspaceAggregate: Story = {
     await userEvent.click(canvas.getByRole('tab', { name: 'Connect' }));
     await expect(canvas.getByText(/this workspace's aggregate endpoint/)).toBeVisible();
     await expect(
-      await canvas.findByText(`claude mcp add --transport http research ${window.location.origin}/mcp/w/research`),
+      await canvas.findByText(
+        `claude mcp add --transport http research ${window.location.origin}/mcp/w/research --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
     ).toBeVisible();
   },
 };

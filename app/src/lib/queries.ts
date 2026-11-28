@@ -1,16 +1,15 @@
-import type {
-  CreateRegistryRequest,
-  CreateWorkspaceRequest,
-  InstallRequest,
-  SetDismissedRequest,
-  UpdateServerRequest,
-  UpdateSettingsRequest,
-  UpdateWorkspaceRequest,
-} from '@mcp-router/shared';
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import * as api from './api.ts';
-import { type CapabilityScope, SCOPE_SERVER } from './api.ts';
-import { POLLING_DEFAULTS } from './defaults.ts';
+import {
+  type CapabilityScope,
+  type EditServerChanges,
+  type InstallInput,
+  SCOPE_SERVER,
+  type SettingsChanges,
+  type WorkspaceSave,
+} from './api.ts';
+import { PAGE_DEFAULTS, POLLING_DEFAULTS } from './defaults.ts';
+import { forgetSession, keepSession } from './session.ts';
 
 /**
  * Builds the root query key of a capability scope; capability keys hang off it.
@@ -36,6 +35,10 @@ export const queryKeys = {
   workspaces: ['workspaces'] as const,
   workspace: (slug: string) => ['workspaces', slug] as const,
   discovery: ['discovery'] as const,
+  auth: ['auth'] as const,
+  authConfig: ['auth', 'config'] as const,
+  ssoSetup: ['auth', 'sso'] as const,
+  apiKeys: ['api-keys'] as const,
 };
 
 /**
@@ -69,7 +72,7 @@ export function useServers() {
  * Reads one server and keeps it polled.
  *
  * @param name - The server's local name.
- * @returns The query; `data` is the server's config and live status.
+ * @returns The query; `data` is the server's config and live status, or null when there is no such server.
  */
 export function useServer(name: string) {
   return useQuery({
@@ -143,7 +146,7 @@ export function useCapabilityActivity(scope: CapabilityScope) {
  * Reads one workspace and keeps it polled, so member and enabled changes show promptly.
  *
  * @param slug - The workspace's slug.
- * @returns The query; `data` is the workspace's config and endpoint path.
+ * @returns The query; `data` is the workspace with its members and endpoint path, or null when there is none.
  */
 export function useWorkspace(slug: string) {
   return useQuery({
@@ -176,9 +179,13 @@ export function useRegistrySearch(registry: string, search: string) {
   return useInfiniteQuery({
     queryKey: queryKeys.registrySearch(registry, search),
     queryFn: ({ pageParam }) =>
-      api.searchRegistryServers(registry, { search: search || undefined, cursor: pageParam, limit: 20 }),
+      api.searchRegistryServers(registry, {
+        search: search || undefined,
+        cursor: pageParam,
+        limit: PAGE_DEFAULTS.registrySearch,
+      }),
     initialPageParam: undefined as string | undefined,
-    getNextPageParam: (lastPage) => lastPage.metadata?.nextCursor,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
     enabled: registry.length > 0,
   });
 }
@@ -218,13 +225,13 @@ const SERVER_CHANGE_KEYS = [queryKeys.servers, queryKeys.status, queryKeys.works
 /**
  * Installs a server.
  *
- * @returns The mutation; takes the install request, yields the new server's status, and invalidates everything a server
+ * @returns The mutation; takes what to install, yields the new server's config, and invalidates everything a server
  * change makes stale.
  */
 export function useInstallServer() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: InstallRequest) => api.installServer(body),
+    mutationFn: (input: InstallInput) => api.installServer(input),
     onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
@@ -232,13 +239,13 @@ export function useInstallServer() {
 /**
  * Changes a server's config.
  *
- * @returns The mutation; takes the server's `name` plus the fields to change, yields its status, and invalidates
+ * @returns The mutation; takes the server's `name` plus the fields to change, yields its config, and invalidates
  * everything a server change makes stale.
  */
 export function useUpdateServer() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: ({ name, ...body }: UpdateServerRequest & { name: string }) => api.updateServer(name, body),
+    mutationFn: ({ name, ...input }: EditServerChanges & { name: string }) => api.updateServer(name, input),
     onSuccess: () => invalidate(...SERVER_CHANGE_KEYS),
   });
 }
@@ -410,7 +417,7 @@ export function useClearActivity(scope: CapabilityScope) {
 export function useCreateRegistry() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: CreateRegistryRequest) => api.createRegistry(body),
+    mutationFn: (registry: { name: string; url: string }) => api.createRegistry(registry),
     onSuccess: () => invalidate(queryKeys.registries),
   });
 }
@@ -429,28 +436,15 @@ export function useDeleteRegistry() {
 }
 
 /**
- * Creates a workspace.
+ * Creates a workspace, or replaces one with its whole member list.
  *
- * @returns The mutation; takes the workspace to create, yields it as saved, and invalidates every workspace query.
+ * @returns The mutation; takes the workspace (with `id` to replace one), yields it as saved, and invalidates every
+ * workspace query.
  */
-export function useCreateWorkspace() {
+export function useSaveWorkspace() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: CreateWorkspaceRequest) => api.createWorkspace(body),
-    onSuccess: () => invalidate(queryKeys.workspaces),
-  });
-}
-
-/**
- * Changes a workspace.
- *
- * @returns The mutation; takes the workspace's `slug` plus the fields to change, yields the workspace, and invalidates
- * every workspace query.
- */
-export function useUpdateWorkspace() {
-  const invalidate = useInvalidate();
-  return useMutation({
-    mutationFn: ({ slug, ...body }: UpdateWorkspaceRequest & { slug: string }) => api.updateWorkspace(slug, body),
+    mutationFn: (input: WorkspaceSave) => api.saveWorkspace(input),
     onSuccess: () => invalidate(queryKeys.workspaces),
   });
 }
@@ -476,7 +470,7 @@ export function useDeleteWorkspace() {
 export function useUpdateSettings() {
   const invalidate = useInvalidate();
   return useMutation({
-    mutationFn: (body: UpdateSettingsRequest) => api.updateSettings(body),
+    mutationFn: (changes: SettingsChanges) => api.updateSettings(changes),
     onSuccess: () => invalidate(queryKeys.status, queryKeys.discovery),
   });
 }
@@ -502,13 +496,13 @@ export function useDiscovery() {
 export function useSetDismissed() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: (body: SetDismissedRequest) => api.setDismissed(body),
+    mutationFn: (change: { key: string; dismissed: boolean }) => api.setDismissed(change),
     onSuccess: (discovery) => queryClient.setQueryData(queryKeys.discovery, discovery),
   });
 }
 
 /**
- * Makes the router re-read its config files.
+ * Makes the router re-read its stored config.
  *
  * @returns The mutation; takes nothing, yields the reload result, and invalidates every query in the cache.
  */
@@ -517,5 +511,125 @@ export function useReloadConfig() {
   return useMutation({
     mutationFn: () => api.reloadConfig(),
     onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
+/**
+ * Reads how the sign-in page may sign someone in. Answered signed out.
+ *
+ * @returns The query; `data` holds `authConfig` and the pairing part of `ssoSetup`.
+ */
+export function useAuthConfig() {
+  return useQuery({ queryKey: queryKeys.authConfig, queryFn: api.getAuthConfig });
+}
+
+/**
+ * Signs in on a trusted network and keeps the session.
+ *
+ * @returns The mutation; takes nothing, and keeps the session token it yields.
+ */
+export function useSignInOnTrustedNetwork() {
+  return useMutation({
+    mutationFn: () => api.signInOnTrustedNetwork(),
+    onSuccess: (token) => keepSession(token),
+  });
+}
+
+/**
+ * Spends a provider sign-in's one-time token and keeps the session.
+ *
+ * @returns The mutation; takes the one-time token, and keeps the session token it yields.
+ */
+export function useVerifyOneTimeToken() {
+  return useMutation({
+    mutationFn: (token: string) => api.verifyOneTimeToken(token),
+    onSuccess: (session) => keepSession(session),
+  });
+}
+
+/**
+ * Signs the UI out.
+ *
+ * @returns The mutation; takes nothing, ends the session on the server, then forgets it and every cached answer
+ * whatever the server said: the token is the UI's to drop.
+ */
+export function useSignOut() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.signOut(),
+    onSettled: () => {
+      forgetSession();
+      queryClient.clear();
+    },
+  });
+}
+
+/**
+ * Reads how sign-in through an OIDC provider is set up.
+ *
+ * @returns The query; `data` is the setup.
+ */
+export function useSsoSetup() {
+  return useQuery({ queryKey: queryKeys.ssoSetup, queryFn: api.getSsoSetup });
+}
+
+/**
+ * Pairs the router with an OIDC provider from its setup URL.
+ *
+ * @returns The mutation; takes the setup URL, yields the new setup, and invalidates every sign-in query.
+ */
+export function usePairSso() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (setupUrl: string) => api.pairSso(setupUrl),
+    onSuccess: () => invalidate(queryKeys.auth),
+  });
+}
+
+/**
+ * Disconnects the paired OIDC provider.
+ *
+ * @returns The mutation; takes nothing, yields the new setup, and invalidates every sign-in query.
+ */
+export function useUnpairSso() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => api.unpairSso(),
+    onSuccess: () => invalidate(queryKeys.auth),
+  });
+}
+
+/**
+ * Lists the operator's API keys.
+ *
+ * @returns The query; `data` is every key, without its secret.
+ */
+export function useApiKeys() {
+  return useQuery({ queryKey: queryKeys.apiKeys, queryFn: api.listApiKeys });
+}
+
+/**
+ * Makes an API key.
+ *
+ * @returns The mutation; takes the key's name, yields the key with its secret, and invalidates the key list.
+ */
+export function useCreateApiKey() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.createApiKey(name),
+    onSuccess: () => invalidate(queryKeys.apiKeys),
+  });
+}
+
+/**
+ * Revokes an API key.
+ *
+ * @returns The mutation; takes the key's id and invalidates the key list.
+ */
+export function useRevokeApiKey() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeApiKey(id),
+    onSuccess: () => invalidate(queryKeys.apiKeys),
   });
 }

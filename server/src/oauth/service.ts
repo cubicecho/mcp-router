@@ -202,7 +202,7 @@ export class OAuthService implements OAuthBackend, RemoteAuth {
    * Starts a sign-in: asks the server what login it wants, and builds the URL of that login's page.
    *
    * @param serverName - A streamable-http server.
-   * @param uiOrigin - The UI's origin; the router's address too, when settings.json has no `publicUrl`.
+   * @param uiOrigin - The UI's origin; the router's address too, when the settings have no `publicUrl`.
    * @returns The login page to open, or `signedIn` when the stored sign-in turned out to still work.
    * Throws a 400 for a stdio server or one that does not ask for a login, and a 502 when its login cannot be reached.
    */

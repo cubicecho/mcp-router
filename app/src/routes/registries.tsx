@@ -1,4 +1,4 @@
-import { createRegistryRequestSchema } from '@mcp-router/shared';
+import { registrySchema } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
@@ -24,7 +24,7 @@ export const Route = createFileRoute('/registries')({
  * @returns The first issue's message, or undefined when valid.
  */
 function registryFieldError(field: 'name' | 'url', value: string): string | undefined {
-  const result = createRegistryRequestSchema.shape[field].safeParse(value.trim());
+  const result = registrySchema.shape[field].safeParse(value.trim());
   return result.success ? undefined : result.error.issues[0]?.message;
 }
 
@@ -38,7 +38,7 @@ function AddRegistryForm() {
   const form = useAppForm({
     defaultValues: { name: '', url: '' },
     onSubmit: async ({ value, formApi }) => {
-      const body = createRegistryRequestSchema.parse({ name: value.name.trim(), url: value.url.trim() });
+      const body = registrySchema.parse({ name: value.name.trim(), url: value.url.trim() });
       try {
         await create.mutateAsync(body);
         toast.success(`Added registry ${body.name}`);

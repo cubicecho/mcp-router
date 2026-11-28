@@ -1,5 +1,6 @@
 import { type ApiError, ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Response } from 'express';
+import { GraphQLError } from 'graphql';
 
 /** The HTTP status each error code is sent with. */
 const STATUS_BY_CODE = {
@@ -12,6 +13,8 @@ const STATUS_BY_CODE = {
   [ErrorCode.UpstreamFailed]: HttpStatus.BadGateway,
   [ErrorCode.Unavailable]: HttpStatus.ServiceUnavailable,
   [ErrorCode.UpstreamTimeout]: HttpStatus.GatewayTimeout,
+  [ErrorCode.QueryTooComplex]: HttpStatus.BadRequest,
+  [ErrorCode.TooManyRequests]: HttpStatus.TooManyRequests,
 } as const satisfies Record<ErrorCode, HttpStatus>;
 
 /** An error carrying an error code; rendered as the envelope { error, code, detail? } with the code's HTTP status. */
@@ -125,4 +128,41 @@ export function errorDetailMessage(err: unknown): string {
     return `${err.message}: ${err.detail}`;
   }
   return errorMessage(err);
+}
+
+/**
+ * Builds the error a GraphQL caller reads: the message, and the code in `extensions.code`.
+ *
+ * @param code - What clients branch on.
+ * @param message - A sentence the UI may show.
+ * @param [detail] - Diagnostics beyond the message, in `extensions.detail`.
+ * @returns The error, for the caller to throw.
+ */
+export function codedError(code: ErrorCode, message: string, detail?: string): GraphQLError {
+  const extensions = detail ? { code, detail } : { code };
+  return new GraphQLError(message, { extensions });
+}
+
+/**
+ * Builds the error a throttled sign-in attempt is refused with.
+ *
+ * @param message - Says how long to wait, in words.
+ * @param retryAfterSeconds - The same, in `extensions.retryAfter`, for a client that waits by itself.
+ * @returns The error, for the caller to throw.
+ */
+export function rateLimited(message: string, retryAfterSeconds: number): GraphQLError {
+  return new GraphQLError(message, { extensions: { code: ErrorCode.TooManyRequests, retryAfter: retryAfterSeconds } });
+}
+
+/**
+ * Carries an HttpError's code over to GraphQL, so a failure the gateway or the installer reports with a code keeps it there.
+ *
+ * @param error - What a resolver threw.
+ * @returns A coded GraphQLError for an HttpError; anything else unchanged, for Yoga to mask.
+ */
+export function asGraphQLError(error: unknown): unknown {
+  if (error instanceof HttpError) {
+    return codedError(error.code, error.message, error.detail);
+  }
+  return error;
 }

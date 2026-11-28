@@ -27,25 +27,48 @@ permalink: /get-started/
       <div class="step" id="run">
         <h2>Run the router</h2>
         <p>MCP Router ships as a single image, for <code>amd64</code> and <code>arm64</code>. Every way of
-          starting it lands you on the same web UI at <code>http://localhost:3000</code>. State lives in
-          <code>./data</code> (mounted at <code>/data</code> in the container), so nothing is hidden away.</p>
+          starting it lands you on the same web UI at <code>http://localhost:3000</code>. The config lives in
+          Postgres, which <code>DATABASE_URL</code> names and the router needs to start. Installed server packages
+          and caches live in <code>./data</code> (mounted at <code>/data</code> in the container).</p>
 
         <h3>Docker Compose</h3>
-        <p>Save this as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>:</p>
+        <p>Save this as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>. It runs a
+          Postgres beside the router:</p>
         <pre class="code"><code>services:
   mcp-router:
     image: vantreeseba/mcp-router:latest
+    depends_on:
+      postgres: { condition: service_healthy }
     ports:
       - '3000:3000'
     volumes:
       - ./data:/data
     environment:
-      MCP_ROUTER_TOKEN: change-me <span class="cmt"># replace: openssl rand -hex 32</span>
-    restart: unless-stopped</code></pre>
+      DATABASE_URL: postgres://mcp_router:pg-change-me@postgres:5432/mcp_router
+      BETTER_AUTH_SECRET: change-me <span class="cmt"># replace: openssl rand -hex 32</span>
+      SECURE_LOCAL_NET: 'true' <span class="cmt"># private network: opening the UI signs you in</span>
+    restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mcp_router
+      POSTGRES_PASSWORD: pg-change-me <span class="cmt"># and in DATABASE_URL above</span>
+      POSTGRES_DB: mcp_router
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  pgdata:</code></pre>
 
-        <h3>Plain <code>docker run</code></h3>
+        <h3>Plain <code>docker run</code>, with a Postgres you already run</h3>
         <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
-  -e MCP_ROUTER_TOKEN=your-secret-token \
+  -e DATABASE_URL=postgres://mcp_router:secret@192.168.1.20:5432/mcp_router \
+  -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" -e SECURE_LOCAL_NET=true \
   vantreeseba/mcp-router:latest</code></pre>
 
         <h3>Portainer, Dockhand or a QNAP NAS</h3>
@@ -53,23 +76,27 @@ permalink: /get-started/
           app-template catalog for Portainer and Dockhand, and a compose file and App Template for QNAP Container
           Station. Its README walks through each.</p>
 
-        <h3>From source <span class="pill">Node ≥ 22.18</span></h3>
+        <h3>From source <span class="pill">Node ≥ 26</span></h3>
         <pre class="code"><code>npm install &amp;&amp; npm run build
-MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
+npm run db:up    <span class="cmt"># a Postgres on localhost:5433</span>
+DATABASE_URL=postgres://mcp_router:mcp_router@localhost:5433/mcp_router \
+  BETTER_AUTH_SECRET="$(openssl rand -hex 32)" SECURE_LOCAL_NET=true npm start</code></pre>
 
         <div class="gs-callout">
-          <strong>Token.</strong> The router won't start while it is still <code>change-me</code>. Leave
-          <code>MCP_ROUTER_TOKEN</code> out and one is generated into <code>data/config/settings.json</code> and
-          printed to the log once at startup. On a trusted local network you can skip auth entirely with
-          <code>SECURE_LOCAL_NET=true</code>.
+          <strong>Signing in.</strong> The router won't start without a strong <code>BETTER_AUTH_SECRET</code>,
+          which signs your sessions. <code>SECURE_LOCAL_NET=true</code> signs whoever opens the UI in as the local
+          admin, so use it only on a private network. Otherwise sign in through an OIDC provider: set
+          <code>OIDC_ISSUER</code> and <code>OIDC_CLIENT_ID</code>, or paste your provider's setup URL on the login
+          page. Upgrading? Your old <code>MCP_ROUTER_TOKEN</code> is imported as an API key, so clients keep working.
         </div>
       </div>
 
       <div class="step">
         <h2>Open the UI and sign in</h2>
-        <p>Visit <code>http://localhost:3000</code> and paste your bearer token when prompted — it's the same
-          <code>MCP_ROUTER_TOKEN</code> from step 1, and it guards both the management API and every MCP endpoint.
-          You'll land on the <strong>Servers</strong> page. On a fresh install it's empty; that's what the next
+        <p>Visit <code>http://localhost:3000</code>. With <code>SECURE_LOCAL_NET=true</code> you are signed in at
+          once; otherwise click your provider's button. Then make an API key under <strong>Settings → API
+          keys</strong>: it is shown once, and it is what your MCP clients send. You'll land on the
+          <strong>Servers</strong> page. On a fresh install it's empty; that's what the next
           step fixes.</p>
       </div>
 
@@ -158,7 +185,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
         <p>Prefer everything at once? Point your client at the <strong>aggregate</strong> — every enabled server
           merged, tools named <code>&lt;server&gt;__&lt;tool&gt;</code>:</p>
         <pre class="code"><code>claude mcp add --transport http router http://localhost:3000/mcp \
-  --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+  --header "Authorization: Bearer &lt;api-key&gt;"</code></pre>
         <p>That's a working setup: an installed server, tested, and connected to your client.</p>
       </div>
 
@@ -190,7 +217,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
         </figure>
 
         <pre class="code"><code>claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assistant \
-  --header "Authorization: Bearer &lt;token&gt;"</code></pre>
+  --header "Authorization: Bearer &lt;api-key&gt;"</code></pre>
       </div>
 
       <div class="step">
@@ -199,8 +226,8 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
           here:</p>
         <ul>
           <li>Install more servers from the registry, npm, or PyPI — or proxy remote HTTP servers.</li>
-          <li>Hand-edit the flat JSON under <code>DATA_DIR/config</code> and reload; unknown keys survive round-trips.</li>
-          <li>Tune session lifetime, allowed origins, and the idle timeout in <strong>Settings</strong>.</li>
+          <li>Script the router through <code>/graphql</code>, or let an agent use <code>/admin/mcp</code>; config lives in its database, not in files.</li>
+          <li>Tune the idle timeout, public URL and network discovery in <strong>Settings</strong>.</li>
         </ul>
         <div class="cta" style="margin-top: 24px;">
           <a class="button" href="{{ '/docs/' | url }}">Read the docs</a>

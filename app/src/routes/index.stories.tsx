@@ -1,6 +1,7 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, within } from 'storybook/test';
-import { appRoutes, discoveredServer, discovery } from '@/storybook/fixtures';
+import { LanServerState } from '@/__generated__/graphql';
+import { appRoutes, discoveredServer, lanServersAnswer, serversAnswer } from '@/storybook/fixtures';
 import { pending } from '@/storybook/mock-api';
 
 const meta = {
@@ -20,21 +21,21 @@ export const ListsTheInstalledServers: Story = {
 };
 
 export const WithNoServers: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/servers': [] } },
+  parameters: { api: { ...appRoutes(), Servers: serversAnswer([]) } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText(/no servers/i)).toBeVisible();
   },
 };
 
 export const WhileLoading: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/servers': pending() } },
+  parameters: { api: { ...appRoutes(), Servers: pending() } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByRole('status')).toBeVisible();
   },
 };
 
 export const OffersServersFoundOnTheNetwork: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/discovery': discovery() } },
+  parameters: { api: { ...appRoutes(), LanServers: lanServersAnswer() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: 'Found on your network' })).toBeVisible();
@@ -47,7 +48,9 @@ export const OffersNothingOnceAFoundServerIsAdded: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/discovery': discovery({ servers: [discoveredServer({ state: 'added', serverName: 'skills' })] }),
+      LanServers: lanServersAnswer({
+        servers: [discoveredServer({ state: LanServerState.Added, serverName: 'skills' })],
+      }),
     },
   },
   play: async ({ canvasElement }) => {

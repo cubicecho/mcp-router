@@ -5,13 +5,15 @@ import { resourceReadResult, resourcesResponse } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { ResourcesCard } from './resources-card.tsx';
 
-const LIST = 'GET /api/servers/filesystem/resources';
-const READ = 'POST /api/servers/filesystem/resources/read';
+const LIST = 'ServerResources';
+const READ = 'ReadServerResource';
 
 const meta = {
   component: ResourcesCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: resourcesResponse(), [READ]: resourceReadResult() } },
+  parameters: {
+    api: { [LIST]: { serverResources: resourcesResponse() }, [READ]: { readServerResource: resourceReadResult() } },
+  },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -38,7 +40,7 @@ export const ListsResourcesAndTemplates: Story = {
 
 export const ListsTheResourcesOfAWorkspace: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
-  parameters: { api: { 'GET /api/workspaces/research/resources': resourcesResponse({ resourceTemplates: [] }) } },
+  parameters: { api: { WorkspaceResources: { workspaceResources: resourcesResponse({ resourceTemplates: [] }) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('button', { name: /notes\.txt/ })).toBeVisible();
@@ -52,7 +54,9 @@ export const ReadsAResourceAndShowsItsContents: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: /notes\.txt/ }));
     await expect(canvas.getByRole('textbox', { name: 'URI' })).toHaveValue('file:///tmp/notes.txt');
     await userEvent.click(canvas.getByRole('button', { name: 'Read' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(READ, { uri: 'file:///tmp/notes.txt' }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(READ, { name: 'filesystem', uri: 'file:///tmp/notes.txt' }),
+    );
     await expect(await canvas.findByText('Result')).toBeVisible();
     await expect(canvas.getByText(/hello from notes.txt/)).toBeVisible();
   },
@@ -68,7 +72,9 @@ export const ReadsATemplateOnceItIsFilledIn: Story = {
     await userEvent.clear(uri);
     await userEvent.type(uri, ' file:///tmp/todo.txt ');
     await userEvent.click(canvas.getByRole('button', { name: 'Read' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(READ, { uri: 'file:///tmp/todo.txt' }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(READ, { name: 'filesystem', uri: 'file:///tmp/todo.txt' }),
+    );
   },
 };
 
@@ -86,7 +92,7 @@ export const RefusesToReadWithoutAUri: Story = {
 export const SaysWhyAReadFailed: Story = {
   parameters: {
     api: {
-      [LIST]: resourcesResponse(),
+      [LIST]: { serverResources: resourcesResponse() },
       [READ]: apiError(HttpStatus.BadGateway, ErrorCode.UpstreamFailed, 'Resource read failed', 'No such file.'),
     },
   },
@@ -112,7 +118,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoResources: Story = {
-  parameters: { api: { [LIST]: resourcesResponse({ resources: [], resourceTemplates: [] }) } },
+  parameters: { api: { [LIST]: { serverResources: resourcesResponse({ resources: [], resourceTemplates: [] }) } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText('No resources reported.')).toBeVisible();
   },

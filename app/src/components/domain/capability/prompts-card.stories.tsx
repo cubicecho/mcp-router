@@ -1,17 +1,34 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import type { McpPrompt } from '@/lib/api';
 import { promptGetResult, promptsResponse } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { PromptsCard } from './prompts-card.tsx';
 
-const LIST = 'GET /api/servers/filesystem/prompts';
-const GET = 'POST /api/servers/filesystem/prompts/get';
+const LIST = 'ServerPrompts';
+
+/**
+ * Builds one prompt, as prompts/list reports it.
+ *
+ * @param name - Its name.
+ * @param [args] - The arguments it declares; what one does not set is null.
+ * @returns The prompt, with no title or description.
+ */
+function prompt(name: string, args: Array<{ name: string; description?: string }> = []): McpPrompt {
+  return {
+    name,
+    title: null,
+    description: null,
+    arguments: args.map((arg) => ({ description: null, required: null, ...arg })),
+  };
+}
+const GET = 'GetServerPrompt';
 
 const meta = {
   component: PromptsCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: promptsResponse(), [GET]: promptGetResult() } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse() }, [GET]: { getServerPrompt: promptGetResult() } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -35,7 +52,7 @@ export const ListsThePromptsOfAServer: Story = {
 export const ListsThePromptsOfAWorkspace: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
   parameters: {
-    api: { 'GET /api/workspaces/research/prompts': promptsResponse({ prompts: [{ name: 'filesystem__summarise' }] }) },
+    api: { WorkspacePrompts: { workspacePrompts: promptsResponse([prompt('filesystem__summarise')]) } },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -54,7 +71,11 @@ export const GetsAPromptWithItsArguments: Story = {
     await userEvent.type(path, '/tmp/notes.txt');
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'summarise', arguments: { path: '/tmp/notes.txt' } }),
+      expect(apiRequest).toHaveBeenCalledWith(GET, {
+        name: 'filesystem',
+        prompt: 'summarise',
+        arguments: { path: '/tmp/notes.txt' },
+      }),
     );
     await expect(await canvas.findByText('Result')).toBeVisible();
     await expect(canvas.getByText(/Summarise \/tmp\/notes.txt in one line/)).toBeVisible();
@@ -77,10 +98,12 @@ export const RefusesToGetWithoutARequiredArgument: Story = {
 export const LeavesOutArgumentsLeftBlank: Story = {
   parameters: {
     api: {
-      [LIST]: promptsResponse({
-        prompts: [{ name: 'greet', arguments: [{ name: 'name' }, { name: 'tone', description: 'Formal or casual.' }] }],
-      }),
-      [GET]: promptGetResult(),
+      [LIST]: {
+        serverPrompts: promptsResponse([
+          prompt('greet', [{ name: 'name' }, { name: 'tone', description: 'Formal or casual.' }]),
+        ]),
+      },
+      [GET]: { getServerPrompt: promptGetResult() },
     },
   },
   play: async ({ canvasElement }) => {
@@ -88,18 +111,31 @@ export const LeavesOutArgumentsLeftBlank: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: /greet/ }));
     await userEvent.type(canvas.getByRole('textbox', { name: /tone/ }), 'casual');
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'greet', arguments: { tone: 'casual' } }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(GET, {
+        name: 'filesystem',
+        prompt: 'greet',
+        arguments: { tone: 'casual' },
+      }),
+    );
   },
 };
 
 export const GetsAPromptThatTakesNoArguments: Story = {
-  parameters: { api: { [LIST]: promptsResponse({ prompts: [{ name: 'standup' }] }), [GET]: promptGetResult() } },
+  parameters: {
+    api: {
+      [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) },
+      [GET]: { getServerPrompt: promptGetResult() },
+    },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: /standup/ }));
     await expect(canvas.getByText('This prompt takes no arguments.')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'standup', arguments: {} }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'filesystem', prompt: 'standup', arguments: {} }),
+    );
     await expect(await canvas.findByText('Result')).toBeVisible();
   },
 };
@@ -107,7 +143,7 @@ export const GetsAPromptThatTakesNoArguments: Story = {
 export const SaysWhyAGetFailed: Story = {
   parameters: {
     api: {
-      [LIST]: promptsResponse({ prompts: [{ name: 'standup' }] }),
+      [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) },
       [GET]: apiError(HttpStatus.BadGateway, ErrorCode.UpstreamFailed, 'Prompt get failed', 'Unknown prompt.'),
     },
   },
@@ -133,7 +169,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoPrompts: Story = {
-  parameters: { api: { [LIST]: promptsResponse({ prompts: [] }) } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse([]) } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText('No prompts reported.')).toBeVisible();
   },

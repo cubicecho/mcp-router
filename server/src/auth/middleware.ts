@@ -1,46 +1,12 @@
-import { createHash, timingSafeEqual } from 'node:crypto';
-import type { SettingsFile } from '@mcp-router/shared';
 import type { RequestHandler } from 'express';
-import { authDisabledByEnv, envToken } from '../config/env.ts';
-import { forbidden, sendError, unauthenticated } from '../core/errors.ts';
+import type { Identity } from '../core/context.ts';
+import { badInput, errorMessage, forbidden, sendError, unauthenticated } from '../core/errors.ts';
+import type { AuthHost } from './auth-host.ts';
+import type { Auth } from './better-auth.ts';
+import { ConflictingKeysError, readCaller, readKeyCaller } from './caller.ts';
 
-/** The auth in force for a request. */
-export interface AuthConfig {
-  /** False lets every request through. */
-  enabled: boolean;
-  /** The bearer token to match; null means none is configured, so every request is refused while enabled. */
-  token: string | null;
-}
-
-/**
- * Resolves the auth actually in force: settings.json, as overridden by the environment.
- *
- * @param settings - The stored auth settings.
- * @param [env] - Read for `SECURE_LOCAL_NET`, which turns auth off, and `MCP_ROUTER_TOKEN`, which replaces the token.
- * @returns Whether auth is on, and the token to match.
- */
-export function effectiveAuth(
-  settings: Pick<SettingsFile, 'authEnabled' | 'authToken'>,
-  env?: NodeJS.ProcessEnv,
-): AuthConfig {
-  return {
-    enabled: settings.authEnabled && !authDisabledByEnv(env),
-    token: envToken(env) ?? settings.authToken,
-  };
-}
-
-/**
- * Compares two tokens in constant time, without leaking their length (it compares sha256 digests).
- *
- * @param a - One token.
- * @param b - The other token.
- * @returns True when the tokens are identical.
- */
-export function tokensEqual(a: string, b: string): boolean {
-  const digestA = createHash('sha256').update(a).digest();
-  const digestB = createHash('sha256').update(b).digest();
-  return timingSafeEqual(digestA, digestB);
-}
+/** What a request to the proxied MCP endpoints without a live key is told. */
+const NEEDS_KEY = 'Send an API key as Authorization: Bearer <key>, or x-api-key. Create one in Settings.';
 
 /**
  * Tells whether an origin is a loopback one, which a remote attacker cannot forge.
@@ -80,29 +46,89 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
 }
 
 /**
- * Builds the bearer-token middleware for /api and /mcp.
+ * Copies Express's headers into fetch `Headers`, which better-auth reads.
  *
- * @param getAuth - The auth in force, read on every request.
- * @returns Middleware that passes everything when auth is disabled, and otherwise answers a missing or wrong token
- * with a 401 JSON envelope.
+ * @param raw - The request's headers as Express parsed them.
+ * @returns The same headers, repeated ones appended.
  */
-export function createAuthMiddleware(getAuth: () => AuthConfig): RequestHandler {
+export function toFetchHeaders(raw: Record<string, string | string[] | undefined>): Headers {
+  const headers = new Headers();
+  for (const [name, value] of Object.entries(raw)) {
+    for (const one of [value ?? []].flat()) {
+      headers.append(name, one);
+    }
+  }
+  return headers;
+}
+
+/** Reads who a request is from, for a guard. */
+type ReadIdentity = (auth: Auth, headers: Headers) => Promise<Identity>;
+
+/**
+ * Builds a guard that answers a request with no live credential with 401, before the door's own handler.
+ *
+ * @param authHost - Where the current auth instance is.
+ * @param read - Which credentials the door takes.
+ * @param refusal - What a request without one is told.
+ * @returns The middleware. Two different keys in one request are a 400.
+ */
+function credentialGuard(authHost: AuthHost, read: ReadIdentity, refusal: string): RequestHandler {
   return (req, res, next) => {
-    const { enabled, token } = getAuth();
-    if (enabled === false) {
-      next();
-      return;
-    }
-    if (!token) {
-      sendError(res, unauthenticated('Auth is enabled but no token is configured'));
-      return;
-    }
-    const header = req.headers.authorization;
-    const provided = header?.match(/^Bearer\s+(.+)$/i)?.[1];
-    if (!provided || !tokensEqual(provided, token)) {
-      sendError(res, unauthenticated('Unauthorized'));
-      return;
-    }
-    next();
+    read(authHost.current(), toFetchHeaders(req.headers))
+      .then((identity) => {
+        if (identity.caller === null) {
+          sendError(res, unauthenticated(refusal));
+          return;
+        }
+        next();
+      })
+      .catch((error: unknown) => {
+        if (error instanceof ConflictingKeysError) {
+          sendError(res, badInput(error.message));
+          return;
+        }
+        next(new Error(`Could not check the credential: ${errorMessage(error)}`, { cause: error }));
+      });
   };
+}
+
+/** How the proxied MCP endpoints' guard treats requests. */
+export interface ApiKeyGuardOptions {
+  /**
+   * The router is on a trusted network (SECURE_LOCAL_NET): the endpoints are open to anyone who can reach them, as
+   * before API keys, so keyless MCP clients on a home network keep working.
+   * @defaultValue false
+   */
+  trustedNetwork?: boolean;
+}
+
+/**
+ * Builds the API-key guard for the proxied MCP endpoints (/mcp, /mcp/<name>, /mcp/w/<slug>).
+ *
+ * @param authHost - Where the current auth instance is, whose api-key plugin checks the key.
+ * @param [options] - Whether the router is on a trusted network.
+ * @returns Middleware that passes a request with a live API key, in `Authorization: Bearer` or `x-api-key`, and answers
+ * anything else with the JSON error envelope: 401 for no key or a dead one, 400 for two different keys. On a trusted
+ * network it passes every request.
+ *
+ * @remarks
+ * A session never opens these: MCP clients carry keys. The old router token works here because boot imported it as a
+ * key.
+ */
+export function createApiKeyMiddleware(authHost: AuthHost, options: ApiKeyGuardOptions = {}): RequestHandler {
+  if (options.trustedNetwork === true) {
+    return (_req, _res, next) => next();
+  }
+  return credentialGuard(authHost, readKeyCaller, NEEDS_KEY);
+}
+
+/**
+ * Builds the guard for /admin/mcp, the router's own API as MCP tools: an API key or a session opens it, and
+ * permissions decide which tools each may call.
+ *
+ * @param authHost - Where the current auth instance is.
+ * @returns Middleware that answers a request with neither with 401, so an MCP client learns it needs a key.
+ */
+export function createCallerMiddleware(authHost: AuthHost): RequestHandler {
+  return credentialGuard(authHost, readCaller, NEEDS_KEY);
 }

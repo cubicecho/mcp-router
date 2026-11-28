@@ -1,12 +1,12 @@
-import type { ServerStatus } from '@mcp-router/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { InstalledServer } from '@/lib/api';
 import * as api from '@/lib/api';
 import { AddServerDialog } from '../add-server-dialog.tsx';
 
-function renderDialog(server?: ServerStatus) {
+function renderDialog(server?: InstalledServer) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
@@ -93,7 +93,7 @@ describe('AddServerDialog', () => {
 
   it('submits a pasted HTTP server as a streamable-http transport', async () => {
     const installSpy = vi.spyOn(api, 'installServer').mockResolvedValue({ config: { name: 'docs' } } as never);
-    vi.spyOn(api, 'checkServerOAuth').mockResolvedValue({ config: { name: 'docs' }, state: 'running' } as never);
+    vi.spyOn(api, 'checkServerOAuth').mockResolvedValue({ name: 'docs', state: 'RUNNING' } as never);
 
     renderDialog();
 
@@ -145,6 +145,7 @@ describe('AddServerDialog', () => {
     const installSpy = vi.spyOn(api, 'installServer');
 
     const server = {
+      id: '00000000-0000-4000-8000-000000000001',
       config: {
         name: 'my-server',
         enabled: true,
@@ -153,8 +154,9 @@ describe('AddServerDialog', () => {
         env: { API_KEY: 'old' },
         envMeta: {},
       },
-      state: 'running',
-    } as ServerStatus;
+      state: 'RUNNING',
+      oauth: null,
+    } as unknown as InstalledServer;
 
     renderDialog(server);
 

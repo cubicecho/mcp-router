@@ -1,34 +1,31 @@
-import { DiscoveredServerState, MS_PER_MINUTE, type RouterStatus } from '@mcp-router/shared';
+import { MS_PER_MINUTE } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { LanServerState } from '@/__generated__/graphql';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
+import { ApiKeysCard } from '@/components/domain/auth/api-keys-card';
+import { SignInCard } from '@/components/domain/auth/sign-in-card';
 import { DismissedServersCard } from '@/components/domain/discovery/dismissed-servers-card';
 import { LoadError } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
 import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Code, CodeBlock } from '@/components/ui/code';
+import { Code } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { RouterStatus } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
-import { useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
+import { useAuthConfig, useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** The `/settings` route. */
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
-
-const CONFIG_TREE = `config/
-├── settings.json        # port, auth token, auth enabled, idle timeout, network discovery
-├── registries.json      # { registries: [{ name, url }] }
-└── servers/
-    └── <name>.json      # one file per installed server`;
 
 /**
  * Inline editor for the default idle timeout, entered in minutes.
@@ -108,10 +105,10 @@ function isPublicUrl(text: string): boolean {
 /**
  * Inline editor for the router's public address, the one a remote server's login sends the browser back to.
  *
- * @param props.current - The stored address; undefined when unset.
+ * @param props.current - The stored address; null when unset.
  * @returns The form; Save is enabled only for a blank or valid URL that differs from the stored one. Blank clears it.
  */
-function PublicUrlEditor({ current }: { current?: string }) {
+function PublicUrlEditor({ current }: { current: string | null }) {
   const update = useUpdateSettings();
   const form = useAppForm({
     defaultValues: { url: current ?? '' },
@@ -195,7 +192,7 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
         <>
           <SettingRow
             title="Announce this router"
-            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs the token when auth is on.`}
+            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs an API key.`}
             actionSlot={({ titleId, descriptionId }) => (
               <Switch
                 checked={status.lanAdvertise}
@@ -230,18 +227,18 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
 }
 
 /**
- * The Settings page, in three tabs: the router's status and settings, network discovery with the dismissed servers,
- * and the config-file layout with a reload button.
+ * The Settings page, in five tabs: the router's status and settings, how the operator signs in, the API keys
+ * clients use, network discovery with the dismissed servers, and where the config is stored, with a reload button.
  *
  * @returns The page, opened on General.
  */
 function SettingsPage() {
   const status = useRouterStatus();
+  const authConfig = useAuthConfig();
+  const isTrustedNetwork = authConfig.data?.authConfig.trustedNetwork === true;
   const { data } = status;
   const discovery = useDiscovery();
-  const dismissed = (discovery.data?.servers ?? []).filter(
-    (server) => server.state === DiscoveredServerState.Dismissed,
-  );
+  const dismissed = (discovery.data?.servers ?? []).filter((server) => server.state === LanServerState.Dismissed);
   const reload = useReloadConfig();
   const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
 
@@ -261,6 +258,8 @@ function SettingsPage() {
         <Tabs defaultValue="general" className="py-4 md:py-6">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="sign-in">Sign-in</TabsTrigger>
+            <TabsTrigger value="api-keys">API keys</TabsTrigger>
             <TabsTrigger value="network">Network</TabsTrigger>
             <TabsTrigger value="config">Configuration</TabsTrigger>
           </TabsList>
@@ -283,19 +282,20 @@ function SettingsPage() {
                             <PropertyRow label="Port" value={port} />
                             <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
                             <PropertyRow
-                              label="Auth"
-                              value={
-                                data.authEnabled ? (
-                                  <Badge variant="positive">enabled</Badge>
-                                ) : (
-                                  <Badge variant="secondary">disabled</Badge>
-                                )
-                              }
+                              label="MCP clients"
+                              value={isTrustedNetwork ? 'Open on this network' : 'API key required'}
                               hint={
-                                <>
-                                  The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable or{' '}
-                                  <Code>settings.json</Code>; it protects <Code>/api/*</Code> and <Code>/mcp*</Code>.
-                                </>
+                                isTrustedNetwork ? (
+                                  <>
+                                    <Code>SECURE_LOCAL_NET</Code> is on, so <Code>/mcp*</Code> takes clients without a
+                                    key. A key from the API keys tab still works.
+                                  </>
+                                ) : (
+                                  <>
+                                    Each client sends a key from the API keys tab to <Code>/mcp*</Code>. Your sign-in
+                                    does not open it.
+                                  </>
+                                )
                               }
                             />
                           </>
@@ -317,6 +317,12 @@ function SettingsPage() {
               }
             />
           </TabsContent>
+          <TabsContent value="sign-in" className="pt-4">
+            <SignInCard />
+          </TabsContent>
+          <TabsContent value="api-keys" className="pt-4">
+            <ApiKeysCard />
+          </TabsContent>
           <TabsContent value="network" className="flex flex-col gap-6 pt-4">
             {data && <NetworkDiscoveryCard status={data} />}
             <DismissedServersCard servers={dismissed} loading={discovery.isPending} />
@@ -324,19 +330,19 @@ function SettingsPage() {
           <TabsContent value="config" className="pt-4">
             <CardLayout
               level={2}
-              title="Configuration files"
+              title="Configuration storage"
               description={
                 <>
-                  All configuration lives in flat, hand-editable JSON files under <Code>DATA_DIR/config</Code>:
+                  All configuration lives in the Postgres that <Code>DATABASE_URL</Code> names.
                 </>
               }
               contentClassName="flex flex-col gap-4"
               contentSlot={
                 <>
-                  <CodeBlock content={CONFIG_TREE} />
                   <p className="text-sm text-foreground/60">
-                    Files are watched for changes automatically. After hand-editing you can also trigger an explicit
-                    reload — it re-reads everything from disk and reconciles running servers.
+                    Change it from these pages, <Code>/graphql</Code> or the MCP tools at <Code>/admin/mcp</Code>. If
+                    something else writes to the database directly, reload — it re-reads everything from the database
+                    and reconciles running servers.
                   </p>
                   <div>
                     <Button

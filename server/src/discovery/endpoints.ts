@@ -1,6 +1,5 @@
 import { type AdvertisedEndpoint, airIdentifier, createServerCard, type KeyValueInput } from '@cubicecho/mcp-discovery';
 import { type ServerConfig, SourceType, type WorkspaceConfig } from '@mcp-router/shared';
-import { effectiveAuth } from '../auth/middleware.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 
@@ -30,10 +29,10 @@ const CARD_TEXT_MAX_LENGTH = 100;
 /** The path of the aggregate endpoint. */
 const AGGREGATE_PATH = '/mcp';
 
-/** The header a client must send when bearer auth is on; its value is never in the card. */
+/** The header every client must send; its value is never in the card. */
 const AUTH_HEADER: KeyValueInput = {
   name: 'Authorization',
-  description: 'Bearer <token>, the router token from settings.json or MCP_ROUTER_TOKEN',
+  description: "Bearer <key>: an API key made in the router's Settings (x-api-key works too)",
   isRequired: true,
   isSecret: true,
 };
@@ -107,7 +106,7 @@ function workspaceEndpoint(workspace: WorkspaceConfig): EndpointCard {
 export function discoveryEndpoints(store: ConfigStore): AdvertisedEndpoint[] {
   const settings = store.getSettings();
   const instance = settings.instanceId ?? 'router';
-  const headers = effectiveAuth(settings).enabled ? [AUTH_HEADER] : [];
+  const headers = [AUTH_HEADER];
   const aggregate: EndpointCard = {
     path: AGGREGATE_PATH,
     name: 'aggregate',

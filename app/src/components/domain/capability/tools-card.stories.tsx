@@ -5,15 +5,18 @@ import { toolCallResult, toolsResponse } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { ToolsCard } from './tools-card.tsx';
 
-const LIST = 'GET /api/servers/filesystem/tools';
-const CALL = 'POST /api/servers/filesystem/tools/call';
+const LIST = 'ServerTools';
+const CALL = 'CallServerTool';
 /** The first load and the one retry. */
 const LOADS_AFTER_RETRY = 2;
+
+/** The fixture tools, as `serverTools` answers them. */
+const TOOLS = { serverTools: toolsResponse() };
 
 const meta = {
   component: ToolsCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: toolsResponse(), [CALL]: toolCallResult() } },
+  parameters: { api: { [LIST]: TOOLS, [CALL]: { callServerTool: toolCallResult() } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -52,9 +55,11 @@ export const ListsTheToolsOfAWorkspace: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
   parameters: {
     api: {
-      'GET /api/workspaces/research/tools': toolsResponse({
-        tools: [{ name: 'filesystem__read_file', description: 'Read one file.' }],
-      }),
+      WorkspaceTools: {
+        workspaceTools: toolsResponse()
+          .map((tool) => ({ ...tool, name: `filesystem__${tool.name}` }))
+          .slice(0, 1),
+      },
     },
   },
   play: async ({ canvasElement }) => {
@@ -78,7 +83,11 @@ export const RunsAToolAndShowsItsResult: Story = {
     await typeArguments(box, '{{"path":"/tmp/notes.txt"}');
     await userEvent.click(canvas.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(CALL, { name: 'read_file', arguments: { path: '/tmp/notes.txt' } }),
+      expect(apiRequest).toHaveBeenCalledWith(CALL, {
+        name: 'filesystem',
+        tool: 'read_file',
+        arguments: { path: '/tmp/notes.txt' },
+      }),
     );
     await expect(await canvas.findByText('Result')).toBeVisible();
     await expect(canvas.getByText(/hello from notes.txt/)).toBeVisible();
@@ -86,7 +95,7 @@ export const RunsAToolAndShowsItsResult: Story = {
 };
 
 export const ShowsProgressWhileAToolRuns: Story = {
-  parameters: { api: { [LIST]: toolsResponse(), [CALL]: pending() } },
+  parameters: { api: { [LIST]: TOOLS, [CALL]: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await openTool(canvasElement, /list_files/);
@@ -99,8 +108,10 @@ export const ShowsProgressWhileAToolRuns: Story = {
 export const MarksAResultTheToolCalledAnError: Story = {
   parameters: {
     api: {
-      [LIST]: toolsResponse(),
-      [CALL]: toolCallResult({ isError: true, content: [{ type: 'text', text: 'ENOENT: no such file' }] }),
+      [LIST]: TOOLS,
+      [CALL]: {
+        callServerTool: toolCallResult({ isError: true, content: [{ type: 'text', text: 'ENOENT: no such file' }] }),
+      },
     },
   },
   play: async ({ canvasElement }) => {
@@ -137,7 +148,7 @@ export const RefusesArgumentsThatAreNotJson: Story = {
 export const SaysWhyACallFailed: Story = {
   parameters: {
     api: {
-      [LIST]: toolsResponse(),
+      [LIST]: TOOLS,
       [CALL]: apiError(HttpStatus.BadGateway, ErrorCode.UpstreamFailed, 'Tool call failed', 'The server exited.'),
     },
   },
@@ -163,7 +174,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoTools: Story = {
-  parameters: { api: { [LIST]: toolsResponse({ tools: [] }) } },
+  parameters: { api: { [LIST]: { serverTools: toolsResponse([]) } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText('No tools reported.')).toBeVisible();
   },

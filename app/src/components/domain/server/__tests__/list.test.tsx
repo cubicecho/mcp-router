@@ -1,4 +1,3 @@
-import type { ServerStatus } from '@mcp-router/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import {
   createMemoryHistory,
@@ -13,10 +12,22 @@ import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event'
 import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { InstalledServer, McpTool } from '@/lib/api';
 import * as api from '@/lib/api';
 import { ServerList } from '../list.tsx';
 
-const server: ServerStatus = {
+/** A tool with only its name set. */
+const tool = (name: string): McpTool => ({
+  name,
+  title: null,
+  description: null,
+  inputSchema: null,
+  outputSchema: null,
+  annotations: null,
+});
+
+const server = {
+  id: '00000000-0000-4000-8000-000000000001',
   config: {
     name: 'my-server',
     enabled: true,
@@ -25,9 +36,15 @@ const server: ServerStatus = {
     env: {},
     envMeta: {},
   },
-  state: 'running',
+  state: 'RUNNING',
+  pid: null,
+  startedAt: null,
+  lastError: null,
   toolCount: 0,
-} as ServerStatus;
+  callCount: null,
+  lastCalledAt: null,
+  oauth: null,
+} as InstalledServer;
 
 function renderList() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
@@ -61,10 +78,7 @@ describe('ServerList row actions menu', () => {
 
   it('lists the downstream tools when clicked and reports the count', async () => {
     const toolsSpy = vi.spyOn(api, 'getTools').mockResolvedValue({
-      tools: [
-        { name: 'echo', description: '' },
-        { name: 'add', description: '' },
-      ],
+      tools: [tool('echo'), tool('add')],
     });
 
     const successSpy = vi.spyOn(toast, 'success').mockImplementation(() => '');

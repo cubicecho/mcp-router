@@ -1,29 +1,39 @@
-import type { ServerStatus, WorkspaceStatus } from '@mcp-router/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import type { InstalledServer, WorkspaceView } from '@/lib/api';
 import * as api from '@/lib/api';
 import { WorkspaceDialog } from '../workspace-dialog.tsx';
 
 // Dotted names on purpose: they are legal server names, and a form path would split on them.
+const ECHO_ID = '00000000-0000-4000-8000-000000000001';
+const REMOTE_ID = '00000000-0000-4000-8000-000000000002';
 const SERVERS = [
-  { config: { name: 'io.github.echo', transport: { type: 'stdio', command: 'node', args: [] } }, state: 'stopped' },
   {
-    config: { name: 'acme.remote', transport: { type: 'streamable-http', url: 'https://acme.test/mcp', headers: {} } },
-    state: 'stopped',
+    id: ECHO_ID,
+    config: { name: 'io.github.echo', transport: { type: 'stdio', command: 'node', args: [] } },
+    state: 'STOPPED',
   },
-] as unknown as ServerStatus[];
+  {
+    id: REMOTE_ID,
+    config: { name: 'acme.remote', transport: { type: 'streamable-http', url: 'https://acme.test/mcp', headers: {} } },
+    state: 'STOPPED',
+  },
+] as unknown as InstalledServer[];
 
+const WORKSPACE_ID = '00000000-0000-4000-8000-0000000000a1';
 const WORKSPACE = {
+  id: WORKSPACE_ID,
   name: 'Acme',
   slug: 'acme',
   enabled: true,
+  description: null,
   path: '/mcp/w/acme',
-  members: { 'io.github.echo': { enabled: true, env: { API_KEY: 'one' } } },
-} as unknown as WorkspaceStatus;
+  members: { 'io.github.echo': { enabled: true, env: { API_KEY: 'one' }, serverId: ECHO_ID } },
+} as WorkspaceView;
 
-function renderDialog(workspace?: WorkspaceStatus) {
+function renderDialog(workspace?: WorkspaceView) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const onOpenChange = vi.fn();
   render(
@@ -42,7 +52,7 @@ describe('WorkspaceDialog', () => {
 
   it('creates a workspace from the switched-on servers and their overrides', async () => {
     const user = userEvent.setup();
-    const createSpy = vi.spyOn(api, 'createWorkspace').mockResolvedValue({ name: 'Backend' } as never);
+    const createSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue({ name: 'Backend' } as never);
     const onOpenChange = renderDialog();
 
     await user.type(screen.getByLabelText(/^Workspace name/), 'Backend');
@@ -64,18 +74,18 @@ describe('WorkspaceDialog', () => {
     expect(createSpy).toHaveBeenCalledWith({
       name: 'Backend',
       enabled: true,
-      description: undefined,
-      members: {
-        'io.github.echo': { enabled: true, env: { API_KEY: 'two' } },
-        'acme.remote': { enabled: true, url: 'https://acme.test/mcp/team' },
-      },
+      description: null,
+      members: [
+        { serverId: ECHO_ID, enabled: true, env: { API_KEY: 'two' } },
+        { serverId: REMOTE_ID, enabled: true, url: 'https://acme.test/mcp/team' },
+      ],
     });
     expect(onOpenChange).toHaveBeenCalledWith(false);
   });
 
   it('prefills an existing workspace and drops a member that is switched off', async () => {
     const user = userEvent.setup();
-    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({ name: 'Acme' } as never);
+    const updateSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue({ name: 'Acme' } as never);
     renderDialog(WORKSPACE);
 
     const echo = await screen.findByRole('switch', { name: 'Include io.github.echo' });
@@ -87,32 +97,36 @@ describe('WorkspaceDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith('acme', {
+    expect(updateSpy).toHaveBeenCalledWith({
+      id: WORKSPACE_ID,
+      slug: 'acme',
       name: 'Acme',
       enabled: true,
-      description: '',
-      members: {},
+      description: null,
+      members: [],
     });
   });
 
   it('keeps a member that is switched off on the workspace page, with its overrides', async () => {
     const user = userEvent.setup();
-    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({ name: 'Acme' } as never);
-    const members = { 'io.github.echo': { enabled: false, env: { API_KEY: 'one' } } };
-    renderDialog({ ...WORKSPACE, members } as unknown as WorkspaceStatus);
+    const updateSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue({ name: 'Acme' } as never);
+    const members = { 'io.github.echo': { enabled: false, env: { API_KEY: 'one' }, serverId: ECHO_ID } };
+    renderDialog({ ...WORKSPACE, members });
 
     expect(await screen.findByRole('switch', { name: 'Include io.github.echo' })).toBeChecked();
     expect(screen.getByText('disabled')).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith('acme', expect.objectContaining({ members }));
+    expect(updateSpy).toHaveBeenCalledWith(
+      expect.objectContaining({ members: [{ serverId: ECHO_ID, enabled: false, env: { API_KEY: 'one' } }] }),
+    );
   });
 
-  it('sends an emptied description so the server clears it, and reports the saved workspace', async () => {
+  it('sends an emptied description as null so the server clears it, and reports the saved workspace', async () => {
     const user = userEvent.setup();
     const saved = { name: 'Acme', slug: 'acme' };
-    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue(saved as never);
+    const updateSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue(saved as never);
     const onSaved = vi.fn();
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
@@ -121,7 +135,7 @@ describe('WorkspaceDialog', () => {
           open
           onOpenChange={vi.fn()}
           onSaved={onSaved}
-          workspace={{ ...WORKSPACE, description: 'Team servers' } as WorkspaceStatus}
+          workspace={{ ...WORKSPACE, description: 'Team servers' }}
         />
       </QueryClientProvider>,
     );
@@ -131,23 +145,30 @@ describe('WorkspaceDialog', () => {
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith('acme', expect.objectContaining({ description: '' }));
+    expect(updateSpy).toHaveBeenCalledWith(expect.objectContaining({ description: null }));
     await waitFor(() => expect(onSaved).toHaveBeenCalledWith(saved));
   });
 
   // The members to save are rebuilt from the installed-server list, so a save made before that list has
-  // loaded (or while it is failing) must not send one: an empty list would empty the workspace.
-  it('leaves the members alone when saved before the server list has loaded', async () => {
+  // loaded (or while it is failing) must resend the ones the workspace has: an empty list would empty it.
+  it('keeps the members it has when saved before the server list has loaded', async () => {
     const user = userEvent.setup();
     vi.spyOn(api, 'listServers').mockReturnValue(new Promise(() => {}));
-    const updateSpy = vi.spyOn(api, 'updateWorkspace').mockResolvedValue({ name: 'Acme' } as never);
+    const updateSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue({ name: 'Acme' } as never);
     renderDialog(WORKSPACE);
 
     await user.type(screen.getByLabelText('Description (optional)'), 'Team servers');
     await user.click(screen.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() => expect(updateSpy).toHaveBeenCalledTimes(1));
-    expect(updateSpy).toHaveBeenCalledWith('acme', { name: 'Acme', enabled: true, description: 'Team servers' });
+    expect(updateSpy).toHaveBeenCalledWith({
+      id: WORKSPACE_ID,
+      slug: 'acme',
+      name: 'Acme',
+      enabled: true,
+      description: 'Team servers',
+      members: [{ serverId: ECHO_ID, enabled: true, env: { API_KEY: 'one' } }],
+    });
   });
 
   it('does not report an empty server list while it is still loading', () => {
@@ -159,7 +180,7 @@ describe('WorkspaceDialog', () => {
 
   it('does not submit a name that produces no slug', async () => {
     const user = userEvent.setup();
-    const createSpy = vi.spyOn(api, 'createWorkspace').mockResolvedValue({ name: 'x' } as never);
+    const createSpy = vi.spyOn(api, 'saveWorkspace').mockResolvedValue({ name: 'x' } as never);
     renderDialog();
 
     await user.type(screen.getByLabelText(/^Workspace name/), '!!!');

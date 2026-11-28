@@ -1,86 +1,73 @@
 # syntax=docker/dockerfile:1
 
-# ── Stage 1: build ────────────────────────────────────────────────────────────
-# Full node image (matches engines >=22.18); builds shared/server/app workspaces.
-# Runs on the build machine's own platform even for a multi-arch build: its
-# output (server/dist, app/dist) is plain JS, so only the runtime stage below
-# needs to run under emulation for another architecture.
+# Builds the web UI. The server isn't compiled: its sources are the build output.
+# Runs on the build machine's own platform even for a multi-arch build, since
+# app/dist is the same static files on every one.
 FROM --platform=$BUILDPLATFORM node:26-slim AS builder
-
 WORKDIR /app
 
-# Copy workspace manifests first so the dependency layer caches independently
-# of source changes.
+# Workspace manifests first, so the dependency layer caches apart from the source.
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 COPY app/package.json ./app/
-
 RUN npm ci
 
-# Copy the rest of the source (.dockerignore excludes node_modules, data, dist, .git)
 COPY . .
-
-# shared typecheck → server tsc (server/dist) → app vite build (app/dist)
 RUN npm run build
 
-# ── Stage 2: runtime ──────────────────────────────────────────────────────────
-# Deliberately a full node image, NOT distroless/alpine-minimal: the router
-# installs MCP server packages at runtime via `npm install --prefix
-# /data/servers/<name>` and spawns them with node/npx, so npm + node must be on
-# PATH and the container needs network access to registry.npmjs.org.
-FROM node:26-slim
+# Optional: docker build --target test
+FROM builder AS test
+CMD ["npm", "test"]
 
+# Deliberately a full node image, not distroless: the router installs MCP
+# server packages at runtime (`npm install --prefix /data/servers/<name>`) and
+# spawns them with node/npx, so npm and node must be on PATH.
+FROM node:26-slim AS runtime
 WORKDIR /app
 
-# uv/uvx for PyPI-based MCP servers: the router spawns Python servers as
-# `uvx <package>`, so the uv binary must be on PATH. uv fetches its own managed
-# Python on demand — no system Python needed. Copy the static binaries straight
-# from the official image (no curl/network at build time).
+# uv and uvx, for servers from PyPI: the router spawns them as `uvx <package>`.
+# uv fetches its own Python on demand, so no system Python is needed.
 COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
-# Persist uv's package cache and downloaded interpreters on the /data volume so
-# they survive container restarts instead of re-downloading on every cold spawn.
-# manager.ts allowlists these vars so they reach the spawned uvx children.
-ENV UV_CACHE_DIR=/data/uv/cache
-ENV UV_PYTHON_INSTALL_DIR=/data/uv/python
 
-# Workspace manifests + production dependencies. `npm ci --omit=dev` also
-# creates the node_modules/@mcp-router/shared → ../../shared workspace symlink
-# that the server needs at runtime (see below).
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY server/package.json ./server/
 COPY app/package.json ./app/
-
+# Also links node_modules/@mcp-router/shared to ../../shared, which the server imports.
 RUN npm ci --omit=dev && npm cache clean --force
 
-# NOTE: @mcp-router/shared is a source-only TS package — its package.json
-# exports point at ./src/index.ts, and server's tsc build compiles only
-# server/src, leaving `import ... from '@mcp-router/shared'` in server/dist as
-# a bare specifier. At runtime Node resolves it through the workspace symlink
-# to /app/shared/src/index.ts (outside node_modules after realpath), which
-# Node >=23.6 (and thus 26) type-strips natively — so `node server/dist/index.js`
-# works with no flags as long as shared/ source is present. If the server build
-# ever changes to bundle shared, this COPY becomes harmless dead weight; if
-# type stripping ever fails here, switch CMD to a tsx-based start script.
-COPY shared ./shared
-
-COPY --from=builder /app/server/dist ./server/dist
+# @mcp-router/shared's exports point at its .ts sources. Node resolves the
+# workspace link to /app/shared/src, outside node_modules, so it strips the
+# types there as it does for the server's own files.
+COPY shared/src ./shared/src
+COPY server/src ./server/src
+# The committed migrations, applied on boot.
+COPY server/drizzle ./server/drizzle
 COPY --from=builder /app/app/dist ./app/dist
 
 ENV NODE_ENV=production
-# Config, per-server npm install prefixes, and logs all live under /data —
-# mount a volume here to persist them.
+ENV PORT=3000
+# The installed servers' packages, caches and logs live under /data. The config is in the
+# Postgres that DATABASE_URL names, which must be set at run time.
 ENV DATA_DIR=/data
-
-RUN mkdir -p /data
-
+# uv's cache and the Pythons it downloads persist on the volume, so a cold
+# spawn doesn't fetch them again. agent-mcp-pool passes both to uvx children.
+ENV UV_CACHE_DIR=/data/uv/cache
+ENV UV_PYTHON_INSTALL_DIR=/data/uv/python
+# Created and owned by node before VOLUME: a new named volume is seeded from
+# it, ownership included, so the first boot as node can write there.
+# npm's cache and npx's go to /home/node/.npm, which the base image gives node.
+RUN mkdir -p /data && chown node:node /data
 VOLUME /data
-
 EXPOSE 3000
+USER node
 
 # /healthz needs no token and answers 200 once the server is listening.
 HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
-  CMD node -e 'fetch("http://localhost:" + (process.env.PORT || 3000) + "/healthz").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))'
+  CMD node -e "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))"
 
-CMD ["node", "server/dist/index.js"]
+# No --preserve-symlinks: it would resolve @mcp-router/shared to its path
+# inside node_modules, and Node refuses to strip types from anything under there.
+# Exec form, so node is PID 1 and gets SIGTERM itself.
+CMD ["node", "server/src/index.ts"]

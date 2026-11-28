@@ -1,10 +1,20 @@
-import { ErrorCode, HttpStatus, ServerRuntimeState } from '@mcp-router/shared';
+import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, capabilities, needsSignInServer, signedInServer, stdioServer } from '@/storybook/fixtures';
+import { ServerRuntimeState } from '@/__generated__/graphql';
+import type { InstalledServer } from '@/lib/api';
+import {
+  appRoutes,
+  capabilities,
+  FILESYSTEM_ID,
+  needsSignInServer,
+  serverAnswer,
+  serverRow,
+  serverRuntime,
+  signedInServer,
+  stdioServer,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
-
-const SERVER_ROUTE = '/api/servers/filesystem';
 
 const meta = {
   title: 'routes/servers-name',
@@ -40,7 +50,7 @@ export const ShowsARemoteServerWithoutAnEnvironment: Story = {
 };
 
 export const WhileLoading: Story = {
-  parameters: { api: { ...appRoutes(), [`GET ${SERVER_ROUTE}`]: pending() } },
+  parameters: { api: { ...appRoutes(), Server: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // The title's bar is the only loading state: the body draws no placeholder rows under it.
@@ -52,19 +62,29 @@ export const WhileLoading: Story = {
 };
 
 export const WhenTheServerDoesNotExist: Story = {
+  parameters: { route: '/servers/missing', api: { ...appRoutes(), Server: serverAnswer(null) } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Server not found' })).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'missing' })).toBeVisible();
+    // The page's back button and the empty state's own way back both lead to the list.
+    await expect(canvas.getAllByRole('link', { name: 'Back to servers' })).toHaveLength(2);
+    await expect(canvas.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
+  },
+};
+
+export const WhenTheServerFailsToLoad: Story = {
   parameters: {
-    route: '/servers/missing',
     api: {
       ...appRoutes(),
-      'GET /api/servers/missing': apiError(HttpStatus.NotFound, ErrorCode.NotFound, 'Server "missing" not found'),
+      Server: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'The router could not read its servers'),
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const alert = within(await canvas.findByRole('alert'));
     await expect(alert.getByText('Could not load server')).toBeVisible();
-    await expect(alert.getByText('Server "missing" not found')).toBeVisible();
-    await expect(canvas.getByRole('heading', { name: 'missing' })).toBeVisible();
+    await expect(alert.getByText('The router could not read its servers')).toBeVisible();
     await expect(canvas.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
   },
 };
@@ -73,7 +93,7 @@ export const ShowsWhyTheServerFailed: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`GET ${SERVER_ROUTE}`]: stdioServer({ state: ServerRuntimeState.Error, lastError: 'spawn node ENOENT' }),
+      Server: serverAnswer(stdioServer({ state: ServerRuntimeState.Error, lastError: 'spawn node ENOENT' })),
     },
   },
   play: async ({ canvasElement }) => {
@@ -87,17 +107,16 @@ export const DisablesTheServer: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`PATCH ${SERVER_ROUTE}`]: stdioServer({
-        config: { ...stdioServer().config, enabled: false },
-        state: ServerRuntimeState.Stopped,
-      }),
+      UpdateServer: { updateServer: serverRow(stdioServer({ config: { ...stdioServer().config, enabled: false } })) },
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('switch', { name: 'Enabled' }));
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`PATCH ${SERVER_ROUTE}`, { enabled: false }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith('UpdateServer', { name: 'filesystem', input: { enabled: false } }),
+    );
     await waitFor(() =>
       expect(within(canvasElement.ownerDocument.body).getByText('Disabled filesystem')).toBeVisible(),
     );
@@ -108,11 +127,10 @@ export const EnablesADisabledServer: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`GET ${SERVER_ROUTE}`]: stdioServer({
-        config: { ...stdioServer().config, enabled: false },
-        state: ServerRuntimeState.Stopped,
-      }),
-      [`PATCH ${SERVER_ROUTE}`]: stdioServer(),
+      Server: serverAnswer(
+        stdioServer({ config: { ...stdioServer().config, enabled: false }, state: ServerRuntimeState.Stopped }),
+      ),
+      UpdateServer: { updateServer: serverRow(stdioServer()) },
     },
   },
   play: async ({ canvasElement }) => {
@@ -121,18 +139,20 @@ export const EnablesADisabledServer: Story = {
     await expect(toggle).not.toBeChecked();
     await userEvent.click(toggle);
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`PATCH ${SERVER_ROUTE}`, { enabled: true }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith('UpdateServer', { name: 'filesystem', input: { enabled: true } }),
+    );
     await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Enabled filesystem')).toBeVisible());
   },
 };
 
 export const RestartsTheServer: Story = {
-  parameters: { api: { ...appRoutes(), [`POST ${SERVER_ROUTE}/restart`]: stdioServer() } },
+  parameters: { api: { ...appRoutes(), RestartServer: { restartServer: serverRuntime(stdioServer()) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: 'Restart' }));
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`POST ${SERVER_ROUTE}/restart`, undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('RestartServer', { name: 'filesystem' }));
     await waitFor(() =>
       expect(within(canvasElement.ownerDocument.body).getByText('Restarted filesystem')).toBeVisible(),
     );
@@ -143,7 +163,7 @@ export const WhenTheRestartFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`POST ${SERVER_ROUTE}/restart`]: apiError(
+      RestartServer: apiError(
         HttpStatus.BadGateway,
         ErrorCode.UpstreamFailed,
         'Failed to connect to server "filesystem"',
@@ -165,9 +185,9 @@ export const SavesTheEnvironment: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`PATCH ${SERVER_ROUTE}`]: stdioServer({
-        config: { ...stdioServer().config, env: { ROOT_DIR: '/srv/files' } },
-      }),
+      UpdateServer: {
+        updateServer: serverRow(stdioServer({ config: { ...stdioServer().config, env: { ROOT_DIR: '/srv/files' } } })),
+      },
     },
   },
   play: async ({ canvasElement }) => {
@@ -178,7 +198,10 @@ export const SavesTheEnvironment: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(`PATCH ${SERVER_ROUTE}`, { env: { ROOT_DIR: '/srv/files' } }),
+      expect(apiRequest).toHaveBeenCalledWith('UpdateServer', {
+        name: 'filesystem',
+        input: { env: { ROOT_DIR: '/srv/files' } },
+      }),
     );
     const body = within(canvasElement.ownerDocument.body);
     await waitFor(() => expect(body.getByText('Environment saved')).toBeVisible());
@@ -202,16 +225,16 @@ export const OpensTheEditDialog: Story = {
 };
 
 export const DeletesOnlyAfterConfirming: Story = {
-  parameters: { api: { ...appRoutes(), [`DELETE ${SERVER_ROUTE}`]: null } },
+  parameters: { api: { ...appRoutes(), DeleteServer: { deleteServer: { id: FILESYSTEM_ID } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(await canvas.findByRole('button', { name: 'Delete filesystem' }));
     const dialog = within(await body.findByRole('alertdialog', { name: 'Delete filesystem?' }));
-    await expect(apiRequest).not.toHaveBeenCalledWith(`DELETE ${SERVER_ROUTE}`, undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith('DeleteServer', { name: 'filesystem' });
 
     await userEvent.click(dialog.getByRole('button', { name: 'Delete' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`DELETE ${SERVER_ROUTE}`, undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DeleteServer', { name: 'filesystem' }));
     await waitFor(() => expect(body.getByText('Deleted filesystem')).toBeVisible());
     // A deleted server has no page: the app goes back to the list.
     await expect(await canvas.findByRole('heading', { name: 'Servers' })).toBeVisible();
@@ -227,10 +250,8 @@ export const GoesBackToTheServers: Story = {
   },
 };
 
-const HA_ROUTE = '/api/servers/home-assistant';
-
-/** The app's routes plus one OAuth-protected server, answering its listings as `status` would. */
-function haRoutes(status: ReturnType<typeof signedInServer>) {
+/** The app's answers plus one OAuth-protected server, answering its listings as `status` would. */
+function haRoutes(status: InstalledServer) {
   const refused = apiError(
     HttpStatus.BadGateway,
     ErrorCode.UpstreamFailed,
@@ -240,11 +261,11 @@ function haRoutes(status: ReturnType<typeof signedInServer>) {
   const signedIn = status.oauth?.signedIn === true;
   return {
     ...appRoutes(),
-    [`GET ${HA_ROUTE}`]: status,
-    [`GET ${HA_ROUTE}/tools`]: signedIn ? capabilities.tools : refused,
-    [`GET ${HA_ROUTE}/resources`]: signedIn ? capabilities.resources : refused,
-    [`GET ${HA_ROUTE}/prompts`]: signedIn ? capabilities.prompts : refused,
-    [`GET ${HA_ROUTE}/activity`]: { entries: [] },
+    Server: serverAnswer(status),
+    ServerTools: signedIn ? { serverTools: capabilities.tools } : refused,
+    ServerResources: signedIn ? { serverResources: capabilities.resources } : refused,
+    ServerPrompts: signedIn ? { serverPrompts: capabilities.prompts } : refused,
+    ServerActivity: { serverActivity: [] },
   };
 }
 
@@ -262,7 +283,10 @@ export const AsksToSignInWhereTheServerWantsALogin: Story = {
 export const SignsOutOnlyAfterConfirming: Story = {
   parameters: {
     route: '/servers/home-assistant',
-    api: { ...haRoutes(signedInServer()), [`DELETE ${HA_ROUTE}/oauth`]: needsSignInServer() },
+    api: {
+      ...haRoutes(signedInServer()),
+      SignOutServerOAuth: { signOutServerOAuth: serverRuntime(needsSignInServer()) },
+    },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -270,9 +294,9 @@ export const SignsOutOnlyAfterConfirming: Story = {
     await expect(canvas.queryByText('Sign in required')).not.toBeInTheDocument();
 
     await userEvent.click(canvas.getByRole('button', { name: 'Sign out of home-assistant' }));
-    await expect(apiRequest).not.toHaveBeenCalledWith(`DELETE ${HA_ROUTE}/oauth`, undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith('SignOutServerOAuth', { name: 'home-assistant' });
     const dialog = within(await within(canvasElement.ownerDocument.body).findByRole('alertdialog'));
     await userEvent.click(dialog.getByRole('button', { name: /sign out/i }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`DELETE ${HA_ROUTE}/oauth`, undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('SignOutServerOAuth', { name: 'home-assistant' }));
   },
 };

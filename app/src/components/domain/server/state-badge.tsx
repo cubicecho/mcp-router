@@ -1,4 +1,4 @@
-import { ServerRuntimeState } from '@mcp-router/shared';
+import { ServerRuntimeState } from '@/__generated__/graphql';
 import { Badge, type BadgeVariant } from '@/components/ui/badge';
 import { Spinner } from '@/components/ui/spinner';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -11,10 +11,14 @@ const STATE_VARIANTS = {
   [ServerRuntimeState.NeedsAuth]: 'warning',
 } as const satisfies Record<ServerRuntimeState, BadgeVariant>;
 
-/** What each state reads as, where the wire value is not already plain words. */
-const STATE_LABELS: Partial<Record<ServerRuntimeState, string>> = {
+/** What each state reads as. */
+const STATE_LABELS = {
+  [ServerRuntimeState.Stopped]: 'stopped',
+  [ServerRuntimeState.Starting]: 'starting',
+  [ServerRuntimeState.Running]: 'running',
+  [ServerRuntimeState.Error]: 'error',
   [ServerRuntimeState.NeedsAuth]: 'needs sign-in',
-};
+} as const satisfies Record<ServerRuntimeState, string>;
 
 /**
  * Badge naming a server's runtime state, coloured by it.
@@ -23,11 +27,11 @@ const STATE_LABELS: Partial<Record<ServerRuntimeState, string>> = {
  * @param [props.lastError] - Shown as a tooltip, in the error state only.
  * @returns The badge.
  */
-export function ServerStateBadge({ state, lastError }: { state: ServerRuntimeState; lastError?: string }) {
+export function ServerStateBadge({ state, lastError }: { state: ServerRuntimeState; lastError?: string | null }) {
   const badge = (
     <Badge variant={STATE_VARIANTS[state]}>
       {state === ServerRuntimeState.Starting && <Spinner label="Starting" className="size-3" />}
-      {STATE_LABELS[state] ?? state}
+      {STATE_LABELS[state]}
     </Badge>
   );
 

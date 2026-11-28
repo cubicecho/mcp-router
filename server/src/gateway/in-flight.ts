@@ -4,7 +4,7 @@ import { streamOf } from './standalone-stream.ts';
 
 /** One request the router has running on an instance, and the session it runs for. */
 export interface RunningRequest {
-  /** The upstream session's proxy server; absent for the router's own requests (the REST API, a closing session). */
+  /** The upstream session's proxy server; absent for the router's own requests (the management API, a closing session). */
   session?: Server;
   /** Aborts once the request settles, so whatever is waiting on its behalf stops waiting. */
   settled: AbortSignal;

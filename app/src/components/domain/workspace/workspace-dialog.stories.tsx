@@ -1,20 +1,36 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { remoteServer, routerStatus, stdioServer, workspace } from '@/storybook/fixtures';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
+import {
+  DOCS_ID,
+  FILESYSTEM_ID,
+  RESEARCH_ID,
+  remoteServer,
+  routerStatus,
+  serversAnswer,
+  stdioServer,
+  workspace,
+  workspaceRecord,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { WorkspaceDialog } from './workspace-dialog.tsx';
 
-const SERVERS_ROUTE = 'GET /api/servers';
-const CREATE_ROUTE = 'POST /api/workspaces';
-const UPDATE_ROUTE = 'PATCH /api/workspaces/research';
+/** Creating and editing are one operation: an input with an `id` replaces that workspace. */
+const SAVE = 'SaveWorkspace';
 const ENV_OVERRIDES = 'Env overrides (KEY=VALUE per line)';
+const MEMBER_LIMIT = PAGE_DEFAULTS.workspaceMembers;
+
+const BACKEND = workspace({ id: '00000000-0000-4000-8000-0000000000a3', name: 'Backend', slug: 'backend' });
 
 const routes = {
-  [SERVERS_ROUTE]: [stdioServer(), remoteServer()],
-  'GET /api/status': routerStatus(),
-  [CREATE_ROUTE]: workspace({ name: 'Backend', slug: 'backend', path: '/mcp/w/backend' }),
-  [UPDATE_ROUTE]: workspace(),
+  Servers: serversAnswer([stdioServer(), remoteServer()]),
+  RouterStatus: { routerStatus: routerStatus() },
+  // A function, so a create answers with the new workspace and an edit with the one it replaced.
+  [SAVE]: ({ body }: { body: unknown }) => {
+    const input = (body as { input?: { id?: string } } | undefined)?.input;
+    return { saveWorkspace: workspaceRecord(input?.id === RESEARCH_ID ? workspace() : BACKEND) };
+  },
 };
 
 const meta = {
@@ -53,11 +69,14 @@ export const CreatesAWorkspaceFromTheChosenServers: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Create workspace' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(CREATE_ROUTE, {
-        name: 'Backend',
-        enabled: true,
-        description: 'Team servers',
-        members: { filesystem: { enabled: true, env: { ROOT_DIR: '/srv/backend' } } },
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        input: {
+          name: 'Backend',
+          enabled: true,
+          description: 'Team servers',
+          members: [{ serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/backend' } }],
+        },
+        memberLimit: MEMBER_LIMIT,
       }),
     );
     await waitFor(() => expect(body.getByText('Created workspace Backend')).toBeVisible());
@@ -79,10 +98,14 @@ export const SavesAUrlOverrideOnlyOnceItDiffers: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Create workspace' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(CREATE_ROUTE, {
-        name: 'Backend',
-        enabled: true,
-        members: { docs: { enabled: true, url: 'https://docs.example.test/mcp/team' } },
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        input: {
+          name: 'Backend',
+          enabled: true,
+          description: null,
+          members: [{ serverId: DOCS_ID, enabled: true, url: 'https://docs.example.test/mcp/team' }],
+        },
+        memberLimit: MEMBER_LIMIT,
       }),
     );
   },
@@ -97,13 +120,13 @@ export const RejectsANameThatMakesNoUrl: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Create workspace' }));
     await expect(await dialog.findByText('Enter a workspace name that produces a valid URL slug')).toBeVisible();
     await expect(name).toBeInvalid();
-    await expect(apiRequest).not.toHaveBeenCalledWith(CREATE_ROUTE, expect.anything());
+    await expect(apiRequest).not.toHaveBeenCalledWith(SAVE, expect.anything());
     await expect(args.onOpenChange).not.toHaveBeenCalled();
   },
 };
 
 export const WithNoServersInstalled: Story = {
-  parameters: { api: { ...routes, [SERVERS_ROUTE]: [] } },
+  parameters: { api: { ...routes, Servers: serversAnswer([]) } },
   play: async ({ canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('dialog', { name: 'New workspace' }));
@@ -130,14 +153,19 @@ export const EditsAnExistingWorkspace: Story = {
 
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
-        name: 'Research',
-        enabled: true,
-        description: 'Files and docs for the research agent.',
-        members: {
-          filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } },
-          docs: { enabled: false },
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        input: {
+          id: RESEARCH_ID,
+          slug: 'research',
+          name: 'Research',
+          enabled: true,
+          description: 'Files and docs for the research agent.',
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: false },
+          ],
         },
+        memberLimit: MEMBER_LIMIT,
       }),
     );
     await waitFor(() => expect(body.getByText('Saved workspace Research')).toBeVisible());
@@ -153,9 +181,12 @@ export const ClearsTheDescription: Story = {
     await dialog.findByRole('switch', { name: 'Include filesystem' });
     await userEvent.clear(dialog.getByRole('textbox', { name: /^Description/ }));
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
-    // Sent empty rather than left out, which the server would read as "keep the old one".
+    // Sent as null rather than left out: saving replaces the workspace, so the old description is cleared.
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, expect.objectContaining({ description: '' })),
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        input: expect.objectContaining({ id: RESEARCH_ID, description: null }),
+        memberLimit: MEMBER_LIMIT,
+      }),
     );
   },
 };
@@ -186,7 +217,7 @@ export const ShowsWhyTheServerRefused: Story = {
   parameters: {
     api: {
       ...routes,
-      [CREATE_ROUTE]: apiError(HttpStatus.Conflict, ErrorCode.Conflict, 'Workspace "backend" already exists'),
+      [SAVE]: apiError(HttpStatus.Conflict, ErrorCode.Conflict, 'Workspace "backend" already exists'),
     },
   },
   play: async ({ args, canvasElement }) => {
@@ -202,7 +233,7 @@ export const ShowsWhyTheServerRefused: Story = {
 };
 
 export const WhileCreating: Story = {
-  parameters: { api: { ...routes, [CREATE_ROUTE]: pending() } },
+  parameters: { api: { ...routes, [SAVE]: pending() } },
   play: async ({ args, canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('dialog', { name: 'New workspace' }));

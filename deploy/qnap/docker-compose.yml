@@ -1,17 +1,40 @@
 # MCP Router for QNAP Container Station 3: Applications → Create, paste this in.
 #
 # Container Station does not read .env files, so the values are written inline:
-#   1. In File Station, create the folder Container/mcp-router/data.
-#   2. Replace change-me with a long random token (`openssl rand -hex 32`).
-#      The router refuses to start while it is still change-me.
-#   3. If port 3000 is taken on the NAS, change the left-hand number.
+#   1. In File Station, create the folders Container/mcp-router/data and
+#      Container/mcp-router/postgres. The router runs as uid 1000, so over SSH:
+#      sudo chown 1000:1000 /share/Container/mcp-router/data
+#   2. Replace change-me with a long random secret (`openssl rand -hex 32`).
+#      The router refuses to start while it is still change-me. Opening the
+#      web UI signs you in as the local admin (SECURE_LOCAL_NET), and MCP
+#      clients on your network connect without a key.
+#   3. Replace pg-change-me (twice) with a database password.
+#   4. If port 3000 is taken on the NAS, change the left-hand number.
 services:
   mcp-router:
     image: vantreeseba/mcp-router:latest
+    depends_on:
+      postgres: { condition: service_healthy }
     ports:
       - '3000:3000'
     volumes:
       - /share/Container/mcp-router/data:/data
     environment:
-      MCP_ROUTER_TOKEN: change-me
+      DATABASE_URL: postgres://mcp_router:pg-change-me@postgres:5432/mcp_router
+      BETTER_AUTH_SECRET: change-me
+      SECURE_LOCAL_NET: 'true'
+    restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mcp_router
+      POSTGRES_PASSWORD: pg-change-me
+      POSTGRES_DB: mcp_router
+    volumes:
+      - /share/Container/mcp-router/postgres:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
     restart: unless-stopped

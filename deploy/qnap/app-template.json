@@ -4,11 +4,15 @@
       "type": 1,
       "title": "MCP Router",
       "sub_title": "One endpoint for every MCP server",
-      "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one. Set MCP_ROUTER_TOKEN before deploying, then open port 3000 and sign in with it.",
+      "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one. Needs a Postgres you already run: set DATABASE_URL to it and BETTER_AUTH_SECRET (openssl rand -hex 32) before deploying, then open port 3000: with SECURE_LOCAL_NET=true you are signed in as the local admin. Make API keys for MCP clients in Settings. To run Postgres beside it, create it as an Application from qnap/docker-compose.yml instead.",
       "platform": "linux",
       "logo": "https://raw.githubusercontent.com/cubicecho/mcp-router/main/deploy/logo.svg",
       "image": "vantreeseba/mcp-router:latest",
-      "env": [{ "name": "MCP_ROUTER_TOKEN", "value": "change-me" }],
+      "env": [
+        { "name": "DATABASE_URL", "value": "postgres://mcp_router:change-me@192.168.1.20:5432/mcp_router" },
+        { "name": "BETTER_AUTH_SECRET", "value": "change-me" },
+        { "name": "SECURE_LOCAL_NET", "value": "true" }
+      ],
       "volumes": [{ "container": "/data", "bind": "/Container/mcp-router/data" }],
       "ports": ["3000:3000/tcp"],
       "restart_policy": "unless-stopped"

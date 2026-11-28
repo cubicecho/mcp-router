@@ -1,15 +1,24 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, workspace } from '@/storybook/fixtures';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
+import {
+  appRoutes,
+  DOCS_ID,
+  FILESYSTEM_ID,
+  RESEARCH_ID,
+  workspace,
+  workspaceRecord,
+  workspacesAnswer,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 
 const STAGING = workspace({
+  id: '00000000-0000-4000-8000-0000000000a2',
   name: 'Staging',
   slug: 'staging',
-  path: '/mcp/w/staging',
-  description: undefined,
-  members: { filesystem: { enabled: true } },
+  description: null,
+  members: { filesystem: { enabled: true, serverId: FILESYSTEM_ID } },
 });
 
 const meta = {
@@ -34,7 +43,7 @@ export const ListsTheWorkspaces: Story = {
 };
 
 export const WhileLoading: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/workspaces': pending() } },
+  parameters: { api: { ...appRoutes(), Workspaces: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('status')).toBeVisible();
@@ -43,7 +52,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoWorkspaces: Story = {
-  parameters: { api: { ...appRoutes(), 'GET /api/workspaces': [] } },
+  parameters: { api: { ...appRoutes(), Workspaces: workspacesAnswer([]) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('No workspaces yet')).toBeVisible();
@@ -58,7 +67,7 @@ export const WhenLoadingFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/workspaces': apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'workspaces are unreadable'),
+      Workspaces: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'workspaces are unreadable'),
     },
   },
   play: async ({ canvasElement }) => {
@@ -78,7 +87,7 @@ export const OpensAWorkspace: Story = {
 };
 
 export const CreatesAWorkspace: Story = {
-  parameters: { api: { ...appRoutes(), 'POST /api/workspaces': STAGING } },
+  parameters: { api: { ...appRoutes(), SaveWorkspace: { saveWorkspace: workspaceRecord(STAGING) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(canvasElement.ownerDocument.body);
@@ -93,10 +102,14 @@ export const CreatesAWorkspace: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Create workspace' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('POST /api/workspaces', {
-        name: 'Staging',
-        enabled: true,
-        members: { filesystem: { enabled: true } },
+      expect(apiRequest).toHaveBeenCalledWith('SaveWorkspace', {
+        input: {
+          name: 'Staging',
+          enabled: true,
+          description: null,
+          members: [{ serverId: FILESYSTEM_ID, enabled: true }],
+        },
+        memberLimit: PAGE_DEFAULTS.workspaceMembers,
       }),
     );
     await waitFor(() => expect(body.getByText('Created workspace Staging')).toBeVisible());
@@ -106,7 +119,10 @@ export const CreatesAWorkspace: Story = {
 
 export const EditsAWorkspaceFromItsRow: Story = {
   parameters: {
-    api: { ...appRoutes(), 'PATCH /api/workspaces/research': workspace({ description: 'Read-only research.' }) },
+    api: {
+      ...appRoutes(),
+      SaveWorkspace: { saveWorkspace: workspaceRecord(workspace({ description: 'Read-only research.' })) },
+    },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -120,12 +136,20 @@ export const EditsAWorkspaceFromItsRow: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('PATCH /api/workspaces/research', {
-        name: 'Research',
-        enabled: true,
-        description: 'Read-only research.',
-        // The member that is switched off stays a member, still off; the other keeps its override.
-        members: { filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } }, docs: { enabled: false } },
+      expect(apiRequest).toHaveBeenCalledWith('SaveWorkspace', {
+        input: {
+          id: RESEARCH_ID,
+          slug: 'research',
+          name: 'Research',
+          enabled: true,
+          description: 'Read-only research.',
+          // The member that is switched off stays a member, still off; the other keeps its override.
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: false },
+          ],
+        },
+        memberLimit: PAGE_DEFAULTS.workspaceMembers,
       }),
     );
     await waitFor(() => expect(body.getByText('Saved workspace Research')).toBeVisible());
@@ -134,16 +158,16 @@ export const EditsAWorkspaceFromItsRow: Story = {
 };
 
 export const DeletesOnlyAfterConfirming: Story = {
-  parameters: { api: { ...appRoutes(), 'DELETE /api/workspaces/research': null } },
+  parameters: { api: { ...appRoutes(), DeleteWorkspace: { deleteWorkspace: { id: RESEARCH_ID } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(await canvas.findByRole('button', { name: 'Delete Research' }));
     const dialog = within(await body.findByRole('alertdialog', { name: 'Delete workspace Research?' }));
-    await expect(apiRequest).not.toHaveBeenCalledWith('DELETE /api/workspaces/research', undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith('DeleteWorkspace', { slug: 'research' });
 
     await userEvent.click(dialog.getByRole('button', { name: 'Delete' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DELETE /api/workspaces/research', undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DeleteWorkspace', { slug: 'research' }));
     await waitFor(() => expect(body.getByText('Deleted workspace Research')).toBeVisible());
     await waitFor(() => expect(body.queryByRole('alertdialog')).not.toBeInTheDocument());
   },
@@ -153,11 +177,7 @@ export const WhenDeletingFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'DELETE /api/workspaces/research': apiError(
-        HttpStatus.InternalServerError,
-        ErrorCode.Internal,
-        'Could not remove it',
-      ),
+      DeleteWorkspace: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'Could not remove it'),
     },
   },
   play: async ({ canvasElement }) => {

@@ -3,11 +3,13 @@ export const HttpStatus = {
   Ok: 200,
   Created: 201,
   NoContent: 204,
+  Found: 302,
   BadRequest: 400,
   Unauthorized: 401,
   Forbidden: 403,
   NotFound: 404,
   Conflict: 409,
+  TooManyRequests: 429,
   InternalServerError: 500,
   BadGateway: 502,
   ServiceUnavailable: 503,
@@ -29,6 +31,10 @@ export const ErrorCode = {
   /** A downstream server is backed off after crashing. */
   Unavailable: 'UNAVAILABLE',
   UpstreamTimeout: 'UPSTREAM_TIMEOUT',
+  /** A GraphQL operation too deep, too aliased or too costly to run. A client bug: fix the query. */
+  QueryTooComplex: 'QUERY_TOO_COMPLEX',
+  /** Too many sign-in attempts from one address; `extensions.retryAfter` says how many seconds to wait. */
+  TooManyRequests: 'TOO_MANY_REQUESTS',
 } as const;
 /** One of the {@link ErrorCode} values. */
 export type ErrorCode = (typeof ErrorCode)[keyof typeof ErrorCode];
@@ -41,3 +47,5 @@ export const MS_PER_MINUTE = 60_000;
 export const SECONDS_PER_MINUTE = 60;
 /** Seconds in an hour. */
 export const SECONDS_PER_HOUR = 3600;
+/** Seconds in a day. */
+export const SECONDS_PER_DAY = 86_400;

@@ -1,23 +1,34 @@
 import { type ApiError, ErrorCode, HttpStatus } from '@mcp-router/shared';
+import { buildSchema, graphql } from 'graphql';
 import { fn } from 'storybook/test';
-import { clearToken, setToken } from '@/lib/auth';
+import schemaSdl from '@/__generated__/schema.graphql?raw';
+import { forgetSession, keepSession } from '@/lib/session';
 
-/** What a mocked route was asked: the parsed JSON body and the request URL. */
+/** The schema /graphql serves, as codegen printed it. Every mocked answer is run through it. */
+const schema = buildSchema(schemaSdl);
+
+/** Where the UI sends its GraphQL operations. */
+const GRAPHQL_PATH = '/graphql';
+
+/** The session every story starts signed in with. A story about being signed out forgets it in its `beforeEach`. */
+export const STORY_SESSION = 'story-session';
+
+/** What a mocked answer was asked: the operation's variables, as `body`, and the URL. */
 interface MockRequest {
   body: unknown;
   url: URL;
 }
 
-/** A failed answer for a mocked route. Build one with `apiError`. */
+/** A failed answer for a mocked operation. Build one with `apiError`. */
 class MockApiError {
   readonly status: HttpStatus;
   readonly body: ApiError;
 
   /**
-   * Pairs a status with the envelope to answer with.
+   * Pairs a status with the error to answer with.
    *
-   * @param status - The HTTP status to answer with.
-   * @param body - The error envelope sent as the JSON body.
+   * @param status - A 401 is /graphql's door refusing the token; any other status answers 200 with the error.
+   * @param body - The error envelope: its `error` and `code` become a GraphQL error's message and `extensions.code`.
    */
   constructor(status: HttpStatus, body: ApiError) {
     this.status = status;
@@ -29,25 +40,26 @@ class MockApiError {
 const PENDING = Symbol('pending');
 
 /**
- * The answers of a story's server, keyed `"<METHOD> <path>"` (the path without its query).
- * A value is the JSON body, `null` for a 204, `apiError(...)` for a failure, `pending()` for a
- * request that never settles, or a function of the request returning any of those.
+ * The answers of a story's server. An operation is keyed by its name (`Servers`, `UpdateServer`) and answered with its
+ * `data`. A value may also be `apiError(...)` for a failure, `pending()` for an answer that never settles, or a
+ * function of the request (the operation's variables, as `body`) returning any of those.
  */
 export type ApiRoutes = Record<string, unknown>;
 
 /**
- * Every request a story's components sent, as `(key, body)`. Assert on it in `play`:
- * `expect(apiRequest).toHaveBeenCalledWith('POST /api/servers', { ... })`.
+ * Every operation a story's components sent, as `(name, variables)`. Assert on it in `play`:
+ * `expect(apiRequest).toHaveBeenCalledWith('UpdateServer', { name: 'docs', input: { enabled: false } })`.
  */
 export const apiRequest = fn<(key: string, body: unknown) => void>();
 
 /**
- * Builds a failed answer for a mocked route.
+ * Builds a failed answer for a mocked operation.
  *
- * @param status - The HTTP status to answer with.
- * @param code - The error code of the envelope.
- * @param error - The message of the envelope.
- * @param [detail] - The detail of the envelope; left off when empty.
+ * @param status - The HTTP status of the failure. The operation answers 200 with the error in `errors`, except for a
+ * 401, which /graphql's door sends before any operation runs.
+ * @param code - The error code.
+ * @param error - The message.
+ * @param [detail] - The longer explanation; left off when empty.
  * @returns The value to put in a story's `parameters.api`.
  */
 export function apiError(status: HttpStatus, code: ErrorCode, error: string, detail?: string): MockApiError {
@@ -74,32 +86,79 @@ function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
 }
 
+/** What the UI posts to /graphql. */
+interface GraphQLRequestBody {
+  query: string;
+  variables?: Record<string, unknown>;
+  operationName?: string;
+}
+
+/**
+ * Answers one GraphQL operation from a story's answers.
+ *
+ * @param body - What the UI posted.
+ * @param answer - The story's answer: the operation's `data`, or a failure.
+ * @returns The response.
+ *
+ * @remarks
+ * The data is run through the real schema as the root value, so an answer missing a non-null field, holding a value
+ * of the wrong type, or an operation asking for a field the schema lacks, comes back as an error and is logged.
+ */
+async function answerOperation(body: GraphQLRequestBody, answer: unknown): Promise<Response> {
+  if (answer instanceof MockApiError) {
+    if (answer.status === HttpStatus.Unauthorized) {
+      return jsonResponse(answer.status, answer.body);
+    }
+    const { error: message, code, detail } = answer.body;
+    return jsonResponse(HttpStatus.Ok, { errors: [{ message, extensions: { code, ...(detail ? { detail } : {}) } }] });
+  }
+  const result = await graphql({
+    schema,
+    source: body.query,
+    rootValue: answer,
+    variableValues: body.variables,
+    operationName: body.operationName,
+  });
+  if (result.errors !== undefined) {
+    console.error(`[mock-api] ${body.operationName} does not match the schema:`, result.errors);
+  }
+  return jsonResponse(HttpStatus.Ok, result);
+}
+
 /**
  * Replaces `fetch` with a story's server for the length of one story.
  *
  * @param [routes] - The story's `parameters.api`.
- * @returns The cleanup that puts the real `fetch` back and forgets any auth state.
+ * @returns The cleanup that puts the real `fetch` back and forgets the session.
  *
  * @remarks
- * A request with no route is answered 404 and logged, so a story that forgot one fails where it is read. Also clears
- * the calls recorded on `apiRequest`.
+ * An operation with no answer fails and is logged, so a story that forgot one fails where it is read. A request to any
+ * other path than /graphql fails too: the UI has no other API. Also clears the calls recorded on `apiRequest`, and
+ * signs the story in with {@link STORY_SESSION}, so a page renders inside the app frame rather than at sign-in.
  */
 export function installApiMock(routes: ApiRoutes = {}): () => void {
   const realFetch = window.fetch;
   apiRequest.mockClear();
+  keepSession(STORY_SESSION);
 
   window.fetch = async (input, init) => {
     const request = new Request(input, init);
     const url = new URL(request.url);
-    const key = `${request.method} ${url.pathname}`;
     const text = await request.text();
-    const body: unknown = text ? JSON.parse(text) : undefined;
+    if (url.pathname !== GRAPHQL_PATH) {
+      console.error(`[mock-api] ${request.method} ${url.pathname} is not an API the UI has`);
+      return jsonResponse(HttpStatus.NotFound, { error: `No such path ${url.pathname}`, code: ErrorCode.NotFound });
+    }
+    const operation: GraphQLRequestBody = text ? JSON.parse(text) : { query: '' };
+    const key = operation.operationName ?? '';
+    const body = operation.variables;
     apiRequest(key, body);
 
     const isMocked = key in routes;
     if (isMocked === false) {
-      console.error(`[mock-api] no route for ${key}`);
-      return jsonResponse(HttpStatus.NotFound, { error: `No mocked route for ${key}`, code: ErrorCode.NotFound });
+      console.error(`[mock-api] no answer for ${key}`);
+      const message = `No mocked answer for ${key}`;
+      return jsonResponse(HttpStatus.Ok, { errors: [{ message, extensions: { code: ErrorCode.NotFound } }] });
     }
     const route = routes[key];
     const mockRequest: MockRequest = { body, url };
@@ -107,19 +166,12 @@ export function installApiMock(routes: ApiRoutes = {}): () => void {
     if (answer === PENDING) {
       return new Promise<Response>(() => {});
     }
-    if (answer instanceof MockApiError) {
-      return jsonResponse(answer.status, answer.body);
-    }
-    if (answer === null) {
-      return new Response(null, { status: HttpStatus.NoContent });
-    }
-    return jsonResponse(HttpStatus.Ok, answer);
+    return answerOperation(operation, answer);
   };
 
   return () => {
     window.fetch = realFetch;
-    // A 401 in one story must not leave the next one behind the token screen.
-    setToken('story');
-    clearToken();
+    // Every story starts from the session it is given, not the one the story before it left.
+    forgetSession();
   };
 }

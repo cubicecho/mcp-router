@@ -1,7 +1,6 @@
-import type { ServerTool } from '@mcp-router/shared';
 import { TextareaField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/empty-state';
-import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
+import { type CapabilityScope, type McpTool, SCOPE_WORKSPACE } from '@/lib/api';
 import { argsTemplate } from '@/lib/args-template';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { useCallTool, useCapabilityTools } from '@/lib/queries';
@@ -35,7 +34,7 @@ function parseArguments(text: string): { args: ToolArguments } | { error: string
  * @param props.onRun - Called with the parsed arguments; never called when the text is not a JSON object.
  * @returns The form.
  */
-function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArguments) => Promise<void> }) {
+function ToolArgsForm({ tool, onRun }: { tool: McpTool; onRun: (args: ToolArguments) => Promise<void> }) {
   const form = useAppForm({
     defaultValues: { argsText: argsTemplate(tool.inputSchema) },
     onSubmit: async ({ value }) => {
@@ -85,7 +84,7 @@ function ToolArgsForm({ tool, onRun }: { tool: ServerTool; onRun: (args: ToolArg
  * @param props.tool - The tool to show and call.
  * @returns The row.
  */
-function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: ServerTool }) {
+function ToolRow({ scope, tool }: { scope: CapabilityScope; tool: McpTool }) {
   const call = useCallTool(scope);
   const { result, run } = useCapabilityRun(call);
 

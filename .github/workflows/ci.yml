@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - name: Lint
         run: npx biome ci .
+      # The server prints its schema and the app's typed documents are generated from it; both are gitignored.
+      - name: Generate GraphQL types
+        run: npm run codegen
       - name: Typecheck
         run: npm run check:types
       # The stories run as tests in a real Chromium.
@@ -31,8 +34,54 @@ jobs:
         run: npx playwright install --with-deps chromium
       - name: Test
         run: npm test
+      # The web UI's bundle. The server has no build step: it runs from its sources.
       - name: Build
         run: npm run build
+
+  postgres:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env: { POSTGRES_USER: ci, POSTGRES_PASSWORD: ci, POSTGRES_DB: ci }
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U ci -d ci"
+          --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      DATABASE_URL: postgres://ci:ci@127.0.0.1:5432/ci
+      MIGRATIONS_DIR: server/drizzle
+    steps:
+      - uses: actions/checkout@v7
+      # Passes without checking anything until the repo has committed migrations.
+      - name: Find migrations
+        id: migrations
+        run: |
+          if [ -d "$MIGRATIONS_DIR" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::No $MIGRATIONS_DIR yet, so there are no migrations to check."
+          fi
+      - uses: actions/setup-node@v7
+        if: steps.migrations.outputs.present == 'true'
+        with:
+          node-version: '26'
+          cache: 'npm'
+      - if: steps.migrations.outputs.present == 'true'
+        run: npm ci
+      - name: Migrations apply
+        if: steps.migrations.outputs.present == 'true'
+        run: npm run db:migrate
+      # drizzle-kit writes nothing when the models and migrations agree.
+      - name: Migrations match the models
+        if: steps.migrations.outputs.present == 'true'
+        run: |
+          npm run db:generate
+          if [ -n "$(git status --porcelain "$MIGRATIONS_DIR")" ]; then
+            git status --porcelain "$MIGRATIONS_DIR"
+            echo "::error::The models changed without a migration. Run npm run db:generate and commit $MIGRATIONS_DIR."
+            exit 1
+          fi
 
   boot:
     runs-on: ubuntu-latest
@@ -48,9 +97,13 @@ jobs:
           tags: mcp-router:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # --wait blocks until the container's healthcheck passes.
+      # The router and the Postgres beside it. --wait blocks until both healthchecks pass: Postgres first
+      # (depends_on: service_healthy), then the router's /healthz once it has migrated the database.
       - name: Start the stack
         run: docker compose up -d --no-build --wait --wait-timeout 180
+        env:
+          # The image runs in production, which refuses to start without a strong session secret. Throwaway.
+          BETTER_AUTH_SECRET: ci-boot-only-secret-0123456789abcdef0123456789abcdef
       - name: Check /healthz
         run: curl -fsS http://127.0.0.1:3000/healthz
       - name: Logs

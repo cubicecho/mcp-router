@@ -29,12 +29,23 @@ describe('ToolsCard', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
     vi.spyOn(api, 'getTools').mockResolvedValue({
-      tools: [{ name: 'echo', inputSchema: { type: 'object', properties: { text: { type: 'string' } } } }],
+      tools: [
+        {
+          name: 'echo',
+          title: null,
+          description: null,
+          inputSchema: { type: 'object', properties: { text: { type: 'string' } } },
+          outputSchema: null,
+          annotations: null,
+        },
+      ],
     });
   });
 
   it('runs the tool with the typed arguments', async () => {
-    const callTool = vi.spyOn(api, 'callTool').mockResolvedValue({ content: [{ type: 'text', text: 'hi' }] });
+    const callTool = vi
+      .spyOn(api, 'callTool')
+      .mockResolvedValue({ content: [{ type: 'text', text: 'hi' }], structuredContent: null, isError: false });
     const user = userEvent.setup();
     renderCard();
 

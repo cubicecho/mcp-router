@@ -1,101 +1,85 @@
 import { ErrorCode } from '@mcp-router/shared';
 import express from 'express';
 import request from 'supertest';
-import { describe, expect, it } from 'vitest';
-import { authDisabledByEnv } from '../../config/env.ts';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { createTestDb, resetTestDb } from '../../db/__tests__/test-db.ts';
+import type { Database } from '../../db/client.ts';
+import type { AuthHost } from '../auth-host.ts';
+import { listKeys, revokeKey } from '../keys.ts';
 import {
-  createAuthMiddleware,
+  createApiKeyMiddleware,
+  createCallerMiddleware,
   createOriginMiddleware,
-  effectiveAuth,
   isLoopbackOrigin,
-  tokensEqual,
 } from '../middleware.ts';
+import { createTestAuthHost, mintTestKey, signInTestOperator } from './test-auth.ts';
 
-function appWith(auth: { enabled: boolean; token: string | null }) {
-  const app = express();
-  app.use(createAuthMiddleware(() => auth));
-  app.get('/api/status', (_req, res) => {
-    res.json({ ok: true });
+describe('the credential guards', () => {
+  let database: Database;
+  let authHost: AuthHost;
+  let key: string;
+
+  beforeAll(async () => {
+    database = await createTestDb();
   });
-  return app;
-}
 
-describe('auth middleware', () => {
-  const token = 'secret-token';
+  afterAll(() => database.close());
 
-  it('rejects requests without a token', async () => {
-    const res = await request(appWith({ enabled: true, token })).get('/api/status');
+  beforeEach(async () => {
+    await resetTestDb(database);
+    authHost = await createTestAuthHost(database.db);
+    key = await mintTestKey(database.db, authHost);
+  });
+
+  /** An app with a guarded /mcp and /admin/mcp, each answering 200 once through. */
+  const appWith = () => {
+    const app = express();
+    app.use('/mcp', createApiKeyMiddleware(authHost), (_req, res) => res.json({ ok: true }));
+    app.use('/admin/mcp', createCallerMiddleware(authHost), (_req, res) => res.json({ ok: true }));
+    return app;
+  };
+
+  it('refuses /mcp with no key, with the envelope and a hint', async () => {
+    const res = await request(appWith()).post('/mcp');
     expect(res.status).toBe(401);
-    expect(res.body).toEqual({ error: 'Unauthorized', code: ErrorCode.Unauthenticated });
+    expect(res.body.code).toBe(ErrorCode.Unauthenticated);
+    expect(res.body.error).toContain('x-api-key');
   });
 
-  it('rejects requests with a wrong token', async () => {
-    const res = await request(appWith({ enabled: true, token }))
-      .get('/api/status')
-      .set('Authorization', 'Bearer wrong');
-    expect(res.status).toBe(401);
+  it('takes a key as Authorization: Bearer or as x-api-key', async () => {
+    expect((await request(appWith()).post('/mcp').set('Authorization', `Bearer ${key}`)).status).toBe(200);
+    expect((await request(appWith()).post('/mcp').set('x-api-key', key)).status).toBe(200);
   });
 
-  it('rejects non-bearer authorization schemes', async () => {
-    const res = await request(appWith({ enabled: true, token }))
-      .get('/api/status')
-      .set('Authorization', `Basic ${token}`);
-    expect(res.status).toBe(401);
+  it('refuses a wrong key, a non-bearer scheme, and a revoked key', async () => {
+    expect((await request(appWith()).post('/mcp').set('Authorization', 'Bearer mcpr_wrong')).status).toBe(401);
+    expect((await request(appWith()).post('/mcp').set('Authorization', `Basic ${key}`)).status).toBe(401);
+    const [listed] = await listKeys(database.db);
+    await revokeKey(database.db, listed?.id ?? '');
+    expect((await request(appWith()).post('/mcp').set('x-api-key', key)).status).toBe(401);
   });
 
-  it('accepts the correct bearer token', async () => {
-    const res = await request(appWith({ enabled: true, token }))
-      .get('/api/status')
-      .set('Authorization', `Bearer ${token}`);
-    expect(res.status).toBe(200);
-    expect(res.body).toEqual({ ok: true });
+  it('answers two different keys in one request with 400', async () => {
+    const res = await request(appWith()).post('/mcp').set('Authorization', `Bearer ${key}`).set('x-api-key', 'other');
+    expect(res.status).toBe(400);
+    expect(res.body.code).toBe(ErrorCode.BadUserInput);
   });
 
-  it('skips auth entirely when disabled', async () => {
-    const res = await request(appWith({ enabled: false, token: null })).get('/api/status');
-    expect(res.status).toBe(200);
+  it('never opens /mcp to a session, but opens /admin/mcp to one', async () => {
+    const { token } = await signInTestOperator(database.db, authHost);
+    expect((await request(appWith()).post('/mcp').set('Authorization', `Bearer ${token}`)).status).toBe(401);
+    expect((await request(appWith()).post('/admin/mcp').set('Authorization', `Bearer ${token}`)).status).toBe(200);
+    expect((await request(appWith()).post('/admin/mcp').set('x-api-key', key)).status).toBe(200);
+    expect((await request(appWith()).post('/admin/mcp')).status).toBe(401);
   });
 
-  it('rejects everything when enabled without a configured token', async () => {
-    const res = await request(appWith({ enabled: true, token: null }))
-      .get('/api/status')
-      .set('Authorization', 'Bearer anything');
-    expect(res.status).toBe(401);
-  });
-
-  it('compares tokens without throwing on length mismatch', () => {
-    expect(tokensEqual('short', 'a-much-longer-token')).toBe(false);
-    expect(tokensEqual('same', 'same')).toBe(true);
-  });
-});
-
-describe('authDisabledByEnv', () => {
-  it('is false when SECURE_LOCAL_NET is unset', () => {
-    expect(authDisabledByEnv({})).toBe(false);
-  });
-
-  it('treats common truthy values as disabling auth', () => {
-    for (const value of ['true', 'TRUE', '1', 'yes', 'on', ' true ']) {
-      expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(true);
-    }
-  });
-
-  it('leaves auth enabled for falsey or unrelated values', () => {
-    for (const value of ['false', '0', 'no', 'off', '']) {
-      expect(authDisabledByEnv({ SECURE_LOCAL_NET: value })).toBe(false);
-    }
-  });
-});
-
-describe('effectiveAuth', () => {
-  const settings = { authEnabled: true, authToken: 'stored-token' };
-
-  it('prefers the token from the environment', () => {
-    expect(effectiveAuth(settings, { MCP_ROUTER_TOKEN: 'env-token' }).token).toBe('env-token');
-  });
-
-  it('falls back to the stored token when the environment variable is empty', () => {
-    expect(effectiveAuth(settings, { MCP_ROUTER_TOKEN: '' }).token).toBe('stored-token');
+  it('opens /mcp without a key on a trusted network, and leaves /admin/mcp guarded', async () => {
+    const app = express();
+    app.use('/mcp', createApiKeyMiddleware(authHost, { trustedNetwork: true }), (_req, res) => res.json({ ok: true }));
+    app.use('/admin/mcp', createCallerMiddleware(authHost), (_req, res) => res.json({ ok: true }));
+    expect((await request(app).post('/mcp')).status).toBe(200);
+    expect((await request(app).post('/mcp/echo')).status).toBe(200);
+    expect((await request(app).post('/admin/mcp')).status).toBe(401);
   });
 });
 
