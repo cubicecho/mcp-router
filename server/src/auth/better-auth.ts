@@ -13,6 +13,30 @@ import { claimFirstAdmin } from './admin.ts';
 /** What every key the router mints starts with, so a leaked one is recognisable as the router's. */
 export const KEY_PREFIX = 'mcpr_';
 
+/**
+ * What better-auth logs when a presented API key does not hold. A refused key is an ordinary 401 here (and every
+ * bearer that is not a session is tried as a key), so it is not logged.
+ */
+const REFUSED_KEY_LOG = 'Failed to validate API key';
+
+/** A level better-auth logs at. */
+type AuthLogLevel = 'debug' | 'info' | 'warn' | 'error';
+
+/**
+ * Writes better-auth's log lines with the `[auth]` tag, leaving out refused API keys.
+ *
+ * @param level - better-auth's level.
+ * @param message - The line.
+ * @param args - What better-auth logs with it.
+ */
+function logAuth(level: AuthLogLevel, message: string, ...args: unknown[]): void {
+  if (message.startsWith(REFUSED_KEY_LOG)) {
+    return;
+  }
+  const write = level === 'error' ? console.error : level === 'warn' ? console.warn : console.log;
+  write(`[auth] ${message}`, ...args);
+}
+
 /** Who better-auth's instance is for: the router's address, and test overrides. */
 export interface AuthOptions {
   /**
@@ -54,6 +78,7 @@ export function createAuth(db: DB, { baseUrl, secret = authSecret(), oidc = oidc
     ...(oidc ? { account: { accountLinking: { requireLocalEmailVerified: false } } } : {}),
     // Where an OIDC callback goes when it cannot tell where the sign-in came from.
     onAPIError: { errorURL: `${baseUrl}/login` },
+    logger: { log: logAuth },
     plugins: [
       // The UI sends its session back as `Authorization: Bearer`.
       bearer(),
