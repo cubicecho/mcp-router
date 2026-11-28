@@ -178,6 +178,48 @@ export const McpPromptType = new GraphQLObjectType({
   },
 });
 
+export const McpToolResultType = new GraphQLObjectType({
+  name: 'McpToolResult',
+  description: 'What one tool call answered, as MCP tools/call returned it.',
+  fields: {
+    content: {
+      type: required(GraphQLJSON),
+      description: 'The content blocks the tool returned (text, image, audio, resource links), as a JSON array.',
+    },
+    structuredContent: {
+      type: GraphQLJSON,
+      description: "The tool's structured result, matching its outputSchema; null when it returned none.",
+    },
+    isError: {
+      type: required(GraphQLBoolean),
+      description: 'Whether the tool reported its own failure. Its content then says what went wrong.',
+    },
+  },
+});
+
+export const McpResourceContentsType = new GraphQLObjectType({
+  name: 'McpResourceContents',
+  description: 'What reading one resource answered, as MCP resources/read returned it.',
+  fields: {
+    contents: {
+      type: required(GraphQLJSON),
+      description: "The resource's contents: a JSON array of entries, each with its uri and its text or base64 blob.",
+    },
+  },
+});
+
+export const McpPromptMessagesType = new GraphQLObjectType({
+  name: 'McpPromptMessages',
+  description: 'What getting one prompt answered, as MCP prompts/get returned it.',
+  fields: {
+    description: { type: GraphQLString, description: 'What the rendered prompt is for, when the server said.' },
+    messages: {
+      type: required(GraphQLJSON),
+      description: 'The rendered messages: a JSON array of entries, each with its role and content.',
+    },
+  },
+});
+
 export const ActivityEntryType = new GraphQLObjectType({
   name: 'ActivityEntry',
   description: 'One proxied MCP call, request and response, as the router recorded it in memory.',
@@ -267,7 +309,7 @@ export const OAuthClientInputType = new GraphQLInputObjectType({
 
 export const InstallServerInputType = new GraphQLInputObjectType({
   name: 'InstallServerInput',
-  description: 'What to install. Checked against the same rules as `POST /api/servers`.',
+  description: 'What to install. Checked against the shared install rules.',
   fields: {
     name: { type: GraphQLString, description: 'The local name and route segment. Derived when left out.' },
     source: {

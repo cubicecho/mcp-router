@@ -176,6 +176,58 @@ describe('hand-written gateway fields', () => {
     const { serverActivity } = await harness.expectOk(`{ serverActivity(name: "echo") { id } }`);
     expect(serverActivity).toEqual([]);
   });
+
+  it("calls a server's tool and records the call under via UI", async () => {
+    await harness.expectOk(`mutation { clearServerActivity(name: "echo") }`);
+    const { callServerTool } = await harness.expectOk(
+      `mutation { callServerTool(name: "echo", tool: "caller", arguments: {}) { content structuredContent isError } }`,
+    );
+    expect(callServerTool).toMatchObject({ structuredContent: null, isError: false });
+    expect(callServerTool.content).toEqual([{ type: 'text', text: expect.stringContaining('mcp-router') }]);
+    const { serverActivity } = await harness.expectOk(`{ serverActivity(name: "echo") { via method target ok } }`);
+    expect(serverActivity).toEqual([{ via: 'UI', method: 'tools/call', target: 'caller', ok: true }]);
+  });
+
+  it("calls a workspace's tool on the member its prefix names", async () => {
+    const { callWorkspaceTool } = await harness.expectOk(
+      `mutation { callWorkspaceTool(slug: "work", tool: "echo__pid") { content isError } }`,
+    );
+    expect(callWorkspaceTool.isError).toBe(false);
+    const { workspaceActivity } = await harness.expectOk(`{ workspaceActivity(slug: "work") { method target } }`);
+    expect(workspaceActivity[0]).toEqual({ method: 'tools/call', target: 'pid' });
+  });
+
+  it('refuses a call to an unknown server or workspace as NOT_FOUND', async () => {
+    const server = await harness.expectError(`mutation { callServerTool(name: "ghost", tool: "pid") { isError } }`);
+    expect(server.code).toBe(ErrorCode.NotFound);
+    const workspace = await harness.expectError(
+      `mutation { getWorkspacePrompt(slug: "ghost", prompt: "x") { messages } }`,
+    );
+    expect(workspace.code).toBe(ErrorCode.NotFound);
+  });
+
+  it('refuses a call the shared rules reject, or one whose prefix names no member, as BAD_USER_INPUT', async () => {
+    const empty = await harness.expectError(`mutation { callServerTool(name: "echo", tool: "") { isError } }`);
+    expect(empty.code).toBe(ErrorCode.BadUserInput);
+    const notStrings = await harness.expectError(
+      `mutation { getServerPrompt(name: "echo", prompt: "p", arguments: { n: 1 }) { messages } }`,
+    );
+    expect(notStrings.code).toBe(ErrorCode.BadUserInput);
+    const unprefixed = await harness.expectError(
+      `mutation { callWorkspaceTool(slug: "work", tool: "pid") { isError } }`,
+    );
+    expect(unprefixed.code).toBe(ErrorCode.BadUserInput);
+  });
+
+  it('answers UPSTREAM_FAILED when the server cannot do what was asked, and records the failure', async () => {
+    await harness.expectOk(`mutation { clearServerActivity(name: "echo") }`);
+    const { code } = await harness.expectError(
+      `mutation { readServerResource(name: "echo", uri: "file:///a.txt") { contents } }`,
+    );
+    expect(code).toBe(ErrorCode.UpstreamFailed);
+    const { serverActivity } = await harness.expectOk(`{ serverActivity(name: "echo") { method ok } }`);
+    expect(serverActivity).toEqual([{ method: 'resources/read', ok: false }]);
+  });
 });
 
 describe('hand-written router fields', () => {
