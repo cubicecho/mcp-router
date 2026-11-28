@@ -1,7 +1,7 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { oauthStart, signedInServer } from '@/storybook/fixtures';
+import { oauthStart, serversAnswer, signedInServer } from '@/storybook/fixtures';
 import { apiError, apiRequest } from '@/storybook/mock-api';
 import { OAuthSignInButton } from './oauth-sign-in-button.tsx';
 
@@ -67,15 +67,16 @@ export const Idle: Story = {
 export const OpensTheLoginAndHearsBack: Story = {
   parameters: {
     api: {
-      'POST /api/servers/home-assistant/oauth/start': oauthStart(),
-      'GET /api/servers': [signedInServer()],
+      StartServerOAuth: { startServerOAuth: oauthStart() },
+      Servers: serversAnswer([signedInServer()]),
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Sign in' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('POST /api/servers/home-assistant/oauth/start', {
+      expect(apiRequest).toHaveBeenCalledWith('StartServerOAuth', {
+        name: 'home-assistant',
         origin: window.location.origin,
       }),
     );
@@ -90,7 +91,7 @@ export const OpensTheLoginAndHearsBack: Story = {
 };
 
 export const ReportsACancelledLogin: Story = {
-  parameters: { api: { 'POST /api/servers/home-assistant/oauth/start': oauthStart() } },
+  parameters: { api: { StartServerOAuth: { startServerOAuth: oauthStart() } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Sign in' }));
@@ -106,7 +107,7 @@ export const ReportsACancelledLogin: Story = {
 
 export const LinksTheLoginWhenTheWindowIsBlocked: Story = {
   beforeEach: () => stubWindowOpen(true),
-  parameters: { api: { 'POST /api/servers/home-assistant/oauth/start': oauthStart() } },
+  parameters: { api: { StartServerOAuth: { startServerOAuth: oauthStart() } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('button', { name: 'Sign in' }));
@@ -118,7 +119,7 @@ export const LinksTheLoginWhenTheWindowIsBlocked: Story = {
 export const ShowsWhyTheSignInCouldNotStart: Story = {
   parameters: {
     api: {
-      'POST /api/servers/home-assistant/oauth/start': apiError(
+      StartServerOAuth: apiError(
         HttpStatus.BadGateway,
         ErrorCode.UpstreamFailed,
         'Could not start the sign-in for server "home-assistant"',

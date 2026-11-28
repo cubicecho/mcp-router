@@ -1,6 +1,6 @@
-import { ServerRuntimeState } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
+import { ServerRuntimeState } from '@/__generated__/graphql';
 import { ServerStateBadge } from './state-badge.tsx';
 
 const meta = {

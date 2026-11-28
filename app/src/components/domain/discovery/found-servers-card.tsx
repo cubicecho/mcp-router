@@ -1,4 +1,3 @@
-import type { DiscoveredServer } from '@mcp-router/shared';
 import { RadarIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -7,6 +6,7 @@ import { ListItem } from '@/components/list-item';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/ui/icons';
+import type { LanServer } from '@/lib/api';
 import { useSetDismissed } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 import { AddFoundServerDialog } from './add-found-server-dialog.tsx';
@@ -14,15 +14,15 @@ import { AddFoundServerDialog } from './add-found-server-dialog.tsx';
 /** What the found-servers card is given. */
 export interface FoundServersCardProps {
   /** The servers found on the network that are not added or dismissed yet. */
-  servers: DiscoveredServer[];
+  servers: LanServer[];
 }
 
 /** Offers each MCP server another machine on the network announces, to add with one dialog or dismiss. */
 export function FoundServersCard({ servers }: FoundServersCardProps) {
-  const [adding, setAdding] = useState<DiscoveredServer | null>(null);
+  const [adding, setAdding] = useState<LanServer | null>(null);
   const setDismissed = useSetDismissed();
 
-  const dismiss = (server: DiscoveredServer) => {
+  const dismiss = (server: LanServer) => {
     setDismissed.mutate(
       { key: server.key, dismissed: true },
       {

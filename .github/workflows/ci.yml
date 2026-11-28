@@ -24,6 +24,9 @@ jobs:
       - run: npm ci
       - name: Lint
         run: npx biome ci .
+      # The server prints its schema and the app's typed documents are generated from it; both are gitignored.
+      - name: Generate GraphQL types
+        run: npm run codegen
       - name: Typecheck
         run: npm run check:types
       # The stories run as tests in a real Chromium.

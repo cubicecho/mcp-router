@@ -1,40 +1,43 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { CallVia } from '@/__generated__/graphql';
 import { activityEntry } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { ActivityCard } from './activity-card.tsx';
 
-const ACTIVITY = 'GET /api/servers/filesystem/activity';
-const CLEAR = 'DELETE /api/servers/filesystem/activity';
+const ACTIVITY = 'ServerActivity';
+const CLEAR = 'ClearServerActivity';
+/** What clearing the fixture server's log sends. */
+const CLEAR_VARIABLES = { name: 'filesystem' };
 /** The first load and the one the Refresh button asks for. */
 const LOADS_AFTER_REFRESH = 2;
 
 const read = activityEntry();
 const failedRead = activityEntry({
   id: 2,
-  via: 'aggregate',
+  via: CallVia.Aggregate,
   target: 'missing.txt',
   ok: false,
   durationMs: 7,
   params: { name: 'read_file', arguments: { path: '/tmp/missing.txt' } },
-  result: undefined,
+  result: null,
   error: 'ENOENT: no such file or directory',
 });
 const listing = activityEntry({
   id: 3,
-  via: 'ui',
+  via: CallVia.Ui,
   method: 'tools/list',
-  target: undefined,
-  params: undefined,
-  result: undefined,
+  target: null,
+  params: null,
+  result: null,
 });
 const entries = [listing, failedRead, read];
 
 const meta = {
   component: ActivityCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [ACTIVITY]: { entries } } },
+  parameters: { api: { [ACTIVITY]: { serverActivity: entries } } },
   decorators: [
     (Story) => (
       <div className="max-w-4xl p-6">
@@ -137,7 +140,7 @@ export const RefreshesOnRequest: Story = {
 };
 
 export const ClearsOnlyAfterConfirming: Story = {
-  parameters: { api: { [ACTIVITY]: { entries }, [CLEAR]: null } },
+  parameters: { api: { [ACTIVITY]: { serverActivity: entries }, [CLEAR]: { clearServerActivity: true } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole('button', { name: /tools\/list/ });
@@ -145,16 +148,16 @@ export const ClearsOnlyAfterConfirming: Story = {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('alertdialog', { name: 'Clear the activity log?' }));
     await waitFor(() => expect(dialog.getByText(/Every recorded call to this server is removed/)).toBeVisible());
-    await expect(apiRequest).not.toHaveBeenCalledWith(CLEAR, undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith(CLEAR, CLEAR_VARIABLES);
     await userEvent.click(dialog.getByRole('button', { name: 'Clear' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(CLEAR, undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(CLEAR, CLEAR_VARIABLES));
     await waitFor(() => expect(body.getByText('Activity cleared')).toBeVisible());
     await waitFor(() => expect(body.queryByRole('alertdialog')).not.toBeInTheDocument());
   },
 };
 
 export const KeepsTheLogWhenClearingIsCancelled: Story = {
-  parameters: { api: { [ACTIVITY]: { entries }, [CLEAR]: null } },
+  parameters: { api: { [ACTIVITY]: { serverActivity: entries }, [CLEAR]: { clearServerActivity: true } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await canvas.findByRole('button', { name: /tools\/list/ });
@@ -163,7 +166,7 @@ export const KeepsTheLogWhenClearingIsCancelled: Story = {
     const dialog = within(await body.findByRole('alertdialog'));
     await userEvent.click(dialog.getByRole('button', { name: 'Cancel' }));
     await waitFor(() => expect(body.queryByRole('alertdialog')).not.toBeInTheDocument());
-    await expect(apiRequest).not.toHaveBeenCalledWith(CLEAR, undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith(CLEAR, CLEAR_VARIABLES);
     await expect(canvas.getByRole('button', { name: /tools\/list/ })).toBeVisible();
   },
 };
@@ -171,7 +174,7 @@ export const KeepsTheLogWhenClearingIsCancelled: Story = {
 export const SaysWhyClearingFailed: Story = {
   parameters: {
     api: {
-      [ACTIVITY]: { entries },
+      [ACTIVITY]: { serverActivity: entries },
       [CLEAR]: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'Could not clear the log'),
     },
   },
@@ -199,7 +202,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoCallsYet: Story = {
-  parameters: { api: { [ACTIVITY]: { entries: [] } } },
+  parameters: { api: { [ACTIVITY]: { serverActivity: [] } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(
@@ -215,7 +218,7 @@ export const WithNoCallsYet: Story = {
 
 export const WithNoCallsYetInAWorkspace: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
-  parameters: { api: { 'GET /api/workspaces/research/activity': { entries: [] } } },
+  parameters: { api: { WorkspaceActivity: { workspaceActivity: [] } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(

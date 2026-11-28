@@ -1,7 +1,7 @@
-import { DiscoveredServerState } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { CompassIcon } from 'lucide-react';
 import { useState } from 'react';
+import { LanServerState } from '@/__generated__/graphql';
 import { FoundServersCard } from '@/components/domain/discovery/found-servers-card';
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
@@ -30,7 +30,7 @@ function ServersPage() {
   const { data } = servers;
   const [addOpen, setAddOpen] = useState(false);
   const discovery = useDiscovery();
-  const found = (discovery.data?.servers ?? []).filter((server) => server.state === DiscoveredServerState.Available);
+  const found = (discovery.data?.servers ?? []).filter((server) => server.state === LanServerState.Available);
 
   return (
     <PageLayout

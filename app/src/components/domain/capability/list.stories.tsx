@@ -4,11 +4,11 @@ import { EmptyState } from '@/components/empty-state';
 import { toolsResponse } from '@/storybook/fixtures';
 import { CapabilityList, CapabilityRow } from './list.tsx';
 
-const rows = toolsResponse().tools.map((tool) => (
+const rows = toolsResponse().map((tool) => (
   <CapabilityRow
     key={tool.name}
     title={tool.name}
-    description={tool.description}
+    description={tool.description ?? undefined}
     contentSlot={<p>Everything about {tool.name}.</p>}
   />
 ));

@@ -1,12 +1,24 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { remoteServer, stdioServer, workspace } from '@/storybook/fixtures';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
+import {
+  DOCS_ID,
+  FILESYSTEM_ID,
+  RESEARCH_ID,
+  remoteServer,
+  serversAnswer,
+  stdioServer,
+  workspace,
+  workspaceAnswer,
+  workspaceRecord,
+  workspacesAnswer,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { MembersCard } from './members-card.tsx';
 
-const SERVERS_ROUTE = 'GET /api/servers';
-const UPDATE_ROUTE = 'PATCH /api/workspaces/research';
+const SERVERS = 'Servers';
+const SAVE = 'SaveWorkspace';
 const FILESYSTEM_SWITCH = 'Enable filesystem in workspace';
 const DOCS_SWITCH = 'Enable docs in workspace';
 
@@ -15,10 +27,10 @@ const meta = {
   args: { workspace: workspace() },
   parameters: {
     api: {
-      [SERVERS_ROUTE]: [stdioServer(), remoteServer()],
-      'GET /api/workspaces': [workspace()],
-      'GET /api/workspaces/research': workspace(),
-      [UPDATE_ROUTE]: workspace(),
+      [SERVERS]: serversAnswer([stdioServer(), remoteServer()]),
+      Workspaces: workspacesAnswer([workspace()]),
+      Workspace: workspaceAnswer(workspace()),
+      [SAVE]: { saveWorkspace: workspaceRecord(workspace()) },
     },
   },
   decorators: [
@@ -55,11 +67,20 @@ export const DisablesAMemberAndKeepsItsOverrides: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole('switch', { name: FILESYSTEM_SWITCH }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
-        members: {
-          filesystem: { enabled: false, env: { ROOT_DIR: '/srv/research' } },
-          docs: { enabled: false },
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        // Saving replaces the member list, so every member is sent again with its overrides.
+        input: {
+          id: RESEARCH_ID,
+          name: 'Research',
+          slug: 'research',
+          enabled: true,
+          description: 'Files and docs for the research agent.',
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: false, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: false },
+          ],
         },
+        memberLimit: PAGE_DEFAULTS.workspaceMembers,
       }),
     );
     await waitFor(() => expect(body.getByText('Disabled filesystem in Research')).toBeVisible());
@@ -72,11 +93,15 @@ export const EnablesAMember: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(canvas.getByRole('switch', { name: DOCS_SWITCH }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
-        members: {
-          filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } },
-          docs: { enabled: true },
-        },
+      expect(apiRequest).toHaveBeenCalledWith(SAVE, {
+        input: expect.objectContaining({
+          id: RESEARCH_ID,
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: true },
+          ],
+        }),
+        memberLimit: PAGE_DEFAULTS.workspaceMembers,
       }),
     );
     await waitFor(() => expect(body.getByText('Enabled docs in Research')).toBeVisible());
@@ -87,9 +112,15 @@ export const NamesEveryKindOfOverride: Story = {
   args: {
     workspace: workspace({
       members: {
-        filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' }, args: ['index.js', '/srv/research'] },
+        filesystem: {
+          enabled: true,
+          env: { ROOT_DIR: '/srv/research' },
+          args: ['index.js', '/srv/research'],
+          serverId: FILESYSTEM_ID,
+        },
         docs: {
           enabled: true,
+          serverId: DOCS_ID,
           headers: { Authorization: 'Bearer abc' },
           url: 'https://docs.example.test/mcp/research',
         },
@@ -106,7 +137,7 @@ export const NamesEveryKindOfOverride: Story = {
 };
 
 export const FlagsAMemberWhoseServerIsGone: Story = {
-  parameters: { api: { [SERVERS_ROUTE]: [stdioServer()] } },
+  parameters: { api: { [SERVERS]: serversAnswer([stdioServer()]) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('Filesystem')).toBeVisible();
@@ -126,7 +157,7 @@ export const WithNoMembers: Story = {
 };
 
 export const WhileTheInstalledServersLoad: Story = {
-  parameters: { api: { [SERVERS_ROUTE]: pending() } },
+  parameters: { api: { [SERVERS]: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // The members are the workspace's own, so they are listed by name before the servers arrive.
@@ -137,7 +168,7 @@ export const WhileTheInstalledServersLoad: Story = {
 };
 
 export const LocksTheSwitchesWhileSaving: Story = {
-  parameters: { api: { [SERVERS_ROUTE]: [stdioServer(), remoteServer()], [UPDATE_ROUTE]: pending() } },
+  parameters: { api: { [SERVERS]: serversAnswer([stdioServer(), remoteServer()]), [SAVE]: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(canvas.getByRole('switch', { name: FILESYSTEM_SWITCH }));
@@ -149,8 +180,8 @@ export const LocksTheSwitchesWhileSaving: Story = {
 export const ShowsWhyTheChangeWasRefused: Story = {
   parameters: {
     api: {
-      [SERVERS_ROUTE]: [stdioServer(), remoteServer()],
-      [UPDATE_ROUTE]: apiError(HttpStatus.NotFound, ErrorCode.NotFound, 'Workspace "research" not found'),
+      [SERVERS]: serversAnswer([stdioServer(), remoteServer()]),
+      [SAVE]: apiError(HttpStatus.NotFound, ErrorCode.NotFound, 'Workspace "research" not found'),
     },
   },
   play: async ({ canvasElement }) => {

@@ -16,13 +16,13 @@ function renderSearch() {
 describe('RegistrySearch', () => {
   beforeEach(() => {
     vi.restoreAllMocks();
-    vi.spyOn(api, 'listRegistries').mockResolvedValue([{ name: 'official', url: 'https://example.test' }]);
+    vi.spyOn(api, 'listRegistries').mockResolvedValue([
+      { id: '00000000-0000-4000-8000-0000000000b1', name: 'official', url: 'https://example.test' },
+    ]);
   });
 
   it('searches only on submit, not on every keystroke', async () => {
-    const searchSpy = vi
-      .spyOn(api, 'searchRegistryServers')
-      .mockResolvedValue({ servers: [], metadata: { count: 0 } } as never);
+    const searchSpy = vi.spyOn(api, 'searchRegistryServers').mockResolvedValue({ servers: [], nextCursor: null });
 
     renderSearch();
 

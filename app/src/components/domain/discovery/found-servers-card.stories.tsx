@@ -1,10 +1,12 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { LanServerState } from '@/__generated__/graphql';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
 import { appRoutes, discoveredServer, discovery } from '@/storybook/fixtures';
 import { apiRequest } from '@/storybook/mock-api';
 import { FoundServersCard } from './found-servers-card.tsx';
 
-const DISMISS_ROUTE = 'POST /api/discovery/dismissed';
+const DISMISS_ROUTE = 'SetLanServerDismissed';
 const skills = discoveredServer();
 const notes = discoveredServer({
   key: 'MCP Notes on desk/io.github.cubicecho.mcp-notes.desk/notes',
@@ -21,7 +23,12 @@ const meta = {
   args: { servers: [skills, notes] },
   parameters: {
     a11y: { test: 'error' },
-    api: { ...appRoutes(), [DISMISS_ROUTE]: discovery({ servers: [{ ...skills, state: 'dismissed' }, notes] }) },
+    api: {
+      ...appRoutes(),
+      [DISMISS_ROUTE]: {
+        setLanServerDismissed: discovery({ servers: [{ ...skills, state: LanServerState.Dismissed }, notes] }),
+      },
+    },
   },
 } satisfies Meta<typeof FoundServersCard>;
 export default meta;
@@ -51,7 +58,13 @@ export const OpensTheAddDialog: Story = {
 export const DismissesAFoundServer: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Dismiss MCP Skills on nas' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(DISMISS_ROUTE, { key: skills.key, dismissed: true }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(DISMISS_ROUTE, {
+        key: skills.key,
+        dismissed: true,
+        limit: PAGE_DEFAULTS.lanServers,
+      }),
+    );
     const body = within(canvasElement.ownerDocument.body);
     await waitFor(() => expect(body.getByText('Dismissed MCP Skills on nas')).toBeVisible());
   },

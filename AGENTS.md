@@ -43,10 +43,11 @@ All from the workspace root.
 # Dev
 npm run dev              # server (watch) + Vite dev server, concurrently
 npm run dev:server       # Express + MCP gateway only (port 3001)
-npm run dev:app          # Vite dev server only (port 3000, proxies /api + /mcp)
+npm run dev:app          # Vite dev server only (port 3000, proxies /api, /mcp and /graphql)
 
 # Quality — run before every commit; CI fails otherwise
-npm run check            # biome check (writes safe fixes) + tsc --noEmit for all packages; CI runs `biome ci`
+npm run codegen          # server prints __generated__/schema.graphql, then the app's typed documents (both gitignored)
+npm run check            # codegen + biome check (writes safe fixes) + tsc --noEmit for all packages; CI runs `biome ci`
 npm run check:fix        # biome with auto-fix
 npm run lint / lint:fix  # biome lint only
 npm test                 # vitest run: server (node), app (jsdom), then the stories in Chromium
@@ -56,7 +57,7 @@ npm run build-storybook  # static Storybook into app/storybook-static
 npx playwright install chromium   # once per machine — the stories project needs it
 
 # Build / deploy
-npm run build            # shared typecheck → server tsc → app vite build
+npm run build            # codegen → shared typecheck → server tsc → app vite build
 npm run start            # node server/dist/index.js (serves app/dist)
 npm run build:docker     # docker build -t mcp-router .
 docker compose up        # run the container; ./data mounted at /data
@@ -70,7 +71,7 @@ docker compose up        # run the container; ./data mounted at /data
 | **Express 5 + @modelcontextprotocol/sdk** | `StreamableHTTPServerTransport` for exposed endpoints; SDK `Client` with stdio/streamable-http transports for downstream servers |
 | **Drizzle 1.0.0-rc.5 + PGlite/Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. PGlite data dir `DATA_DIR/pg` unless `DATABASE_URL` is a `postgres://` URL. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
 | **Node ≥22.18 type stripping** | Server dev runs `.ts` directly (`node --watch`), no build step; `tsc` with `rewriteRelativeImportExtensions` emits `dist/` for prod — so **use `.ts` extensions in all relative imports** in `server/` and `shared/` |
-| **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes), minus GraphQL — plain REST with shared zod DTOs |
+| **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes); the UI talks GraphQL through typed documents from codegen's client preset (`app/codegen.ts`) |
 | **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/api/*` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
 
 ## Key Conventions
@@ -118,7 +119,12 @@ there); feature components in `app/src/components/domain/<concept>/` (`server`, 
 `capability`, `endpoint`, `key-value`, `browse`, `auth`, `discovery`), never loose in `domain/`; file-based routes
 in `app/src/routes/`; `@/` maps to `app/src/`. Data fetching via TanStack
 Query hooks wrapping the typed client in `src/lib/api.ts` — no raw `fetch` in
-components. Invalidate the relevant query keys after every mutation.
+components. Invalidate the relevant query keys after every mutation. The client
+sends each operation to `/graphql` as a `graphql()` document in `api.ts`, typed
+by codegen (`app/src/__generated__/`, run `npm run codegen` after changing a
+document or the server schema); JSON columns are read through the shared config
+schemas there. The tool runner's `tools/call`, `resources/read` and
+`prompts/get` have no GraphQL field yet and still post to `/api`.
 
 ## Code Style
 
@@ -135,9 +141,11 @@ components. Invalidate the relevant query keys after every mutation.
   `x.stories.tsx` beside it (none for `components/ui/` or the vendored shells in
   `components/*.tsx`). Each story is one state, has a `play` that asserts it by
   role and name, and must pass axe (`a11y.test: 'error'`). The API is mocked per
-  story through `parameters.api` (`app/src/storybook/mock-api.ts`) with data
-  from the schema-parsed builders in `app/src/storybook/fixtures.ts`; a route
-  story sets `parameters.route` and renders the real route tree
+  story through `parameters.api` (`app/src/storybook/mock-api.ts`), keyed by
+  GraphQL operation name (`Servers`, `UpdateServer`) and answered with its
+  `data`, which the mock runs through the printed schema; data comes from the
+  builders in `app/src/storybook/fixtures.ts`; a route story sets
+  `parameters.route` and renders the real route tree
 
 ## Git
 

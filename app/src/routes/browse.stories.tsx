@@ -1,10 +1,19 @@
+import type { RegistryServerEntry } from '@mcp-router/shared';
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, emptyRegistryPage, registry, registryPage, stdioServer } from '@/storybook/fixtures';
+import {
+  appRoutes,
+  emptyRegistryPage,
+  registry,
+  registryPage,
+  serverRow,
+  stdioServer,
+  variable,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 
-const SEARCH_ROUTE = 'GET /api/registries/official/servers';
+const SEARCH_ROUTE = 'RegistryServers';
 
 /** How many times the story has asked the registry for a page of servers. */
 function searchCount(): number {
@@ -35,11 +44,15 @@ export const SearchesTheRegistryOnSubmit: Story = {
     api: {
       ...appRoutes(),
       // The registry answers a search for "notes" with the one server that matches it.
-      [SEARCH_ROUTE]: ({ url }: { url: URL }) => {
+      [SEARCH_ROUTE]: (request: { body: unknown }) => {
         const page = registryPage();
-        return url.searchParams.get('search') === 'notes'
-          ? { ...page, servers: page.servers.filter((entry) => entry.server.title === 'Notes') }
-          : page;
+        const servers = page.servers as RegistryServerEntry[];
+        return {
+          registryServers:
+            variable(request, 'search') === 'notes'
+              ? { ...page, servers: servers.filter((entry) => entry.server.title === 'Notes') }
+              : page,
+        };
       },
     },
   },
@@ -68,7 +81,7 @@ export const WhileSearching: Story = {
 };
 
 export const WithNoMatchingServers: Story = {
-  parameters: { api: { ...appRoutes(), [SEARCH_ROUTE]: emptyRegistryPage() } },
+  parameters: { api: { ...appRoutes(), [SEARCH_ROUTE]: { registryServers: emptyRegistryPage() } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('No servers found')).toBeVisible();
@@ -95,11 +108,7 @@ export const WhenTheRegistryListFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/registries': apiError(
-        HttpStatus.InternalServerError,
-        ErrorCode.Internal,
-        'registries.json is unreadable',
-      ),
+      Registries: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'registries.json is unreadable'),
     },
   },
   play: async ({ canvasElement }) => {
@@ -116,8 +125,16 @@ export const SearchesAnotherRegistry: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'GET /api/registries': [registry(), registry({ name: 'mirror', url: 'https://mirror.example.test' })],
-      'GET /api/registries/mirror/servers': emptyRegistryPage(),
+      Registries: {
+        registries: [
+          registry(),
+          registry({ id: '00000000-0000-4000-8000-0000000000b2', name: 'mirror', url: 'https://mirror.example.test' }),
+        ],
+      },
+      // Each registry answers its own page: the mirror has nothing in it.
+      [SEARCH_ROUTE]: (request: { body: unknown }) => ({
+        registryServers: variable(request, 'registry') === 'mirror' ? emptyRegistryPage() : registryPage(),
+      }),
     },
   },
   play: async ({ canvasElement }) => {
@@ -128,7 +145,9 @@ export const SearchesAnotherRegistry: Story = {
     await userEvent.click(canvas.getByRole('combobox', { name: 'Registry' }));
     await userEvent.click(await body.findByRole('option', { name: 'mirror' }));
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('GET /api/registries/mirror/servers', undefined));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(SEARCH_ROUTE, expect.objectContaining({ registry: 'mirror' })),
+    );
     await expect(await canvas.findByText('No servers found')).toBeVisible();
     // The list hides the rest of the page from assistive tech until it has finished closing.
     await waitFor(() => expect(body.queryByRole('listbox')).not.toBeInTheDocument());
@@ -139,7 +158,7 @@ export const InstallsAPackageFromNpm: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      'POST /api/servers': stdioServer(),
+      InstallServer: { installServer: serverRow(stdioServer()) },
     },
   },
   play: async ({ canvasElement }) => {
@@ -154,11 +173,13 @@ export const InstallsAPackageFromNpm: Story = {
     await userEvent.click(install);
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith('POST /api/servers', {
-        name: 'filesystem',
-        source: { type: 'npm', package: '@modelcontextprotocol/server-filesystem' },
-        env: {},
-        enabled: true,
+      expect(apiRequest).toHaveBeenCalledWith('InstallServer', {
+        input: {
+          name: 'filesystem',
+          source: { type: 'npm', package: '@modelcontextprotocol/server-filesystem' },
+          env: {},
+          enabled: true,
+        },
       }),
     );
     // A finished install lands on the new server's page.

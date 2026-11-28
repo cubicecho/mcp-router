@@ -2,25 +2,16 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { createRouter, RouterProvider } from '@tanstack/react-router';
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
-import { ApiRequestError } from '@/lib/api';
+import { isCallerError } from '@/lib/api';
 import { routeTree } from './routeTree.gen.ts';
 import './index.css';
-import { HttpStatus } from '@mcp-router/shared';
 
 const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       refetchOnWindowFocus: false,
-      retry: (failureCount, error) => {
-        if (
-          error instanceof ApiRequestError &&
-          error.status >= HttpStatus.BadRequest &&
-          error.status < HttpStatus.InternalServerError
-        ) {
-          return false;
-        }
-        return failureCount < 2;
-      },
+      // A request the caller got wrong fails the same way again; anything else gets two more tries.
+      retry: (failureCount, error) => isCallerError(error) === false && failureCount < 2,
     },
   },
 });

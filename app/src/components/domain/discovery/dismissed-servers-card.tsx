@@ -1,17 +1,17 @@
-import type { DiscoveredServer } from '@mcp-router/shared';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { EmptyState } from '@/components/empty-state';
 import { ListItem } from '@/components/list-item';
 import { Button } from '@/components/ui/button';
 import { EyeOff } from '@/components/ui/icons';
+import type { LanServer } from '@/lib/api';
 import { useSetDismissed } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** What the dismissed-servers card is given. */
 export interface DismissedServersCardProps {
   /** The servers found on the network that the user dismissed. */
-  servers: DiscoveredServer[];
+  servers: LanServer[];
   /** The found servers are still loading. */
   loading?: boolean | undefined;
 }
@@ -20,7 +20,7 @@ export interface DismissedServersCardProps {
 export function DismissedServersCard({ servers, loading }: DismissedServersCardProps) {
   const setDismissed = useSetDismissed();
 
-  const offerAgain = (server: DiscoveredServer, title: string) => {
+  const offerAgain = (server: LanServer, title: string) => {
     setDismissed.mutate(
       { key: server.key, dismissed: false },
       { onSuccess: () => toast.success(`${title} is offered again`), onError: toastApiError },

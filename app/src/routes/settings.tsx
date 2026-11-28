@@ -1,7 +1,8 @@
-import { DiscoveredServerState, MS_PER_MINUTE, type RouterStatus } from '@mcp-router/shared';
+import { MS_PER_MINUTE } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { toast } from 'sonner';
+import { LanServerState } from '@/__generated__/graphql';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { DismissedServersCard } from '@/components/domain/discovery/dismissed-servers-card';
@@ -15,6 +16,7 @@ import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import type { RouterStatus } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
 import { useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
@@ -108,10 +110,10 @@ function isPublicUrl(text: string): boolean {
 /**
  * Inline editor for the router's public address, the one a remote server's login sends the browser back to.
  *
- * @param props.current - The stored address; undefined when unset.
+ * @param props.current - The stored address; null when unset.
  * @returns The form; Save is enabled only for a blank or valid URL that differs from the stored one. Blank clears it.
  */
-function PublicUrlEditor({ current }: { current?: string }) {
+function PublicUrlEditor({ current }: { current: string | null }) {
   const update = useUpdateSettings();
   const form = useAppForm({
     defaultValues: { url: current ?? '' },
@@ -239,9 +241,7 @@ function SettingsPage() {
   const status = useRouterStatus();
   const { data } = status;
   const discovery = useDiscovery();
-  const dismissed = (discovery.data?.servers ?? []).filter(
-    (server) => server.state === DiscoveredServerState.Dismissed,
-  );
+  const dismissed = (discovery.data?.servers ?? []).filter((server) => server.state === LanServerState.Dismissed);
   const reload = useReloadConfig();
   const port = window.location.port || (window.location.protocol === 'https:' ? '443' : '80');
 

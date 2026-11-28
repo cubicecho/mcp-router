@@ -70,6 +70,7 @@ describe('InstallDialog', () => {
   it('submits an InstallRequest with source.type registry and calls onInstalled', async () => {
     const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
     vi.mocked(api.installServer).mockResolvedValue({
+      id: '00000000-0000-4000-8000-000000000001',
       config: {
         name: 'weather-server',
         enabled: true,
@@ -78,7 +79,6 @@ describe('InstallDialog', () => {
         env: {},
         envMeta: {},
       },
-      state: 'stopped',
     });
     const { onInstalled } = renderDialog();
 

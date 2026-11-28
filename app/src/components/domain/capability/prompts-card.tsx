@@ -1,7 +1,6 @@
-import type { ServerPrompt } from '@mcp-router/shared';
 import { InputField, useAppForm } from '@/components/app-form';
 import { EmptyState } from '@/components/empty-state';
-import { type CapabilityScope, SCOPE_WORKSPACE } from '@/lib/api';
+import { type CapabilityScope, type McpPrompt, SCOPE_WORKSPACE } from '@/lib/api';
 import { useCapabilityPrompts, useGetPrompt } from '@/lib/queries';
 import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCapabilityRun } from './list.tsx';
 
@@ -15,7 +14,7 @@ import { CapabilityList, CapabilityRow, ResultBlock, RUN_SUBMIT, RunForm, useCap
  * @remarks
  * Only arguments with non-blank text are sent, so a whitespace-only entry counts as unset.
  */
-function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPrompt }) {
+function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: McpPrompt }) {
   const get = useGetPrompt(scope);
   const { result, run } = useCapabilityRun(get);
   const declaredArgs = prompt.arguments ?? [];
@@ -53,7 +52,7 @@ function PromptRow({ scope, prompt }: { scope: CapabilityScope; prompt: ServerPr
                     name={`values[${index}]`}
                     label={<span className="font-mono">{arg.name}</span>}
                     description={arg.description}
-                    required={arg.required}
+                    required={arg.required ?? undefined}
                     validators={{
                       onChange: ({ value }) =>
                         arg.required && value.trim().length === 0 ? `${arg.name} is required` : undefined,

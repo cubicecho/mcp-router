@@ -48,3 +48,39 @@ export const DISPLAY_DEFAULTS: Readonly<DisplaySettings> = Object.freeze({
   argsMaxRows: 10,
   justNowSeconds: 45,
 });
+
+/**
+ * How many rows each list asks the server for. The server pages every list (50 when none is named, 500 at most) and
+ * refuses an operation that costs more than its limit, so a list read beside another (servers and their runtimes,
+ * workspaces and their members) asks for fewer.
+ */
+export interface PageSettings {
+  /** Installed servers, and the runtimes read beside them. */
+  servers: number;
+  /** Workspaces on the workspaces page. */
+  workspaces: number;
+  /** Workspace members, across every workspace on the workspaces page, or in one workspace. */
+  workspaceMembers: number;
+  /** Configured registries. */
+  registries: number;
+  /** One registry search page. */
+  registrySearch: number;
+  /** Tools, resources or prompts of one server or workspace. */
+  capabilities: number;
+  /** Recorded calls of one server or workspace. */
+  activity: number;
+  /** Servers found on the local network. */
+  lanServers: number;
+}
+
+/** The page sizes the API client asks for. */
+export const PAGE_DEFAULTS: Readonly<PageSettings> = Object.freeze({
+  servers: 200,
+  workspaces: 100,
+  workspaceMembers: 300,
+  registries: 100,
+  registrySearch: 20,
+  capabilities: 500,
+  activity: 200,
+  lanServers: 100,
+});

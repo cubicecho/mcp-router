@@ -1,17 +1,34 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import type { McpPrompt } from '@/lib/api';
 import { promptGetResult, promptsResponse } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { PromptsCard } from './prompts-card.tsx';
 
-const LIST = 'GET /api/servers/filesystem/prompts';
+const LIST = 'ServerPrompts';
+
+/**
+ * Builds one prompt, as prompts/list reports it.
+ *
+ * @param name - Its name.
+ * @param [args] - The arguments it declares; what one does not set is null.
+ * @returns The prompt, with no title or description.
+ */
+function prompt(name: string, args: Array<{ name: string; description?: string }> = []): McpPrompt {
+  return {
+    name,
+    title: null,
+    description: null,
+    arguments: args.map((arg) => ({ description: null, required: null, ...arg })),
+  };
+}
 const GET = 'POST /api/servers/filesystem/prompts/get';
 
 const meta = {
   component: PromptsCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: promptsResponse(), [GET]: promptGetResult() } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse() }, [GET]: promptGetResult() } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -35,7 +52,7 @@ export const ListsThePromptsOfAServer: Story = {
 export const ListsThePromptsOfAWorkspace: Story = {
   args: { scope: { kind: 'workspace', slug: 'research' } },
   parameters: {
-    api: { 'GET /api/workspaces/research/prompts': promptsResponse({ prompts: [{ name: 'filesystem__summarise' }] }) },
+    api: { WorkspacePrompts: { workspacePrompts: promptsResponse([prompt('filesystem__summarise')]) } },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -77,9 +94,11 @@ export const RefusesToGetWithoutARequiredArgument: Story = {
 export const LeavesOutArgumentsLeftBlank: Story = {
   parameters: {
     api: {
-      [LIST]: promptsResponse({
-        prompts: [{ name: 'greet', arguments: [{ name: 'name' }, { name: 'tone', description: 'Formal or casual.' }] }],
-      }),
+      [LIST]: {
+        serverPrompts: promptsResponse([
+          prompt('greet', [{ name: 'name' }, { name: 'tone', description: 'Formal or casual.' }]),
+        ]),
+      },
       [GET]: promptGetResult(),
     },
   },
@@ -93,7 +112,7 @@ export const LeavesOutArgumentsLeftBlank: Story = {
 };
 
 export const GetsAPromptThatTakesNoArguments: Story = {
-  parameters: { api: { [LIST]: promptsResponse({ prompts: [{ name: 'standup' }] }), [GET]: promptGetResult() } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) }, [GET]: promptGetResult() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: /standup/ }));
@@ -107,7 +126,7 @@ export const GetsAPromptThatTakesNoArguments: Story = {
 export const SaysWhyAGetFailed: Story = {
   parameters: {
     api: {
-      [LIST]: promptsResponse({ prompts: [{ name: 'standup' }] }),
+      [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) },
       [GET]: apiError(HttpStatus.BadGateway, ErrorCode.UpstreamFailed, 'Prompt get failed', 'Unknown prompt.'),
     },
   },
@@ -133,7 +152,7 @@ export const WhileLoading: Story = {
 };
 
 export const WithNoPrompts: Story = {
-  parameters: { api: { [LIST]: promptsResponse({ prompts: [] }) } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse([]) } } },
   play: async ({ canvasElement }) => {
     await expect(await within(canvasElement).findByText('No prompts reported.')).toBeVisible();
   },

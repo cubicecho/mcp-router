@@ -1,8 +1,8 @@
-import { ServerRuntimeState, type ServerStatus } from '@mcp-router/shared';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ServerRuntimeState } from '@/__generated__/graphql';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
@@ -15,6 +15,7 @@ import { SearchInput } from '@/components/ui/search-input';
 import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
+import type { InstalledServer } from '@/lib/api';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
 import { formatRelativeTime, formatSource } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
@@ -31,7 +32,7 @@ import { toastApiError } from '@/lib/toast';
  * @remarks
  * A click anywhere but on the row's own controls opens the server's page.
  */
-function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
+function ServerRow({ server, onEdit }: { server: InstalledServer; onEdit: (server: InstalledServer) => void }) {
   const navigate = useNavigate();
   const update = useUpdateServer();
   const restart = useRestartServer();
@@ -176,8 +177,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
  * @param props.servers - Every installed server; the filter matches name, display name and source, ignoring case.
  * @returns The table.
  */
-export function ServerList({ servers }: { servers: ServerStatus[] }) {
-  const [editing, setEditing] = useState<ServerStatus | null>(null);
+export function ServerList({ servers }: { servers: InstalledServer[] }) {
+  const [editing, setEditing] = useState<InstalledServer | null>(null);
   const [filter, setFilter] = useState('');
 
   const query = filter.trim().toLowerCase();

@@ -15,9 +15,9 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
-import { SCOPE_WORKSPACE } from '@/lib/api';
+import { SCOPE_WORKSPACE, workspaceSaveOf } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
-import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
+import { useDeleteWorkspace, useSaveWorkspace, useWorkspace } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
 
 /** The `/workspaces/$slug` route. */
@@ -35,7 +35,7 @@ function WorkspaceDetailPage() {
   const navigate = useNavigate();
   const query = useWorkspace(slug);
   const { data: workspace } = query;
-  const update = useUpdateWorkspace();
+  const update = useSaveWorkspace();
   const remove = useDeleteWorkspace();
   const [editOpen, setEditOpen] = useState(false);
 
@@ -146,7 +146,7 @@ function WorkspaceDetailPage() {
                           aria-label={`Enable workspace ${slug}`}
                           onCheckedChange={(enabled) =>
                             update.mutate(
-                              { slug, enabled },
+                              { ...workspaceSaveOf(workspace), enabled },
                               {
                                 onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
                                 onError: toastApiError,
