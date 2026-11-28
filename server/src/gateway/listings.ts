@@ -1,12 +1,14 @@
 import {
   type ListedPrompt,
+  type ListedResource,
+  type ListedResourceTemplate,
   type ListedTool,
   listAllPrompts,
   listAllResources,
   listAllResourceTemplates,
   listAllTools,
 } from '@cubicecho/agent-mcp-pool';
-import type { ActivityEntry, ServerResourcesResponse, WorkspaceConfig } from '@mcp-router/shared';
+import type { ActivityEntry, WorkspaceConfig } from '@mcp-router/shared';
 import { errorMessage } from '../core/errors.ts';
 import { emptyOnMissing } from './capability.ts';
 import type { DownstreamClient } from './downstream.ts';
@@ -19,8 +21,18 @@ import { namespaceName } from './naming.ts';
 
 // What the management doors (/graphql and /admin/mcp) list from a server or a workspace, written once for both.
 
+/**
+ * Makes an entry's `name` optional: a server that predates it as a required field leaves it out.
+ *
+ * @typeParam T - A listed resource or resource template.
+ */
+type WithOptionalName<T extends { name: string }> = Omit<T, 'name'> & { name?: string };
+
 /** A server's or workspace's resources and resource templates. */
-export type ResourceListing = ServerResourcesResponse;
+export interface ResourceListing {
+  resources: WithOptionalName<ListedResource>[];
+  resourceTemplates: WithOptionalName<ListedResourceTemplate>[];
+}
 
 /**
  * Lists every tool of one server, draining all pages, and records the count on its status.

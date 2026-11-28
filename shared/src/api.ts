@@ -5,15 +5,13 @@ import {
   serverNameSchema,
   serverSourceSchema,
   serverTransportSchema,
-  workspaceConfigSchema,
-  workspaceMemberSchema,
 } from './config.ts';
-import { NAME_DEFAULTS } from './defaults.ts';
 import { ErrorCode } from './wire.ts';
 
 /**
- * DTOs for the management REST API (/api/*).
- * All endpoints require `Authorization: Bearer <token>` unless auth is disabled.
+ * The management API's contract beside the GraphQL schema: the rules /graphql and /admin/mcp check their inputs
+ * against, what the gateway reports about a server, and the JSON error envelope the HTTP doors (/mcp, the auth guard)
+ * answer with.
  */
 
 /** What a server's downstream connection is doing. */
@@ -28,11 +26,8 @@ export const ServerRuntimeState = {
 /** One of the {@link ServerRuntimeState} values. */
 export type ServerRuntimeState = (typeof ServerRuntimeState)[keyof typeof ServerRuntimeState];
 
-/** Validates a {@link ServerRuntimeState} value. */
-export const serverRuntimeStateSchema = z.enum(ServerRuntimeState);
-
 /** Where a remote server's OAuth sign-in stands. Never carries a token. */
-export const serverOAuthStatusSchema = z.object({
+const serverOAuthStatusSchema = z.object({
   /** Whether the router holds tokens for it. */
   signedIn: z.boolean(),
   /** When the access token runs out, ISO; absent when the server did not say. A refresh token renews it. */
@@ -47,13 +42,13 @@ export const serverOAuthStatusSchema = z.object({
 /** Where a remote server's OAuth sign-in stands. */
 export type ServerOAuthStatus = z.infer<typeof serverOAuthStatusSchema>;
 
-/** A server as the API returns it: its stored config plus its runtime state. */
-export const serverStatusSchema = z.object({
+/** A server as the gateway reports it: its stored config plus its runtime state. */
+const serverStatusSchema = z.object({
   /** The stored config, without `oauth`: tokens never leave the router. See `oauth` below. */
   config: serverConfigSchema,
   /** A remote server's sign-in; absent for a stdio server. */
   oauth: serverOAuthStatusSchema.optional(),
-  state: serverRuntimeStateSchema,
+  state: z.enum(ServerRuntimeState),
   pid: z.number().optional(),
   startedAt: z.string().optional(), // ISO timestamp
   lastError: z.string().optional(),
@@ -68,7 +63,7 @@ export const serverStatusSchema = z.object({
 export type ServerStatus = z.infer<typeof serverStatusSchema>;
 
 /** A pre-registered OAuth client for a remote server; `null` in an update removes it. */
-export const oauthClientRequestSchema = z.object({
+const oauthClientRequestSchema = z.object({
   clientId: z.string().min(1),
   /** Omitted in an update keeps the stored secret; an empty string removes it. */
   clientSecret: z.string().optional(),
@@ -77,24 +72,12 @@ export const oauthClientRequestSchema = z.object({
 /** A pre-registered OAuth client. */
 export type OAuthClientRequest = z.infer<typeof oauthClientRequestSchema>;
 
-/** Body of `POST /api/servers/:name/oauth/start`. */
+/** What `startServerOAuth` takes. */
 export const oauthStartRequestSchema = z.object({
   /** The UI's own origin. The sign-in window reports back to it, and it is the router's address
    *  when the settings have no `publicUrl`. */
   origin: z.url(),
 });
-/** Body of the start-sign-in request. */
-export type OAuthStartRequest = z.infer<typeof oauthStartRequestSchema>;
-
-/** What `POST /api/servers/:name/oauth/start` answers. */
-export const oauthStartResponseSchema = z.object({
-  /** The server's login page, to open in a window; absent when no login was needed after all. */
-  authorizationUrl: z.url().optional(),
-  /** True when the stored sign-in still worked (it was refreshed), so there is nothing to open. */
-  signedIn: z.boolean(),
-});
-/** What the start-sign-in request answers. */
-export type OAuthStartResponse = z.infer<typeof oauthStartResponseSchema>;
 
 /** The message the sign-in window posts to the window that opened it, then closes. */
 export const oauthResultMessageSchema = z.object({
@@ -106,9 +89,9 @@ export const oauthResultMessageSchema = z.object({
 /** The message the sign-in window posts back. */
 export type OAuthResultMessage = z.infer<typeof oauthResultMessageSchema>;
 
-/** Body of the install-server request. */
+/** What `installServer` takes. */
 export const installRequestSchema = z.object({
-  /** Local name; also the route segment. Derived from the package/server name when omitted. */
+  /** Local name; also the endpoint's path segment. Derived from the package/server name when omitted. */
   name: serverNameSchema.optional(),
   source: serverSourceSchema,
   /** For source.type === 'registry': which package/remote of the registry entry to use.
@@ -123,10 +106,10 @@ export const installRequestSchema = z.object({
   /** For a server added from one found on the local network: which one, so it is not offered again. */
   discovered: discoveredFromSchema.optional(),
 });
-/** Body of the install-server request, fallbacks filled in. */
+/** What `installServer` takes, fallbacks filled in. */
 export type InstallRequest = z.infer<typeof installRequestSchema>;
 
-/** Body of the update-server request; an absent key is left unchanged. */
+/** What `updateServer` takes; an absent key is left unchanged. */
 export const updateServerRequestSchema = z.object({
   displayName: z.string().optional(),
   description: z.string().optional(),
@@ -137,7 +120,7 @@ export const updateServerRequestSchema = z.object({
   /** Sets, or with `null` removes, the pre-registered OAuth client. Changing it signs the server out. */
   oauthClient: oauthClientRequestSchema.nullable().optional(),
 });
-/** Body of the update-server request. */
+/** What `updateServer` takes. */
 export type UpdateServerRequest = z.infer<typeof updateServerRequestSchema>;
 
 /** Which door a recorded call came in by. */
@@ -146,19 +129,19 @@ export const CallVia = {
   Direct: 'direct',
   /** A merged endpoint: /mcp or a workspace's. */
   Aggregate: 'aggregate',
-  /** The web UI's tool runner. */
+  /** The web UI's try-it calls (`callServerTool` and its siblings). */
   Ui: 'ui',
 } as const;
 /** One of the {@link CallVia} values. */
 export type CallVia = (typeof CallVia)[keyof typeof CallVia];
 
 /** A single proxied MCP call (request + response/error) recorded in memory for debugging. */
-export const activityEntrySchema = z.object({
+const activityEntrySchema = z.object({
   /** Monotonic per-process id; newest entries have the largest id. */
   id: z.number(),
   /** ISO timestamp of when the call completed. */
   at: z.string(),
-  /** Which endpoint the call arrived on ('ui' = run from the web UI's tool runner). */
+  /** Which endpoint the call arrived on ('ui' = run from the web UI's try-it calls). */
   via: z.enum(CallVia),
   /** JSON-RPC method, e.g. 'tools/call', 'tools/list', 'resources/read'. */
   method: z.string(),
@@ -178,173 +161,28 @@ export const activityEntrySchema = z.object({
 /** One recorded proxied MCP call. */
 export type ActivityEntry = z.infer<typeof activityEntrySchema>;
 
-/** The recorded calls of a server or workspace. */
-export const activityResponseSchema = z.object({
-  entries: z.array(activityEntrySchema),
-});
-/** The recorded calls of a server or workspace. */
-export type ActivityResponse = z.infer<typeof activityResponseSchema>;
-
-/** One tool of a downstream server, as reported by MCP tools/list. */
-export const serverToolSchema = z
-  .object({
-    name: z.string(),
-    description: z.string().optional(),
-    inputSchema: z.unknown().optional(),
-  })
-  .loose();
-/** One tool of a downstream server. */
-export type ServerTool = z.infer<typeof serverToolSchema>;
-
-/** The tools of a server or workspace. */
-export const serverToolsResponseSchema = z.object({ tools: z.array(serverToolSchema) });
-/** The tools of a server or workspace. */
-export type ServerToolsResponse = z.infer<typeof serverToolsResponseSchema>;
-
-/** One resource of a downstream server, as reported by MCP resources/list. */
-export const serverResourceSchema = z
-  .object({
-    uri: z.string(),
-    name: z.string().optional(),
-    description: z.string().optional(),
-    mimeType: z.string().optional(),
-  })
-  .loose();
-/** One resource of a downstream server. */
-export type ServerResource = z.infer<typeof serverResourceSchema>;
-
-/** One resource template of a downstream server, as reported by MCP resources/templates/list. */
-export const serverResourceTemplateSchema = z
-  .object({
-    uriTemplate: z.string(),
-    name: z.string().optional(),
-    description: z.string().optional(),
-    mimeType: z.string().optional(),
-  })
-  .loose();
-/** One resource template of a downstream server. */
-export type ServerResourceTemplate = z.infer<typeof serverResourceTemplateSchema>;
-
-/** The resources and resource templates of a server or workspace. */
-export const serverResourcesResponseSchema = z.object({
-  resources: z.array(serverResourceSchema),
-  resourceTemplates: z.array(serverResourceTemplateSchema),
-});
-/** The resources and resource templates of a server or workspace. */
-export type ServerResourcesResponse = z.infer<typeof serverResourcesResponseSchema>;
-
-/** One prompt of a downstream server, as reported by MCP prompts/list. */
-export const serverPromptSchema = z
-  .object({
-    name: z.string(),
-    description: z.string().optional(),
-    arguments: z
-      .array(z.object({ name: z.string(), description: z.string().optional(), required: z.boolean().optional() }))
-      .optional(),
-  })
-  .loose();
-/** One prompt of a downstream server. */
-export type ServerPrompt = z.infer<typeof serverPromptSchema>;
-
-/** The prompts of a server or workspace. */
-export const serverPromptsResponseSchema = z.object({ prompts: z.array(serverPromptSchema) });
-/** The prompts of a server or workspace. */
-export type ServerPromptsResponse = z.infer<typeof serverPromptsResponseSchema>;
-
-/** Run one tool of a downstream server from the UI. */
+/** One tool call the UI makes: `callServerTool` and `callWorkspaceTool`. */
 export const toolCallRequestSchema = z.object({
   name: z.string().min(1),
   arguments: z.record(z.string(), z.unknown()).default({}),
 });
-/** Body of a tool run from the UI. */
+/** One tool call the UI makes. */
 export type ToolCallRequest = z.infer<typeof toolCallRequestSchema>;
 
-/** MCP CallToolResult, loosely typed — content shape is tool-defined. */
-export const toolCallResponseSchema = z
-  .object({
-    content: z.array(z.unknown()).optional(),
-    structuredContent: z.unknown().optional(),
-    isError: z.boolean().optional(),
-  })
-  .loose();
-/** A tool call's result, as MCP returned it. */
-export type ToolCallResponse = z.infer<typeof toolCallResponseSchema>;
-
-/** Read one resource of a downstream server from the UI. The URI is either a
- *  static resource's URI or a concrete URI expanded from a resource template. */
+/** One resource read the UI makes. The URI is a static resource's, or a concrete one expanded from a template. */
 export const resourceReadRequestSchema = z.object({
   uri: z.string().min(1),
 });
-/** Body of a resource read from the UI. */
+/** One resource read the UI makes. */
 export type ResourceReadRequest = z.infer<typeof resourceReadRequestSchema>;
 
-/** MCP ReadResourceResult, loosely typed — contents shape is resource-defined. */
-export const resourceReadResponseSchema = z
-  .object({
-    contents: z.array(z.unknown()).optional(),
-  })
-  .loose();
-/** A resource read's result, as MCP returned it. */
-export type ResourceReadResponse = z.infer<typeof resourceReadResponseSchema>;
-
-/** Get one prompt of a downstream server from the UI. MCP prompt argument
- *  values are strings. */
+/** One prompt get the UI makes. MCP prompt argument values are strings. */
 export const promptGetRequestSchema = z.object({
   name: z.string().min(1),
   arguments: z.record(z.string(), z.string()).default({}),
 });
-/** Body of a prompt get from the UI. */
+/** One prompt get the UI makes. */
 export type PromptGetRequest = z.infer<typeof promptGetRequestSchema>;
-
-/** MCP GetPromptResult, loosely typed — messages shape is prompt-defined. */
-export const promptGetResponseSchema = z
-  .object({
-    description: z.string().optional(),
-    messages: z.array(z.unknown()).optional(),
-  })
-  .loose();
-/** A prompt get's result, as MCP returned it. */
-export type PromptGetResponse = z.infer<typeof promptGetResponseSchema>;
-
-/** Body of the add-registry request. */
-export const createRegistryRequestSchema = z.object({
-  name: serverNameSchema,
-  url: z.url(),
-});
-/** Body of the add-registry request. */
-export type CreateRegistryRequest = z.infer<typeof createRegistryRequestSchema>;
-
-/** A workspace as returned by the API: its stored config plus the derived endpoint path. */
-export const workspaceStatusSchema = workspaceConfigSchema.extend({
-  /** Endpoint path of the workspace aggregate, e.g. "/mcp/w/my-workspace". */
-  path: z.string(),
-});
-/** A workspace's stored config plus its endpoint path. */
-export type WorkspaceStatus = z.infer<typeof workspaceStatusSchema>;
-
-/** Body of the create-workspace request. */
-export const createWorkspaceRequestSchema = z.object({
-  name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength),
-  /** Slug for the URL; derived from `name` when omitted. */
-  slug: serverNameSchema.optional(),
-  enabled: z.boolean().optional(),
-  description: z.string().optional(),
-  /** Members keyed by base server name; only listed servers are in the workspace. */
-  members: z.record(z.string(), workspaceMemberSchema).optional(),
-});
-/** Body of the create-workspace request. */
-export type CreateWorkspaceRequest = z.infer<typeof createWorkspaceRequestSchema>;
-
-/** Body of the update-workspace request; an absent key is left unchanged. */
-export const updateWorkspaceRequestSchema = z.object({
-  name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength).optional(),
-  enabled: z.boolean().optional(),
-  description: z.string().optional(),
-  /** Full replacement of the members map when provided. */
-  members: z.record(z.string(), workspaceMemberSchema).optional(),
-});
-/** Body of the update-workspace request. */
-export type UpdateWorkspaceRequest = z.infer<typeof updateWorkspaceRequestSchema>;
 
 /** What `GET /healthz` answers. No auth, so it says nothing but that the process is serving. */
 export interface Health {
@@ -354,7 +192,7 @@ export interface Health {
 }
 
 /** The router's own status: version, uptime, server counts and whether auth is on. */
-export const routerStatusSchema = z.object({
+const routerStatusSchema = z.object({
   version: z.string(),
   uptimeSeconds: z.number(),
   serverCount: z.number(),
@@ -374,27 +212,6 @@ export const routerStatusSchema = z.object({
 /** The router's own status. */
 export type RouterStatus = z.infer<typeof routerStatusSchema>;
 
-/** The subset of the settings editable from the UI. */
-export const updateSettingsRequestSchema = z.object({
-  idleTimeoutMs: z.number().int().positive().optional(),
-  /** The router's public address; `null` clears it. */
-  publicUrl: z.url().nullable().optional(),
-  lanAdvertise: z.boolean().optional(),
-  lanDiscovery: z.boolean().optional(),
-});
-/** Body of `PATCH /api/settings`. */
-export type UpdateSettingsRequest = z.infer<typeof updateSettingsRequestSchema>;
-
-/** What `PATCH /api/settings` answers: the editable settings as they now stand. */
-export const updateSettingsResponseSchema = z.object({
-  idleTimeoutMs: z.number(),
-  publicUrl: z.string().optional(),
-  lanAdvertise: z.boolean(),
-  lanDiscovery: z.boolean(),
-});
-/** What `PATCH /api/settings` answers. */
-export type UpdateSettingsResponse = z.infer<typeof updateSettingsResponseSchema>;
-
 /** What has become of a server found on the local network. */
 export const DiscoveredServerState = {
   /** Not added yet: the UI offers it. */
@@ -408,7 +225,7 @@ export const DiscoveredServerState = {
 export type DiscoveredServerState = (typeof DiscoveredServerState)[keyof typeof DiscoveredServerState];
 
 /** A server another host on the local network advertises. */
-export const discoveredServerSchema = z.object({
+const discoveredServerSchema = z.object({
   /** Unique on the network: `<mDNS instance>/<card name>`. */
   key: z.string(),
   /** The Server Card's `name`, e.g. `io.github.cubicecho.mcp-skills.nas/skills`. */
@@ -432,43 +249,33 @@ export const discoveredServerSchema = z.object({
 /** A server another host on the local network advertises. */
 export type DiscoveredServer = z.infer<typeof discoveredServerSchema>;
 
-/** What `GET /api/discovery` answers. */
-export const discoveryResponseSchema = z.object({
+/** What `lanServers` answers. */
+const discoveryResponseSchema = z.object({
   /** Whether the router is watching the network (the stored `lanDiscovery`). */
   enabled: z.boolean(),
   servers: z.array(discoveredServerSchema),
 });
-/** What `GET /api/discovery` answers. */
+/** What `lanServers` answers. */
 export type DiscoveryResponse = z.infer<typeof discoveryResponseSchema>;
 
-/** Body of `POST /api/discovery/dismissed`: hide a found server, or offer it again. */
+/** What `setLanServerDismissed` takes: hide a found server, or offer it again. */
 export const setDismissedRequestSchema = z.object({
   key: z.string().min(1),
   dismissed: z.boolean(),
 });
-/** Body of `POST /api/discovery/dismissed`. */
-export type SetDismissedRequest = z.infer<typeof setDismissedRequestSchema>;
 
-/** What `POST /api/reload` answers. */
-export const reloadResponseSchema = z.object({
-  reloaded: z.boolean(),
-  serverCount: z.number(),
-});
-/** What `POST /api/reload` answers. */
-export type ReloadResponse = z.infer<typeof reloadResponseSchema>;
-
-/** Query of GET /api/registries/:name/servers, passed through to the registry. */
+/** A registry search, as `registryServers` passes it through to the registry. */
 export interface RegistrySearchParams {
   search?: string;
   cursor?: string;
   limit?: number;
 }
 
-/** Standard error envelope for non-2xx responses. */
+/** The JSON error envelope of a refused HTTP request: /mcp*, the auth and origin guards, a malformed body. */
 export const apiErrorSchema = z.object({
   error: z.string(),
   code: z.enum(ErrorCode),
   detail: z.string().optional(),
 });
-/** The error envelope of a non-2xx response. */
+/** The JSON error envelope of a refused HTTP request. */
 export type ApiError = z.infer<typeof apiErrorSchema>;
