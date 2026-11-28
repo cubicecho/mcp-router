@@ -23,6 +23,9 @@ export default defineConfig({
     proxy: {
       '/mcp': 'http://localhost:3001',
       '/graphql': 'http://localhost:3001',
+      // A provider sign-in starts and lands on the server: /sso/start, then better-auth's /api/auth callback.
+      '/sso': 'http://localhost:3001',
+      '/api/auth': 'http://localhost:3001',
     },
   },
 });
