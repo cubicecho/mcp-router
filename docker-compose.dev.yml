@@ -1,0 +1,21 @@
+# Postgres alone, for `npm run dev` and `npm run db:migrate`: `npm run db:up`, then set
+# DATABASE_URL=postgres://mcp_router:mcp_router@localhost:5433/mcp_router in .env.
+# Its own project name, so it never collides with docker-compose.yml's containers.
+name: mcp-router-dev
+services:
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment: { POSTGRES_USER: mcp_router, POSTGRES_PASSWORD: mcp_router, POSTGRES_DB: mcp_router }
+    ports:
+      # Loopback by default. Set DEV_BIND=0.0.0.0 when the Docker daemon is remote (`docker context ls`),
+      # because 127.0.0.1 there is the daemon host's loopback.
+      - '${DEV_BIND:-127.0.0.1}:${POSTGRES_PORT:-5433}:5432'
+    volumes: [mcp_router_dev_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+volumes:
+  mcp_router_dev_pgdata:

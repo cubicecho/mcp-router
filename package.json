@@ -33,6 +33,8 @@
     "test:watch": "vitest",
     "db:generate": "npm run db:generate -w server",
     "db:migrate": "npm run db:migrate -w server",
+    "db:up": "docker compose -f docker-compose.dev.yml up -d --wait",
+    "db:down": "docker compose -f docker-compose.dev.yml down",
     "storybook": "npm run storybook -w app",
     "build-storybook": "npm run build-storybook -w app",
     "clean": "rm -rf node_modules app/dist"

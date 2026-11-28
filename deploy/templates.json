@@ -5,7 +5,7 @@
       "id": 1,
       "type": 3,
       "title": "MCP Router",
-      "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one.",
+      "description": "MCP gateway beside its own Postgres: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one.",
       "note": "Open the web UI on port 3000 and sign in with the token you set. Leave the token empty to have one generated and printed once to the container log.",
       "categories": ["ai", "development", "tools"],
       "platform": "linux",
@@ -21,6 +21,11 @@
           "description": "Bearer token for the web UI, the API and every MCP endpoint. Generate one with: openssl rand -hex 32"
         },
         {
+          "name": "POSTGRES_PASSWORD",
+          "label": "Database password",
+          "description": "Password for the bundled Postgres, which keeps the router's config. Generate one with: openssl rand -hex 16"
+        },
+        {
           "name": "MCP_ROUTER_PORT",
           "label": "Host port",
           "description": "Port the web UI and the MCP endpoints are published on.",
@@ -29,7 +34,7 @@
         {
           "name": "MCP_ROUTER_DATA",
           "label": "Data folder",
-          "description": "Host folder for config, installed server packages and caches. It must be writable by uid 1000, which the container runs as.",
+          "description": "Host folder for installed server packages and caches (the config is in Postgres). It must be writable by uid 1000, which the container runs as.",
           "default": "/opt/mcp-router/data"
         },
         {
@@ -47,8 +52,8 @@
       "id": 2,
       "type": 1,
       "title": "MCP Router (single container)",
-      "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one.",
-      "note": "Open the web UI on port 3000 and sign in with the token you set. Leave the token empty to have one generated and printed once to the container log.",
+      "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one. Uses a Postgres you already run.",
+      "note": "Needs a Postgres you already run: set DATABASE_URL to it. Open the web UI on port 3000 and sign in with the token you set. Leave the token empty to have one generated and printed once to the container log.",
       "categories": ["ai", "development", "tools"],
       "platform": "linux",
       "logo": "https://raw.githubusercontent.com/cubicecho/mcp-router/main/deploy/logo.svg",
@@ -56,6 +61,11 @@
       "ports": ["3000:3000/tcp"],
       "volumes": [{ "container": "/data", "bind": "/opt/mcp-router/data" }],
       "env": [
+        {
+          "name": "DATABASE_URL",
+          "label": "Postgres URL",
+          "description": "Required: the Postgres that keeps the router's config, e.g. postgres://mcp_router:secret@192.168.1.20:5432/mcp_router. The router refuses to start without it."
+        },
         {
           "name": "MCP_ROUTER_TOKEN",
           "label": "Access token",

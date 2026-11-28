@@ -1,23 +1,29 @@
-# Builds the image from this checkout and runs it: `docker compose up -d --build`.
-# deploy/docker-compose.yml runs the published image instead.
+# Builds the image from this checkout and runs it beside its own Postgres:
+# `docker compose up -d --build`. deploy/docker-compose.yml runs the published image instead.
 name: mcp-router
 services:
   mcp-router:
-    image: mcp-router
+    image: ${MCP_ROUTER_IMAGE:-mcp-router}
     build: .
     restart: unless-stopped
+    depends_on:
+      postgres: { condition: service_healthy }
     ports:
       - '${PORT:-3000}:3000'
     # LAN discovery (finding servers on the network, and announcing the router)
     # uses mDNS multicast, which the default bridge network drops. For it to work,
     # replace `ports` with:
     # network_mode: host
-    # The database (PGlite in /data/pg), installed server packages, caches and
-    # logs. A named volume, because the container runs as node (uid 1000) and a
-    # bind mount keeps the host folder's owner. Config is managed from the web UI,
-    # /graphql or /api; there are no config files to edit.
+    # (and reach Postgres on a published port, since host networking leaves the
+    # compose network).
+    # Installed server packages, caches and logs. A named volume, because the
+    # container runs as node (uid 1000) and a bind mount keeps the host folder's
+    # owner. Config lives in Postgres and is managed from the web UI, /graphql or
+    # /api; there are no config files to edit.
     volumes: [mcp_router_data:/data]
     environment:
+      # The router's config database. Required: boot refuses to start without it.
+      DATABASE_URL: postgres://mcp_router:${POSTGRES_PASSWORD:-mcp_router}@postgres:5432/mcp_router
       # Set a bearer token, OR set SECURE_LOCAL_NET=true to disable auth on a
       # trusted local network. If neither is set, a token is generated into the
       # database on first run and printed to the logs.
@@ -36,5 +42,20 @@ services:
       timeout: 5s
       start_period: 15s
       retries: 3
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mcp_router
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mcp_router}
+      POSTGRES_DB: mcp_router
+    # No `ports`: the database is for the router beside it.
+    volumes: [mcp_router_pgdata:/var/lib/postgresql/data]
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
 volumes:
   mcp_router_data:
+  mcp_router_pgdata:
