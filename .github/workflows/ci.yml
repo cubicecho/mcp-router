@@ -97,7 +97,8 @@ jobs:
           tags: mcp-router:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
-      # --wait blocks until the container's healthcheck passes.
+      # The router and the Postgres beside it. --wait blocks until both healthchecks pass: Postgres first
+      # (depends_on: service_healthy), then the router's /healthz once it has migrated the database.
       - name: Start the stack
         run: docker compose up -d --no-build --wait --wait-timeout 180
       - name: Check /healthz
