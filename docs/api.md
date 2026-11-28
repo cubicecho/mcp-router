@@ -1,37 +1,61 @@
 # API reference
 
-## REST API
+## Management API: GraphQL
 
-The management API lives under `/api`, takes the bearer token, and speaks JSON in and out. Errors are
-non-2xx with `{ "error": "...", "detail": "..." }`.
+The router is managed through GraphQL at `POST /graphql`, with the bearer token (`Authorization: Bearer <token>`).
+The same schema is offered to agents as MCP tools at `/admin/mcp`. There is no REST API: the routes that were under
+`/api` were removed, and each has a GraphQL operation in their place (the table in
+[SPECS.md](../SPECS.md#no-rest-api) maps them one to one).
 
-| Method & path | Purpose |
+**The schema documents itself.** Every field has a description. Outside production, open `/graphql` in a browser for
+GraphiQL, which browses the schema and runs operations. `npm run codegen` prints the served schema to
+`server/__generated__/schema.graphql`.
+
+```sh
+curl -s http://localhost:3000/graphql \
+  -H "Authorization: Bearer $MCP_ROUTER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"{ routerStatus { version serverCount runningCount } }"}'
+```
+
+### What is there
+
+| To | Use |
 | --- | --- |
-| `GET /healthz` | Liveness, **no auth** (not under `/api`): `{ "ok": true, "version": "…" }`. What the container healthcheck calls |
-| `GET /api/status` | Router status (version, auth mode, running/total servers) |
-| `GET /api/registries` | List configured registries |
-| `POST /api/registries` | Add a registry `{ name, url }` |
-| `DELETE /api/registries/:name` | Remove a registry |
-| `GET /api/registries/:name/servers?search=&cursor=&limit=` | Search that registry |
-| `GET /api/registries/:name/servers/:serverName` | Registry entry detail (latest version) |
-| `GET /api/servers` | All installed servers with runtime state |
-| `POST /api/servers` | Install (from a registry entry, a raw npm package, or a remote URL) |
-| `GET /api/servers/:name` | Single server status |
-| `PATCH /api/servers/:name` | Update env / enabled / transport; saved to its database row |
-| `DELETE /api/servers/:name` | Stop, delete config, remove its install dir |
-| `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
-| `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
-| `GET /api/servers/:name/resources` | Connect and list downstream resources + resource templates (empty when unsupported) |
-| `POST /api/servers/:name/resources/read` | Read one resource by URI (recorded to the activity log) |
-| `GET /api/servers/:name/prompts` | Connect and list downstream prompts (empty when unsupported) |
-| `POST /api/servers/:name/prompts/get` | Get one prompt with arguments (recorded to the activity log) |
-| `GET /api/servers/:name/activity` | Recent proxied calls (in-memory, newest first); `DELETE` clears the log |
-| `GET /api/workspaces` | All workspaces with their endpoint paths |
-| `POST /api/workspaces` | Create a workspace (slug auto-derived from the name) |
-| `GET /api/workspaces/:slug` | Single workspace |
-| `PATCH /api/workspaces/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
-| `DELETE /api/workspaces/:slug` | Remove a workspace (underlying servers untouched) |
-| `POST /api/reload` | Re-read all config from the database and reconcile running processes |
+| Read the router's status | `routerStatus` |
+| List, add, remove registries | `registries`, `createRegistry`, `deleteRegistry` |
+| Search a registry | `registryServers(registry, search, cursor, limit)`, `registryServer(registry, name)` |
+| List servers, and their live state | `servers`, `server(where)`, `serverRuntimes`, `serverRuntime(name)` |
+| Install, edit, remove a server | `installServer(input)`, `updateServer(name, input)`, `deleteServer(name)` |
+| Restart a server (after env edits) | `restartServer(name)` |
+| Sign a remote server in or out | `checkServerOAuth(name)`, `startServerOAuth(name, origin)`, `signOutServerOAuth(name)` |
+| List what a server offers | `serverTools(name)`, `serverResources(name)`, `serverPrompts(name)` |
+| Try a server's tool, resource or prompt | `callServerTool(name, tool, arguments)`, `readServerResource(name, uri)`, `getServerPrompt(name, prompt, arguments)` |
+| Read or clear a server's activity | `serverActivity(name)`, `clearServerActivity(name)` |
+| List, save, delete workspaces | `workspaces`, `workspace(where)`, `saveWorkspace(input)`, `deleteWorkspace(where)` |
+| The same for a workspace | `workspaceTools(slug)`, `workspaceResources`, `workspacePrompts`, `workspaceActivity`, `clearWorkspaceActivity`, `callWorkspaceTool(slug, tool, arguments)`, `readWorkspaceResource(slug, uri)`, `getWorkspacePrompt(slug, prompt, arguments)` |
+| Change settings | `updateSetting(set, where: { id: { eq: 1 } })` |
+| Servers found on the network | `lanServers`, `setLanServerDismissed(key, dismissed)` |
+| Re-read config from the database (was `POST /api/reload`) | `reloadConfig` |
+
+A workspace's try-it calls take the name its aggregate shows (`<server>__<tool>`) and run on that member's own
+instance, with the workspace's overrides. Every try-it call is recorded in the activity log.
+
+A tool call answers `{ content, structuredContent, isError }`: `isError: true` is a tool that reported its own
+failure, which is still an answer. A server that fails is an error.
+
+### Errors
+
+A refused operation answers `200` with `errors`, each with `extensions.code` (`BAD_USER_INPUT`, `NOT_FOUND`,
+`CONFLICT`, `FORBIDDEN`, `UPSTREAM_FAILED`, `UNAVAILABLE`, `UPSTREAM_TIMEOUT`, `QUERY_TOO_COMPLEX`, …) and, where there
+is more to say, `extensions.detail` (a child's stderr, the field a value broke). Branch on the code, never on the
+message. A missing or wrong token is a `401` before any operation runs.
+
+Every list takes `limit`. Operations are bounded in depth, aliases and cost, and refused as `QUERY_TOO_COMPLEX` past
+them.
+
+## Health
+
+`GET /healthz` takes **no auth**: `{ "ok": true, "version": "…" }`. It is what the container healthcheck calls.
 
 ## MCP endpoints
 
@@ -45,6 +69,12 @@ All three speak streamable HTTP and take the bearer token.
 
 All three forward downstream `instructions`. See
 [Connecting MCP clients](../README.md#connecting-mcp-clients) in the README.
+
+`/admin/mcp` is a different thing: the router's own management API as MCP tools (`install_server`, `servers`,
+`restart_server`, …), for an agent that manages the router rather than one that uses its servers.
+
+Refused requests on these endpoints answer with a JSON body `{ "error": "...", "code": "...", "detail": "..." }` and
+the status the code maps to (`NOT_FOUND` 404, `UNAUTHENTICATED` 401, …).
 
 ## Discovery
 

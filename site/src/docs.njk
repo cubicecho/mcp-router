@@ -1,7 +1,7 @@
 ---
 layout: base.njk
 title: Docs
-description: MCP Router documentation — configuration, REST API, MCP endpoints, and security notes.
+description: MCP Router documentation — configuration, the GraphQL API, MCP endpoints, and security notes.
 permalink: /docs/
 ---
 
@@ -17,7 +17,7 @@ permalink: /docs/
           <a href="#servers">Servers</a>
           <a href="#workspaces">Workspaces</a>
           <a href="#upgrading">Upgrading from 2.x</a>
-          <a href="#api">REST API</a>
+          <a href="#api">GraphQL API</a>
           <a href="#mcp">MCP endpoints</a>
           <a href="#security">Security notes</a>
         </nav>
@@ -37,11 +37,12 @@ permalink: /docs/
         <p>All config lives in a database: an embedded PGlite under <code>DATA_DIR/pg</code>
           (<code>./data/pg</code> locally, <code>/data/pg</code> in Docker), or Postgres when
           <code>DATABASE_URL</code> is a <code>postgres://</code> URL (<code>DB_CONNECT_TIMEOUT_MS</code> bounds how
-          long boot waits for it). Migrations run on boot. Manage it from the web UI, <code>/graphql</code> or the
-          REST API; there are no config files to edit. The shapes below are what each row holds, written as JSON.
+          long boot waits for it). Migrations run on boot. Manage it from the web UI or <code>/graphql</code>; there
+          are no config files to edit. The shapes below are what each row holds, written as JSON.
           If something other than the router writes the tables, have it re-read them:</p>
-        <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
-  http://localhost:3000/api/reload</code></pre>
+        <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"mutation { reloadConfig { reloaded serverCount } }"}' \
+  http://localhost:3000/graphql</code></pre>
 
         <h3 id="settings">Settings</h3>
         <pre class="code"><code>{
@@ -125,28 +126,24 @@ permalink: /docs/
           folder an older (root) image wrote needs <code>sudo chown -R 1000:1000 data</code>. To back up, stop the
           router and copy the data folder, or use <code>pg_dump</code> when the config is in Postgres.</p>
 
-        <h2 id="api">REST API</h2>
-        <p>Management API under <code>/api</code>, bearer auth, JSON in/out. Errors are non-2xx with
-          <code>{ "error": "...", "detail": "..." }</code>.</p>
+        <h2 id="api">GraphQL API</h2>
+        <p>The router is managed through GraphQL at <code>POST /graphql</code>, with the bearer token; the same
+          schema is offered to agents as MCP tools at <code>/admin/mcp</code>. There is no REST API. Every field
+          describes itself: outside production, open <code>/graphql</code> in a browser for GraphiQL. A refused
+          operation carries its reason in <code>extensions.code</code>.</p>
         <div class="table-scroll">
           <table>
-            <thead><tr><th>Method &amp; path</th><th>Purpose</th></tr></thead>
+            <thead><tr><th>To</th><th>Use</th></tr></thead>
             <tbody>
-              <tr><td><code>GET /api/status</code></td><td>Router status (version, auth mode, running/total)</td></tr>
-              <tr><td><code>GET/POST /api/registries</code></td><td>List / add registries</td></tr>
-              <tr><td><code>DELETE /api/registries/:name</code></td><td>Remove a registry</td></tr>
-              <tr><td><code>GET /api/registries/:name/servers</code></td><td>Search that registry</td></tr>
-              <tr><td><code>GET /api/servers</code></td><td>All installed servers with runtime state</td></tr>
-              <tr><td><code>POST /api/servers</code></td><td>Install (registry entry, npm package, or remote URL)</td></tr>
-              <tr><td><code>PATCH /api/servers/:name</code></td><td>Update env / enabled / transport</td></tr>
-              <tr><td><code>DELETE /api/servers/:name</code></td><td>Stop, delete config, remove install dir</td></tr>
-              <tr><td><code>POST /api/servers/:name/restart</code></td><td>Kill and respawn (after env edits)</td></tr>
-              <tr><td><code>GET /api/servers/:name/tools</code></td><td>Connect and list downstream tools</td></tr>
-              <tr><td><code>GET /api/workspaces</code></td><td>All workspaces with their endpoint paths</td></tr>
-              <tr><td><code>POST /api/workspaces</code></td><td>Create a workspace (slug auto-derived from the name)</td></tr>
-              <tr><td><code>PATCH /api/workspaces/:slug</code></td><td>Update members / overrides / enabled (renaming re-slugs)</td></tr>
-              <tr><td><code>DELETE /api/workspaces/:slug</code></td><td>Remove a workspace (servers untouched)</td></tr>
-              <tr><td><code>POST /api/reload</code></td><td>Re-read config from the database and reconcile processes</td></tr>
+              <tr><td>Router status</td><td><code>routerStatus</code></td></tr>
+              <tr><td>Registries</td><td><code>registries</code>, <code>createRegistry</code>, <code>deleteRegistry</code>, <code>registryServers</code></td></tr>
+              <tr><td>Servers and their live state</td><td><code>servers</code>, <code>serverRuntimes</code></td></tr>
+              <tr><td>Install, edit, remove a server</td><td><code>installServer</code>, <code>updateServer</code>, <code>deleteServer</code></td></tr>
+              <tr><td>Restart a server (after env edits)</td><td><code>restartServer</code></td></tr>
+              <tr><td>What a server offers</td><td><code>serverTools</code>, <code>serverResources</code>, <code>serverPrompts</code></td></tr>
+              <tr><td>Try a tool, resource or prompt</td><td><code>callServerTool</code>, <code>readServerResource</code>, <code>getServerPrompt</code></td></tr>
+              <tr><td>Workspaces</td><td><code>workspaces</code>, <code>saveWorkspace</code>, <code>deleteWorkspace</code>, and the <code>workspace…</code> forms of the above</td></tr>
+              <tr><td>Re-read config from the database</td><td><code>reloadConfig</code></td></tr>
             </tbody>
           </table>
         </div>

@@ -8,7 +8,8 @@ streamable-HTTP servers), and re-exposes each one over streamable HTTP at
 tools. **Workspaces** are custom aggregates — a chosen subset of servers at
 `/mcp/w/<slug>` with optional per-workspace param overrides, each member running
 as an isolated instance independent of the server's global state. Configuration
-lives in a database (Drizzle; PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`); a React web UI
+lives in a database (Drizzle; PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`), managed through
+GraphQL at `/graphql` (and as MCP tools at `/admin/mcp`); there is no REST API. A React web UI over it
 manages registries, installs, workspaces, and per-server env vars/API keys.
 
 **Read [`SPECS.md`](SPECS.md) first** — it holds the locked design decisions,
@@ -24,10 +25,9 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 | `core/` | what every other folder reads: defaults, errors and error codes, version |
 | `config/` | env flags and the config store (cached over the config tables; first-boot import of old config files) |
 | `db/` | the Drizzle tables, the PGlite-or-Postgres client, `waitForDatabase` |
-| `http/` | the Express app (`createApp`), server timeouts, graceful shutdown |
+| `http/` | the Express app (`createApp`), the JSON error middleware, server timeouts, graceful shutdown |
 | `auth/` | bearer-token and origin guards |
-| `api/` | the REST routes under `/api` and the error middleware |
-| `gateway/` | downstream MCP connections, the `/mcp*` endpoints, sessions, activity log |
+| `gateway/` | downstream MCP connections, the `/mcp*` endpoints, sessions, activity log, the UI's try-it calls, reconciling to the config |
 | `installer/` | turns an install request into a server config (npm, PyPI, remote) |
 | `registry/` | client for MCP registries |
 | `discovery/` | LAN discovery: the router's Server Cards, its mDNS announcement, and the servers found on the network |
@@ -43,7 +43,7 @@ All from the workspace root.
 # Dev
 npm run dev              # server (watch) + Vite dev server, concurrently
 npm run dev:server       # Express + MCP gateway only (port 3001)
-npm run dev:app          # Vite dev server only (port 3000, proxies /api, /mcp and /graphql)
+npm run dev:app          # Vite dev server only (port 3000, proxies /mcp and /graphql)
 
 # Quality — run before every commit; CI fails otherwise
 npm run codegen          # server prints __generated__/schema.graphql, then the app's typed documents (both gitignored)
@@ -72,13 +72,13 @@ docker compose up        # run the container as node; named volume at /data
 | **Drizzle 1.0.0-rc.5 + PGlite/Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. PGlite data dir `DATA_DIR/pg` unless `DATABASE_URL` is a `postgres://` URL. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
 | **Node 26 type stripping** | Node 26 everywhere (`engines`, CI, `node:26-slim`). The server runs its `.ts` sources directly in dev, prod and Docker (`node server/src/index.ts`); there is no server build and `tsc` only checks (`noEmit`). `shared/` is imported as raw `.ts` through its workspace link — so **use `.ts` extensions in all relative imports** in `server/` and `shared/`, and erasable syntax only |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes); the UI talks GraphQL through typed documents from codegen's client preset (`app/codegen.ts`) |
-| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/api/*`, `/graphql`, `/admin/mcp` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
+| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/graphql`, `/admin/mcp` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
 
 ## Key Conventions
 
-**The `shared/` package is the contract.** Config-file shapes, registry API
-responses, and REST DTOs are zod schemas in `shared/src/`. Server validates
-with them at every boundary (config load, request bodies, registry responses);
+**The `shared/` package is the contract.** Config shapes, registry API
+responses, and the rules the GraphQL inputs are checked against are zod schemas in `shared/src/`. Server
+validates with them at every boundary (config load, GraphQL inputs, registry responses);
 the app imports the inferred types via `@mcp-router/shared`. Never duplicate
 these shapes — extend the schema and let types flow.
 
@@ -89,7 +89,7 @@ export type ServerConfig = z.infer<typeof serverConfigSchema>;
 
 **Validate at boundaries, trust inside:**
 ```typescript
-const input = installRequestSchema.parse(req.body); // throws → 400 via error middleware
+const request = parseOrThrow(installRequestSchema, input, 'Install'); // throws BAD_USER_INPUT
 ```
 
 **Never swallow errors:**
@@ -104,8 +104,8 @@ try {
 **Config writes go through `ConfigStore`** (or a transaction followed by
 `store.reload()`): a multi-row write is one transaction, and rows are
 validated with the shared schemas when read back. Every write and reload
-emits `change`, and `reconcileOnChange` (`api/deps.ts`, wired in index.ts and
-the GraphQL test harnesses) reconciles the gateway from it; a route that needs
+emits `change`, and `reconcileOnChange` (`gateway/reconcile.ts`, wired in index.ts and
+the GraphQL test harnesses) reconciles the gateway from it; a resolver that needs
 the gateway settled before it answers awaits `applyConfig` after the write. Tests use a PGlite
 `memory://` database from `server/src/db/__tests__/test-db.ts`: one per file
 (`beforeAll`), `resetTestDb` between tests.
@@ -123,8 +123,8 @@ components. Invalidate the relevant query keys after every mutation. The client
 sends each operation to `/graphql` as a `graphql()` document in `api.ts`, typed
 by codegen (`app/src/__generated__/`, run `npm run codegen` after changing a
 document or the server schema); JSON columns are read through the shared config
-schemas there. The tool runner's `tools/call`, `resources/read` and
-`prompts/get` have no GraphQL field yet and still post to `/api`.
+schemas there. The try-it calls are mutations too (`callServerTool`,
+`readServerResource`, `getServerPrompt` and their workspace forms).
 
 ## Code Style
 
