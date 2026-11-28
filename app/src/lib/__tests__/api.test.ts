@@ -203,13 +203,25 @@ describe('api client', () => {
     await expect(deleteServer('a')).resolves.toBeUndefined();
   });
 
-  it('still calls a tool over REST and reads its answer through the shared schema', async () => {
-    fetchMock.mockResolvedValue(jsonResponse(200, { content: [{ type: 'text', text: 'hi' }] }));
+  it("calls a server's tool through callServerTool, and a workspace's through callWorkspaceTool", async () => {
+    const result = { content: [{ type: 'text', text: 'hi' }], structuredContent: null, isError: false };
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { callServerTool: result } }));
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { data: { callWorkspaceTool: result } }));
 
-    await expect(callTool({ kind: 'server', name: 'a' }, { name: 'echo', arguments: {} })).resolves.toEqual({
-      content: [{ type: 'text', text: 'hi' }],
+    await expect(callTool({ kind: 'server', name: 'a' }, { name: 'echo', arguments: { x: 1 } })).resolves.toEqual(
+      result,
+    );
+    await expect(callTool({ kind: 'workspace', slug: 'w' }, { name: 'a__echo', arguments: {} })).resolves.toEqual(
+      result,
+    );
+    expect(fetchMock.mock.calls[0]?.[0]).toBe('/graphql');
+    expect(sentBody(fetchMock)).toMatchObject({
+      operationName: 'CallServerTool',
+      variables: { name: 'a', tool: 'echo', arguments: { x: 1 } },
     });
-    const [url] = fetchMock.mock.calls[0] as [string, RequestInit];
-    expect(url).toBe('/api/servers/a/tools/call');
+    expect(sentBody(fetchMock, 1)).toMatchObject({
+      operationName: 'CallWorkspaceTool',
+      variables: { slug: 'w', tool: 'a__echo', arguments: {} },
+    });
   });
 });

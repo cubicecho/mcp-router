@@ -10,13 +10,13 @@ const schema = buildSchema(schemaSdl);
 /** Where the UI sends its GraphQL operations. */
 const GRAPHQL_PATH = '/graphql';
 
-/** What a mocked answer was asked: a GraphQL operation's variables, or a REST route's JSON body; and the URL. */
+/** What a mocked answer was asked: the operation's variables, as `body`, and the URL. */
 interface MockRequest {
   body: unknown;
   url: URL;
 }
 
-/** A failed answer for a mocked operation or route. Build one with `apiError`. */
+/** A failed answer for a mocked operation. Build one with `apiError`. */
 class MockApiError {
   readonly status: HttpStatus;
   readonly body: ApiError;
@@ -24,7 +24,7 @@ class MockApiError {
   /**
    * Pairs a status with the error to answer with.
    *
-   * @param status - The HTTP status a REST route answers with, and a 401 from /graphql's door.
+   * @param status - A 401 is /graphql's door refusing the token; any other status answers 200 with the error.
    * @param body - The error envelope: its `error` and `code` become a GraphQL error's message and `extensions.code`.
    */
   constructor(status: HttpStatus, body: ApiError) {
@@ -37,25 +37,23 @@ class MockApiError {
 const PENDING = Symbol('pending');
 
 /**
- * The answers of a story's server. A GraphQL operation is keyed by its name (`Servers`, `UpdateServer`) and answered
- * with its `data`; a REST route still called is keyed `"<METHOD> <path>"` and answered with its JSON body. A value
- * may also be `apiError(...)` for a failure, `pending()` for an answer that never settles, or a function of the
- * request (the operation's variables, or the route's body, as `body`) returning any of those.
+ * The answers of a story's server. An operation is keyed by its name (`Servers`, `UpdateServer`) and answered with its
+ * `data`. A value may also be `apiError(...)` for a failure, `pending()` for an answer that never settles, or a
+ * function of the request (the operation's variables, as `body`) returning any of those.
  */
 export type ApiRoutes = Record<string, unknown>;
 
 /**
- * Every request a story's components sent: a GraphQL operation as `(name, variables)`, a REST route as
- * `(key, body)`. Assert on it in `play`:
+ * Every operation a story's components sent, as `(name, variables)`. Assert on it in `play`:
  * `expect(apiRequest).toHaveBeenCalledWith('UpdateServer', { name: 'docs', input: { enabled: false } })`.
  */
 export const apiRequest = fn<(key: string, body: unknown) => void>();
 
 /**
- * Builds a failed answer for a mocked operation or route.
+ * Builds a failed answer for a mocked operation.
  *
- * @param status - The HTTP status a REST route answers with. A GraphQL operation answers 200 with the error in
- * `errors`, except a 401, which /graphql's door sends before any operation runs.
+ * @param status - The HTTP status of the failure. The operation answers 200 with the error in `errors`, except for a
+ * 401, which /graphql's door sends before any operation runs.
  * @param code - The error code.
  * @param error - The message.
  * @param [detail] - The longer explanation; left off when empty.
@@ -131,8 +129,8 @@ async function answerOperation(body: GraphQLRequestBody, answer: unknown): Promi
  * @returns The cleanup that puts the real `fetch` back and forgets any auth state.
  *
  * @remarks
- * An operation or route with no answer fails and is logged, so a story that forgot one fails where it is read. Also
- * clears the calls recorded on `apiRequest`.
+ * An operation with no answer fails and is logged, so a story that forgot one fails where it is read. A request to any
+ * other path than /graphql fails too: the UI has no other API. Also clears the calls recorded on `apiRequest`.
  */
 export function installApiMock(routes: ApiRoutes = {}): () => void {
   const realFetch = window.fetch;
@@ -142,20 +140,20 @@ export function installApiMock(routes: ApiRoutes = {}): () => void {
     const request = new Request(input, init);
     const url = new URL(request.url);
     const text = await request.text();
-    const json: unknown = text ? JSON.parse(text) : undefined;
-    const isGraphQL = url.pathname === GRAPHQL_PATH;
-    const operation = isGraphQL ? (json as GraphQLRequestBody) : undefined;
-    const key = operation === undefined ? `${request.method} ${url.pathname}` : (operation.operationName ?? '');
-    const body = operation === undefined ? json : operation.variables;
+    if (url.pathname !== GRAPHQL_PATH) {
+      console.error(`[mock-api] ${request.method} ${url.pathname} is not an API the UI has`);
+      return jsonResponse(HttpStatus.NotFound, { error: `No such path ${url.pathname}`, code: ErrorCode.NotFound });
+    }
+    const operation: GraphQLRequestBody = text ? JSON.parse(text) : { query: '' };
+    const key = operation.operationName ?? '';
+    const body = operation.variables;
     apiRequest(key, body);
 
     const isMocked = key in routes;
     if (isMocked === false) {
       console.error(`[mock-api] no answer for ${key}`);
       const message = `No mocked answer for ${key}`;
-      return operation === undefined
-        ? jsonResponse(HttpStatus.NotFound, { error: message, code: ErrorCode.NotFound })
-        : jsonResponse(HttpStatus.Ok, { errors: [{ message, extensions: { code: ErrorCode.NotFound } }] });
+      return jsonResponse(HttpStatus.Ok, { errors: [{ message, extensions: { code: ErrorCode.NotFound } }] });
     }
     const route = routes[key];
     const mockRequest: MockRequest = { body, url };
@@ -163,16 +161,7 @@ export function installApiMock(routes: ApiRoutes = {}): () => void {
     if (answer === PENDING) {
       return new Promise<Response>(() => {});
     }
-    if (operation !== undefined) {
-      return answerOperation(operation, answer);
-    }
-    if (answer instanceof MockApiError) {
-      return jsonResponse(answer.status, answer.body);
-    }
-    if (answer === null) {
-      return new Response(null, { status: HttpStatus.NoContent });
-    }
-    return jsonResponse(HttpStatus.Ok, answer);
+    return answerOperation(operation, answer);
   };
 
   return () => {

@@ -1,14 +1,8 @@
 import {
-  type PromptGetResponse,
-  promptGetResponseSchema,
   type RegistryServer,
-  type ResourceReadResponse,
   registryServerEntrySchema,
   registryServerSchema,
-  resourceReadResponseSchema,
   serverConfigSchema,
-  type ToolCallResponse,
-  toolCallResponseSchema,
   workspaceMemberSchema,
 } from '@mcp-router/shared';
 import {
@@ -36,10 +30,13 @@ import type {
   McpResourceListing,
   McpTool,
   OAuthStartResult,
+  PromptGetResult,
   RegistryView,
   ReloadOutcome,
+  ResourceReadResult,
   RouterStatus,
   SavedSettings,
+  ToolCallResult,
   WorkspaceView,
 } from '@/lib/api';
 import type { ApiRoutes } from './mock-api.ts';
@@ -631,40 +628,45 @@ export function appRoutes(): ApiRoutes {
 }
 
 /**
- * Builds what a tool call returned. The tool runner still calls REST: there is no GraphQL field for it yet.
+ * Builds what a tool call returned, as `callServerTool` and `callWorkspaceTool` answer it.
  *
  * @param [overrides] - Any part of the result to replace; pass `isError` for a tool that reported a failure.
  * @returns One line of text.
  */
-export function toolCallResult(overrides: Partial<ToolCallResponse> = {}): ToolCallResponse {
-  return toolCallResponseSchema.parse({ content: [{ type: 'text', text: 'hello from notes.txt' }], ...overrides });
+export function toolCallResult(overrides: Partial<ToolCallResult> = {}): ToolCallResult {
+  return {
+    content: [{ type: 'text', text: 'hello from notes.txt' }],
+    structuredContent: null,
+    isError: false,
+    ...overrides,
+  };
 }
 
 /**
- * Builds what reading a resource returned. Still REST, like the tool runner.
+ * Builds what reading a resource returned, as `readServerResource` and `readWorkspaceResource` answer it.
  *
- * @param [overrides] - Any part of the result to replace; the result must still pass the shared schema.
+ * @param [overrides] - Any part of the result to replace.
  * @returns The text of the fixture file.
  */
-export function resourceReadResult(overrides: Partial<ResourceReadResponse> = {}): ResourceReadResponse {
-  return resourceReadResponseSchema.parse({
+export function resourceReadResult(overrides: Partial<ResourceReadResult> = {}): ResourceReadResult {
+  return {
     contents: [{ uri: 'file:///tmp/notes.txt', mimeType: 'text/plain', text: 'hello from notes.txt' }],
     ...overrides,
-  });
+  };
 }
 
 /**
- * Builds what getting a prompt returned. Still REST, like the tool runner.
+ * Builds what getting a prompt returned, as `getServerPrompt` and `getWorkspacePrompt` answer it.
  *
- * @param [overrides] - Any part of the result to replace; the result must still pass the shared schema.
+ * @param [overrides] - Any part of the result to replace.
  * @returns One user message.
  */
-export function promptGetResult(overrides: Partial<PromptGetResponse> = {}): PromptGetResponse {
-  return promptGetResponseSchema.parse({
+export function promptGetResult(overrides: Partial<PromptGetResult> = {}): PromptGetResult {
+  return {
     description: 'Summarise a file.',
     messages: [{ role: 'user', content: { type: 'text', text: 'Summarise /tmp/notes.txt in one line.' } }],
     ...overrides,
-  });
+  };
 }
 
 /**

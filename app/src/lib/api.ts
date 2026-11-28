@@ -4,25 +4,18 @@ import {
   ErrorCode,
   HttpStatus,
   type PromptGetRequest,
-  type PromptGetResponse,
-  promptGetResponseSchema,
   type RegistryServerEntry,
   type ResourceReadRequest,
-  type ResourceReadResponse,
   registryServerEntrySchema,
-  resourceReadResponseSchema,
   type ServerConfig,
   type ServerSource,
   type ServerTransport,
   serverConfigSchema,
   type ToolCallRequest,
-  type ToolCallResponse,
-  toolCallResponseSchema,
   type WorkspaceMember,
   workspaceMemberSchema,
 } from '@mcp-router/shared';
 import { type DocumentNode, print } from 'graphql';
-import type { z } from 'zod';
 import { graphql } from '@/__generated__/gql';
 import type {
   ActivityEntryFieldsFragment,
@@ -30,8 +23,11 @@ import type {
   InstallServerInput,
   LanDiscoveryFieldsFragment,
   McpPromptFieldsFragment,
+  McpPromptMessagesFieldsFragment,
+  McpResourceContentsFieldsFragment,
   McpResourceListingFieldsFragment,
   McpToolFieldsFragment,
+  McpToolResultFieldsFragment,
   ReloadConfigMutation,
   RouterStatusFieldsFragment,
   SaveWorkspaceInput,
@@ -45,8 +41,7 @@ import { ServerRuntimeState } from '@/__generated__/graphql';
 import { getToken, requireAuth } from './auth.ts';
 import { PAGE_DEFAULTS } from './defaults.ts';
 
-// The UI's one client. Everything but the three test calls (tools/call, resources/read, prompts/get) goes through
-// /graphql with a typed document; those three have no GraphQL field yet and stay on /api.
+// The UI's one client: every read and write goes through /graphql with a typed document.
 
 /** Where the UI sends its GraphQL operations; Vite proxies it to the server in development. */
 const GRAPHQL_ENDPOINT = '/graphql';
@@ -213,28 +208,6 @@ async function request<TResult, TVariables>(
 }
 
 /**
- * Posts to one of the REST routes the UI still calls, and reads the answer through the shared schema for it.
- *
- * @typeParam Schema - The zod schema the answer must match.
- * @param path - Same-origin path.
- * @param schema - Parses the answer.
- * @param body - Sent as JSON.
- * @returns The parsed answer. Throws `ApiRequestError` on a non-2xx status, an `Error` when the answer does not match.
- */
-async function postRest<Schema extends z.ZodType>(
-  path: string,
-  schema: Schema,
-  body: unknown,
-): Promise<z.infer<Schema>> {
-  const response = await send(path, { method: 'POST', body });
-  const result = schema.safeParse(await response.json());
-  if (result.success === false) {
-    throw new Error(`Unexpected response from POST ${path}`, { cause: result.error });
-  }
-  return result.data;
-}
-
-/**
  * Drops an object's nulls, so a nullable column reads as the absent field the shared config schemas expect.
  *
  * @param row - A row as GraphQL answered it.
@@ -350,6 +323,21 @@ graphql(`
     }
   }
 
+  fragment McpToolResultFields on McpToolResult {
+    content
+    structuredContent
+    isError
+  }
+
+  fragment McpResourceContentsFields on McpResourceContents {
+    contents
+  }
+
+  fragment McpPromptMessagesFields on McpPromptMessages {
+    description
+    messages
+  }
+
   fragment ActivityEntryFields on ActivityEntry {
     id
     at
@@ -395,6 +383,12 @@ export type McpResource = McpResourceListing['resources'][number];
 export type McpResourceTemplate = McpResourceListing['resourceTemplates'][number];
 /** One prompt a server or workspace offers. */
 export type McpPrompt = McpPromptFieldsFragment;
+/** What a tool call answered; `isError` marks a tool that reported its own failure. */
+export type ToolCallResult = McpToolResultFieldsFragment;
+/** What reading a resource answered. */
+export type ResourceReadResult = McpResourceContentsFieldsFragment;
+/** What getting a prompt answered. */
+export type PromptGetResult = McpPromptMessagesFieldsFragment;
 /** One recorded proxied call. */
 export type ActivityEntry = ActivityEntryFieldsFragment;
 /** The servers found on the local network. */
@@ -723,18 +717,6 @@ export type CapabilityScope =
   | { kind: typeof SCOPE_SERVER; name: string }
   | { kind: typeof SCOPE_WORKSPACE; slug: string };
 
-/**
- * Picks the REST base path of a capability scope, for the test calls that are still REST.
- *
- * @param scope - The server or workspace.
- * @returns `/api/servers/:name` or `/api/workspaces/:slug`, the name or slug URL-encoded.
- */
-function scopeBase(scope: CapabilityScope): string {
-  return scope.kind === SCOPE_SERVER
-    ? `/api/servers/${encodeURIComponent(scope.name)}`
-    : `/api/workspaces/${encodeURIComponent(scope.slug)}`;
-}
-
 const ServerToolsQueryDocument = graphql(`
   query ServerTools($name: String!, $limit: Int) {
     serverTools(name: $name, limit: $limit) {
@@ -826,37 +808,93 @@ export async function getPrompts(scope: CapabilityScope): Promise<{ prompts: Mcp
   return { prompts };
 }
 
-/**
- * Reads one resource through `POST …/resources/read`. REST: the schema has no field for it yet.
- *
- * @param scope - The server or workspace that serves it.
- * @param body - Which resource to read.
- * @returns The resource's contents.
- */
-export function readResource(scope: CapabilityScope, body: ResourceReadRequest): Promise<ResourceReadResponse> {
-  return postRest(`${scopeBase(scope)}/resources/read`, resourceReadResponseSchema, body);
-}
+const CallServerToolMutationDocument = graphql(`
+  mutation CallServerTool($name: String!, $tool: String!, $arguments: JSON) {
+    callServerTool(name: $name, tool: $tool, arguments: $arguments) {
+      ...McpToolResultFields
+    }
+  }
+`);
+
+const CallWorkspaceToolMutationDocument = graphql(`
+  mutation CallWorkspaceTool($slug: String!, $tool: String!, $arguments: JSON) {
+    callWorkspaceTool(slug: $slug, tool: $tool, arguments: $arguments) {
+      ...McpToolResultFields
+    }
+  }
+`);
 
 /**
- * Renders one prompt through `POST …/prompts/get`. REST: the schema has no field for it yet.
+ * Calls one tool, recorded in the scope's activity.
  *
- * @param scope - The server or workspace that serves it.
- * @param body - The prompt and its arguments.
- * @returns The prompt's messages.
- */
-export function getPrompt(scope: CapabilityScope, body: PromptGetRequest): Promise<PromptGetResponse> {
-  return postRest(`${scopeBase(scope)}/prompts/get`, promptGetResponseSchema, body);
-}
-
-/**
- * Calls one tool through `POST …/tools/call`. REST: the schema has no field for it yet.
- *
- * @param scope - The server or workspace that serves it.
- * @param body - The tool and its arguments.
+ * @param scope - The server or workspace that serves it; a workspace's tool is named `<server>__<tool>`.
+ * @param call - The tool and its arguments.
  * @returns The tool's result; `isError` marks a tool that reported its own failure.
  */
-export function callTool(scope: CapabilityScope, body: ToolCallRequest): Promise<ToolCallResponse> {
-  return postRest(`${scopeBase(scope)}/tools/call`, toolCallResponseSchema, body);
+export async function callTool(scope: CapabilityScope, call: ToolCallRequest): Promise<ToolCallResult> {
+  const variables = { tool: call.name, arguments: call.arguments };
+  return scope.kind === SCOPE_SERVER
+    ? (await request(CallServerToolMutationDocument, { name: scope.name, ...variables })).callServerTool
+    : (await request(CallWorkspaceToolMutationDocument, { slug: scope.slug, ...variables })).callWorkspaceTool;
+}
+
+const ReadServerResourceMutationDocument = graphql(`
+  mutation ReadServerResource($name: String!, $uri: String!) {
+    readServerResource(name: $name, uri: $uri) {
+      ...McpResourceContentsFields
+    }
+  }
+`);
+
+const ReadWorkspaceResourceMutationDocument = graphql(`
+  mutation ReadWorkspaceResource($slug: String!, $uri: String!) {
+    readWorkspaceResource(slug: $slug, uri: $uri) {
+      ...McpResourceContentsFields
+    }
+  }
+`);
+
+/**
+ * Reads one resource, recorded in the scope's activity.
+ *
+ * @param scope - The server or workspace that serves it.
+ * @param read - Which resource: a listed URI, or one expanded from a template.
+ * @returns The resource's contents.
+ */
+export async function readResource(scope: CapabilityScope, read: ResourceReadRequest): Promise<ResourceReadResult> {
+  return scope.kind === SCOPE_SERVER
+    ? (await request(ReadServerResourceMutationDocument, { name: scope.name, uri: read.uri })).readServerResource
+    : (await request(ReadWorkspaceResourceMutationDocument, { slug: scope.slug, uri: read.uri })).readWorkspaceResource;
+}
+
+const GetServerPromptMutationDocument = graphql(`
+  mutation GetServerPrompt($name: String!, $prompt: String!, $arguments: JSON) {
+    getServerPrompt(name: $name, prompt: $prompt, arguments: $arguments) {
+      ...McpPromptMessagesFields
+    }
+  }
+`);
+
+const GetWorkspacePromptMutationDocument = graphql(`
+  mutation GetWorkspacePrompt($slug: String!, $prompt: String!, $arguments: JSON) {
+    getWorkspacePrompt(slug: $slug, prompt: $prompt, arguments: $arguments) {
+      ...McpPromptMessagesFields
+    }
+  }
+`);
+
+/**
+ * Renders one prompt, recorded in the scope's activity.
+ *
+ * @param scope - The server or workspace that serves it.
+ * @param get - The prompt and its string arguments.
+ * @returns The prompt's messages.
+ */
+export async function getPrompt(scope: CapabilityScope, get: PromptGetRequest): Promise<PromptGetResult> {
+  const variables = { prompt: get.name, arguments: get.arguments };
+  return scope.kind === SCOPE_SERVER
+    ? (await request(GetServerPromptMutationDocument, { name: scope.name, ...variables })).getServerPrompt
+    : (await request(GetWorkspacePromptMutationDocument, { slug: scope.slug, ...variables })).getWorkspacePrompt;
 }
 
 const ServerActivityQueryDocument = graphql(`

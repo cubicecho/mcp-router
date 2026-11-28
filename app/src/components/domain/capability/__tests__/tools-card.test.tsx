@@ -43,7 +43,9 @@ describe('ToolsCard', () => {
   });
 
   it('runs the tool with the typed arguments', async () => {
-    const callTool = vi.spyOn(api, 'callTool').mockResolvedValue({ content: [{ type: 'text', text: 'hi' }] });
+    const callTool = vi
+      .spyOn(api, 'callTool')
+      .mockResolvedValue({ content: [{ type: 'text', text: 'hi' }], structuredContent: null, isError: false });
     const user = userEvent.setup();
     renderCard();
 
