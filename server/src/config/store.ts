@@ -5,7 +5,6 @@ import path from 'node:path';
 import { hostSlug } from '@cubicecho/mcp-discovery';
 import {
   type Registry,
-  registrySchema,
   type ServerConfig,
   type SettingsFile,
   serverConfigSchema,
@@ -16,7 +15,7 @@ import {
 import { asc, eq } from 'drizzle-orm';
 import { effectiveAuth } from '../auth/middleware.ts';
 import { CONFIG_DEFAULTS } from '../core/defaults.ts';
-import { conflict, errorMessage, notFound } from '../core/errors.ts';
+import { errorMessage } from '../core/errors.ts';
 import type { DB } from '../db/client.ts';
 import { registries } from '../db/tables/registries.ts';
 import { servers } from '../db/tables/servers.ts';
@@ -27,7 +26,6 @@ import { seedDatabase } from './import.ts';
 import {
   type NamedMemberRow,
   registryFromRow,
-  registryToRow,
   serverFromRow,
   settingsFromRow,
   settingsToRow,
@@ -179,33 +177,6 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
     await this.writeSettings(next);
     await this.reload();
     return this.settings;
-  }
-
-  /**
-   * Adds a registry.
-   *
-   * @param registry - The registry to add. Throws a 409 when its name is taken.
-   */
-  async addRegistry(registry: Registry): Promise<void> {
-    if (this.getRegistry(registry.name)) {
-      throw conflict(`Registry "${registry.name}" already exists`);
-    }
-    const parsed = registrySchema.parse(registry);
-    await this.db.insert(registries).values(registryToRow(parsed));
-    await this.reload();
-  }
-
-  /**
-   * Removes a registry.
-   *
-   * @param name - The registry to remove. Throws a 404 when there is none by that name.
-   */
-  async removeRegistry(name: string): Promise<void> {
-    if (!this.getRegistry(name)) {
-      throw notFound(`Unknown registry "${name}"`);
-    }
-    await this.db.delete(registries).where(eq(registries.name, name));
-    await this.reload();
   }
 
   /**

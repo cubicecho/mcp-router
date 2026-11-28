@@ -117,16 +117,6 @@ describe('ConfigStore', () => {
     expect(await database.db.select().from(servers)).toEqual([]);
   });
 
-  it('adds and removes registries in order, refusing a duplicate name', async () => {
-    const mine = { name: 'mine', url: 'https://registry.example.test' };
-    await store.addRegistry(mine);
-    expect(store.getRegistries()).toEqual([DEFAULT_REGISTRY, mine]);
-    await expect(store.addRegistry(mine)).rejects.toThrow(/already exists/);
-    await store.removeRegistry(DEFAULT_REGISTRY.name);
-    expect(store.getRegistries()).toEqual([mine]);
-    await expect(store.removeRegistry(DEFAULT_REGISTRY.name)).rejects.toThrow(/Unknown registry/);
-  });
-
   it('stores workspace members by server, skipping one that names no server', async () => {
     const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
     await store.saveServer(TEST_SERVER);
