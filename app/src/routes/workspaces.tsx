@@ -1,7 +1,6 @@
 import type { WorkspaceStatus } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { ConfirmButton } from '@/components/confirm-button';
 import { WorkspaceDialog } from '@/components/domain/workspace/workspace-dialog';
 import { EmptyState } from '@/components/empty-state';
@@ -14,7 +13,7 @@ import { Layers, Pencil, Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
-import { toastApiError, toastCopyError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** The `/workspaces` route. */
 export const Route = createFileRoute('/workspaces')({
@@ -30,6 +29,7 @@ type DialogState = { mode: 'create' } | { mode: 'edit'; workspace: WorkspaceStat
  * @returns The page.
  */
 function WorkspacesPage() {
+  const toasts = useToasts();
   const workspaces = useWorkspaces();
   const { data } = workspaces;
   const remove = useDeleteWorkspace();
@@ -89,7 +89,7 @@ function WorkspacesPage() {
                             variant="ghost"
                             value={endpointUrl(workspace.path)}
                             label={`Copy URL for ${workspace.path}`}
-                            onError={toastCopyError}
+                            onError={toasts.copyError}
                           />
                         </span>
                       </TableCell>
@@ -119,8 +119,8 @@ function WorkspacesPage() {
                           description={`The workspace's endpoint (${workspace.path}) stops responding. The underlying servers and their global configuration are not affected.`}
                           onConfirm={() =>
                             remove.mutate(workspace.slug, {
-                              onSuccess: () => toast.success(`Deleted workspace ${workspace.name}`),
-                              onError: toastApiError,
+                              onSuccess: () => toasts.success(`Deleted workspace ${workspace.name}`),
+                              onError: toasts.apiError,
                             })
                           }
                           iconSlot={<Trash2 className="text-negative" />}

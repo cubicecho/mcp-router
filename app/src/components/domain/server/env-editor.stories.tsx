@@ -39,8 +39,8 @@ export const ShowsDeclaredVariablesAsFieldsAndTheRestAsRows: Story = {
     await expect(canvas.getByText('Deployment region')).toBeVisible();
     // A variable nobody declared is a row whose name can be edited too.
     await expect(canvas.getByText('Other variables')).toBeVisible();
-    await expect(canvas.getByRole('textbox', { name: 'Variable name' })).toHaveValue('LOG_LEVEL');
-    await expect(canvas.getByRole('textbox', { name: 'Value for LOG_LEVEL' })).toHaveValue('debug');
+    await expect(canvas.getByRole('textbox', { name: 'Variable 1' })).toHaveValue('LOG_LEVEL');
+    await expect(canvas.getByRole('textbox', { name: 'Value 1' })).toHaveValue('debug');
   },
 };
 
@@ -60,16 +60,12 @@ export const SavesEditedAddedAndDeclaredVariables: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.type(canvas.getByRole('textbox', { name: /^REGION/ }), 'eu-west-1');
-    const logLevel = canvas.getByRole('textbox', { name: 'Value for LOG_LEVEL' });
+    const logLevel = canvas.getByRole('textbox', { name: 'Value 1' });
     await userEvent.clear(logLevel);
     await userEvent.type(logLevel, 'info');
     await userEvent.click(canvas.getByRole('button', { name: 'Add variable' }));
-    const [, newName] = canvas.getAllByRole('textbox', { name: 'Variable name' });
-    await expect(newName).toBeDefined();
-    if (newName) {
-      await userEvent.type(newName, 'NEW_VAR');
-    }
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Value for NEW_VAR' }), 'hello');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Variable 2' }), 'NEW_VAR');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Value 2' }), 'hello');
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
@@ -87,8 +83,8 @@ export const DropsRemovedAndEmptiedVariables: Story = {
   play: async ({ args, canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.clear(canvas.getByLabelText(/^API_KEY/));
-    await userEvent.click(canvas.getByRole('button', { name: 'Remove LOG_LEVEL' }));
-    await expect(canvas.queryByRole('textbox', { name: 'Value for LOG_LEVEL' })).not.toBeInTheDocument();
+    await userEvent.click(canvas.getByRole('button', { name: 'Remove row 1' }));
+    await expect(canvas.queryByRole('textbox', { name: 'Value 1' })).not.toBeInTheDocument();
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith({}));
   },
@@ -101,8 +97,8 @@ export const WithNoVariables: Story = {
     await expect(canvas.getByText('No environment variables configured.')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Add variable' }));
     await expect(canvas.queryByText('No environment variables configured.')).not.toBeInTheDocument();
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Variable name' }), 'TOKEN');
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Value for TOKEN' }), 'abc');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Variable 1' }), 'TOKEN');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Value 1' }), 'abc');
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(args.onSave).toHaveBeenCalledWith({ TOKEN: 'abc' }));
   },

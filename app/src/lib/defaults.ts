@@ -36,8 +36,6 @@ export interface DisplaySettings {
   argsMinRows: number;
   /** Most rows of a tool's arguments box before it scrolls. */
   argsMaxRows: number;
-  /** A time newer than this reads "just now", in seconds. */
-  justNowSeconds: number;
 }
 
 /** The display thresholds the components use. */
@@ -46,5 +44,4 @@ export const DISPLAY_DEFAULTS: Readonly<DisplaySettings> = Object.freeze({
   filterAboveServers: 5,
   argsMinRows: 3,
   argsMaxRows: 10,
-  justNowSeconds: 45,
 });

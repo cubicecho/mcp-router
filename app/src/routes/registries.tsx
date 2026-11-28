@@ -1,6 +1,5 @@
 import { createRegistryRequestSchema } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
-import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
@@ -9,7 +8,7 @@ import { PageLayout } from '@/components/page-layout';
 import { Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { useCreateRegistry, useDeleteRegistry, useRegistries } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** The `/registries` route. */
 export const Route = createFileRoute('/registries')({
@@ -34,6 +33,7 @@ function registryFieldError(field: 'name' | 'url', value: string): string | unde
  * @returns The card.
  */
 function AddRegistryForm() {
+  const toasts = useToasts();
   const create = useCreateRegistry();
   const form = useAppForm({
     defaultValues: { name: '', url: '' },
@@ -41,10 +41,10 @@ function AddRegistryForm() {
       const body = createRegistryRequestSchema.parse({ name: value.name.trim(), url: value.url.trim() });
       try {
         await create.mutateAsync(body);
-        toast.success(`Added registry ${body.name}`);
+        toasts.success(`Added registry ${body.name}`);
         formApi.reset();
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -93,6 +93,7 @@ function AddRegistryForm() {
  * @returns The page.
  */
 function RegistriesPage() {
+  const toasts = useToasts();
   const registries = useRegistries();
   const { data } = registries;
   const remove = useDeleteRegistry();
@@ -141,8 +142,8 @@ function RegistriesPage() {
                         }
                         onConfirm={() =>
                           remove.mutate(registry.name, {
-                            onSuccess: () => toast.success(`Deleted registry ${registry.name}`),
-                            onError: toastApiError,
+                            onSuccess: () => toasts.success(`Deleted registry ${registry.name}`),
+                            onError: toasts.apiError,
                           })
                         }
                         iconSlot={<Trash2 className="text-negative" />}

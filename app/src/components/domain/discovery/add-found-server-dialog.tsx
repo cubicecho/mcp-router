@@ -1,5 +1,4 @@
 import type { DiscoveredServer } from '@mcp-router/shared';
-import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
 import { PasswordField } from '@/components/password-field';
@@ -7,7 +6,7 @@ import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 const FORM_ID = 'add-found-server-form';
 
@@ -51,6 +50,7 @@ export interface AddFoundServerDialogProps {
 
 /** Adds a server found on the local network as a remote server, asking for its name and any token it needs. */
 export function AddFoundServerDialog({ server, open, onOpenChange }: AddFoundServerDialogProps) {
+  const toasts = useToasts();
   const install = useInstallServer();
   const form = useAppForm({
     defaultValues: {
@@ -71,10 +71,10 @@ export function AddFoundServerDialog({ server, open, onOpenChange }: AddFoundSer
           enabled: true,
           discovered: { key: server.key, cardName: server.cardName },
         });
-        toast.success(`Added ${added.config.name}`);
+        toasts.success(`Added ${added.config.name}`);
         onOpenChange(false);
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });

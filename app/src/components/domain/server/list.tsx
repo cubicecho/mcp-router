@@ -2,7 +2,6 @@ import { ServerRuntimeState, type ServerStatus } from '@mcp-router/shared';
 import { Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { AddServerDialog } from '@/components/domain/server/add-server-dialog';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
@@ -16,10 +15,11 @@ import { Switch } from '@/components/ui/switch';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { DISPLAY_DEFAULTS } from '@/lib/defaults';
-import { formatRelativeTime, formatSource } from '@/lib/format';
+import { formatAgo } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useTestServerConnection, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { formatSource } from '@/lib/server-source';
+import { useToasts } from '@/lib/toast';
 
 /**
  * Table row for one installed server: state, usage, the enable switch and the actions menu.
@@ -32,6 +32,7 @@ import { toastApiError } from '@/lib/toast';
  * A click anywhere but on the row's own controls opens the server's page.
  */
 function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: ServerStatus) => void }) {
+  const toasts = useToasts();
   const navigate = useNavigate();
   const update = useUpdateServer();
   const restart = useRestartServer();
@@ -44,9 +45,9 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
     test.mutate(config.name, {
       onSuccess: (result) => {
         const count = result.tools.length;
-        toast.success(`${config.name} connected — ${count} tool${count === 1 ? '' : 's'}`);
+        toasts.success(`${config.name} connected — ${count} tool${count === 1 ? '' : 's'}`);
       },
-      onError: toastApiError,
+      onError: toasts.apiError,
     });
 
   // The whole row navigates, except clicks on the row's own controls. The menu and the
@@ -98,7 +99,9 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
               <span>{server.callCount.toLocaleString()}</span>
             </TooltipTrigger>
             <TooltipContent>
-              {server.lastCalledAt ? `Last called ${formatRelativeTime(server.lastCalledAt)}` : 'Since last restart'}
+              {server.lastCalledAt
+                ? `Last called ${formatAgo(server.lastCalledAt, Date.now(), { style: 'narrow' })}`
+                : 'Since last restart'}
             </TooltipContent>
           </Tooltip>
         ) : (
@@ -106,7 +109,7 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
         )}
       </TableCell>
       <TableCell className="hidden text-foreground/60 xl:table-cell">
-        {server.lastCalledAt ? formatRelativeTime(server.lastCalledAt) : '—'}
+        {server.lastCalledAt ? formatAgo(server.lastCalledAt, Date.now(), { style: 'narrow' }) : '—'}
       </TableCell>
       <TableCell>
         <Switch
@@ -117,8 +120,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
             update.mutate(
               { name: config.name, enabled },
               {
-                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${config.name}`),
-                onError: toastApiError,
+                onSuccess: () => toasts.success(`${enabled ? 'Enabled' : 'Disabled'} ${config.name}`),
+                onError: toasts.apiError,
               },
             )
           }
@@ -143,8 +146,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
               label="Restart"
               onSelect={() =>
                 restart.mutate(config.name, {
-                  onSuccess: () => toast.success(`Restarted ${config.name}`),
-                  onError: toastApiError,
+                  onSuccess: () => toasts.success(`Restarted ${config.name}`),
+                  onError: toasts.apiError,
                 })
               }
             />
@@ -160,8 +163,8 @@ function ServerRow({ server, onEdit }: { server: ServerStatus; onEdit: (server: 
           confirmLabel="Delete"
           onConfirm={() =>
             remove.mutate(config.name, {
-              onSuccess: () => toast.success(`Deleted ${config.name}`),
-              onError: toastApiError,
+              onSuccess: () => toasts.success(`Deleted ${config.name}`),
+              onError: toasts.apiError,
             })
           }
         />

@@ -27,7 +27,7 @@ describe('EnvEditor', () => {
     const secretInput = screen.getByLabelText(/^API_KEY/);
     expect(secretInput).toHaveAttribute('type', 'password');
     // non-secret values are plain text
-    expect(screen.getByLabelText('Value for LOG_LEVEL')).toHaveAttribute('type', 'text');
+    expect(screen.getByLabelText('Value 1')).toHaveAttribute('type', 'text');
 
     await user.click(screen.getByRole('button', { name: 'Reveal API_KEY' }));
     expect(secretInput).toHaveAttribute('type', 'text');
@@ -42,14 +42,14 @@ describe('EnvEditor', () => {
     render(<EnvEditor env={ENV} envMeta={ENV_META} onSave={onSave} />);
 
     // edit an existing value
-    const logLevel = screen.getByLabelText('Value for LOG_LEVEL');
+    const logLevel = screen.getByLabelText('Value 1');
     await user.clear(logLevel);
     await user.type(logLevel, 'info');
 
     // add a new arbitrary var
     await user.click(screen.getByRole('button', { name: /add variable/i }));
-    await user.type(screen.getAllByLabelText('Variable name')[1] as HTMLElement, 'NEW_VAR');
-    await user.type(screen.getByLabelText('Value for NEW_VAR'), 'hello');
+    await user.type(screen.getByLabelText('Variable 2'), 'NEW_VAR');
+    await user.type(screen.getByLabelText('Value 2'), 'hello');
 
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() =>
@@ -57,7 +57,7 @@ describe('EnvEditor', () => {
     );
 
     // remove the env-only var (meta rows are not removable)
-    await user.click(screen.getByRole('button', { name: 'Remove LOG_LEVEL' }));
+    await user.click(screen.getByRole('button', { name: 'Remove row 1' }));
     await user.click(screen.getByRole('button', { name: 'Save' }));
     await waitFor(() => expect(onSave).toHaveBeenLastCalledWith({ API_KEY: 'super-secret', NEW_VAR: 'hello' }));
   });

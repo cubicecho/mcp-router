@@ -1,7 +1,6 @@
 import { type ActivityEntry, CallVia } from '@mcp-router/shared';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { CollapsibleRow } from '@/components/collapsible-row';
 import { Combobox } from '@/components/combobox';
@@ -15,9 +14,9 @@ import { Button } from '@/components/ui/button';
 import { Trash2 } from '@/components/ui/icons';
 import { type CapabilityScope, SCOPE_SERVER } from '@/lib/api';
 import { endpointPath } from '@/lib/endpoint';
-import { formatAbsoluteTime, formatRelativeTime } from '@/lib/format';
+import { formatAgo, formatDateTime } from '@/lib/format';
 import { useCapabilityActivity, useClearActivity } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 import { DataBlock } from './json-view.tsx';
 
 /**
@@ -41,8 +40,8 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
           <Badge variant={entry.ok ? 'secondary' : 'destructive'}>{entry.ok ? 'ok' : 'error'}</Badge>
           {entry.via !== CallVia.Direct && <Badge variant="outline">{entry.via}</Badge>}
           <span className="text-foreground/60 text-xs tabular-nums">{entry.durationMs}ms</span>
-          <span className="text-foreground/60 text-xs tabular-nums" title={formatAbsoluteTime(entry.at)}>
-            {formatRelativeTime(entry.at)}
+          <span className="text-foreground/60 text-xs tabular-nums" title={formatDateTime(entry.at)}>
+            {formatAgo(entry.at, Date.now(), { style: 'narrow' })}
           </span>
         </>
       }
@@ -66,6 +65,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
  * @returns The card.
  */
 export function ActivityCard({ scope }: { scope: CapabilityScope }) {
+  const toasts = useToasts();
   const { data, isPending, error, refetch, isRefetching } = useCapabilityActivity(scope);
   const clear = useClearActivity(scope);
   const [outcome, setOutcome] = useState<'all' | 'ok' | 'error'>('all');
@@ -80,8 +80,8 @@ export function ActivityCard({ scope }: { scope: CapabilityScope }) {
 
   const handleClear = () => {
     clear.mutate(undefined, {
-      onSuccess: () => toast.success('Activity cleared'),
-      onError: toastApiError,
+      onSuccess: () => toasts.success('Activity cleared'),
+      onError: toasts.apiError,
     });
   };
 

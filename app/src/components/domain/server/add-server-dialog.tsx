@@ -10,11 +10,10 @@ import {
 } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { InputField, TextareaField, useAppForm } from '@/components/app-form';
 import { Collapsible } from '@/components/collapsible';
 import { DialogLayout } from '@/components/dialog-layout';
-import { KeyValueRows } from '@/components/domain/key-value/rows';
+import { KeyValueField } from '@/components/domain/key-value/key-value-field';
 import { OAuthSignInButton } from '@/components/domain/server/oauth-sign-in-button';
 import { FormField } from '@/components/form-field';
 import { PasswordField } from '@/components/password-field';
@@ -27,7 +26,7 @@ import { importPastedServer } from '@/lib/json-config';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
 import { useCheckServerOAuth, useInstallServer, useUpdateServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 const FORM_ID = 'add-server-form';
 
@@ -126,6 +125,7 @@ export function AddServerDialog({
   /** When provided, the dialog edits this server (prefilled) instead of creating one. */
   server?: ServerStatus;
 }) {
+  const toasts = useToasts();
   const install = useInstallServer();
   const update = useUpdateServer();
   const checkOAuth = useCheckServerOAuth();
@@ -175,7 +175,7 @@ export function AddServerDialog({
             ...(value.mode === 'stdio' ? { env } : {}),
             ...(oauthClient !== undefined ? { oauthClient } : {}),
           });
-          toast.success(`Updated ${server.config.name}`);
+          toasts.success(`Updated ${server.config.name}`);
           onOpenChange(false);
           return;
         }
@@ -188,7 +188,7 @@ export function AddServerDialog({
           ...(oauthClient ? { oauthClient } : {}),
         };
         const status = await install.mutateAsync(body);
-        toast.success(`Added ${status.config.name}`);
+        toasts.success(`Added ${status.config.name}`);
         if (value.mode === 'http') {
           // A failed check is no reason to keep the dialog: the server's own page says what is wrong.
           const checked = await checkOAuth.mutateAsync(status.config.name).catch(() => undefined);
@@ -199,7 +199,7 @@ export function AddServerDialog({
         }
         onOpenChange(false);
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -239,16 +239,16 @@ export function AddServerDialog({
         }
       }
       if (config.extraCount > 0) {
-        toast.success(
+        toasts.success(
           `Applied "${config.name}". Ignored ${config.extraCount} other ${
             config.extraCount === 1 ? 'server' : 'servers'
           } in the paste — add ${config.extraCount === 1 ? 'it' : 'them'} one at a time.`,
         );
       } else {
-        toast.success('Config applied — fields filled in below');
+        toasts.success('Config applied — fields filled in below');
       }
     } catch (error) {
-      toast.error(`Could not parse config: ${error instanceof Error ? error.message : 'invalid JSON'}`);
+      toasts.error(`Could not parse config: ${error instanceof Error ? error.message : 'invalid JSON'}`);
     }
   };
 
@@ -357,19 +357,14 @@ export function AddServerDialog({
                 placeholder={'-y\nsome-mcp-server'}
               />
               <InputField form={form} name="cwd" label="Working directory (optional)" placeholder="/absolute/path" />
-              <form.Field name="envRows">
-                {(field) => (
-                  <KeyValueRows
-                    legend="Environment variables"
-                    keyPlaceholder="API_KEY"
-                    keyLabel="Environment variables name"
-                    unnamed="new entry"
-                    addLabel="Add variable"
-                    value={field.state.value}
-                    onValueChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
+              <KeyValueField
+                form={form}
+                name="envRows"
+                label="Environment variables"
+                keyLabel="Variable"
+                valueLabel="Value"
+                addLabel="Add variable"
+              />
             </TabsContent>
 
             <TabsContent value="http" className="flex flex-col gap-4 pt-2">
@@ -384,19 +379,14 @@ export function AddServerDialog({
                     fieldApi.form.getFieldValue('mode') === 'http' ? urlError(value) : undefined,
                 }}
               />
-              <form.Field name="headerRows">
-                {(field) => (
-                  <KeyValueRows
-                    legend="Headers"
-                    keyPlaceholder="Authorization"
-                    keyLabel="Headers name"
-                    unnamed="new entry"
-                    addLabel="Add header"
-                    value={field.state.value}
-                    onValueChange={field.handleChange}
-                  />
-                )}
-              </form.Field>
+              <KeyValueField
+                form={form}
+                name="headerRows"
+                label="Headers"
+                keyLabel="Header"
+                valueLabel="Value"
+                addLabel="Add header"
+              />
               <Collapsible
                 title="OAuth client (optional)"
                 description="Most servers that ask for a login register MCP Router on their own. Fill these in only for one that needs a client set up in advance."

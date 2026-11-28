@@ -146,8 +146,7 @@ export const SaysWhyACallFailed: Story = {
     await openTool(canvasElement, /list_files/);
     await userEvent.click(canvas.getByRole('button', { name: 'Run' }));
     const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByText('Tool call failed')).toBeVisible());
-    await expect(body.getByText('The server exited.')).toBeVisible();
+    await waitFor(() => expect(body.getByText('Tool call failed: The server exited.')).toBeVisible());
     await expect(canvas.queryByText('Result')).not.toBeInTheDocument();
   },
 };

@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 import * as React from 'react';
-import { actionGap, cn, hasSlot, type SlotNode } from '@/lib/utils';
+import { CopyButton } from '@/components/ui/copy-button';
+import { actionGap, CODE_TEXT, cn, hasSlot, type SlotNode } from '@/lib/utils';
 
 type Layout = 'inline' | 'stacked';
 
@@ -43,6 +44,16 @@ const VALUES = {
  * view would otherwise be a flex column and lay `<code>/data</code> (mounted)` out as two rows.
  */
 const SLOT = 'block';
+
+/**
+ * A `code` value's text: `Code`'s type, with no chip round it, breaking anywhere only where a line
+ * will not hold it — an id or a URL has no spaces to break at, and without it the row is as wide
+ * as the value.
+ */
+const CODE_VALUE = cn(CODE_TEXT, 'wrap-anywhere text-foreground');
+
+/** A plain value's text. */
+const PLAIN_VALUE = 'break-words text-foreground text-sm';
 
 const isText = (node: ReactNode) => typeof node === 'string' || typeof node === 'number';
 
@@ -116,6 +127,24 @@ type PropertyRowProps = {
    * of what is said about it.
    */
   actionSlot?: SlotNode | undefined;
+  /**
+   * A string to put on the clipboard: draws a `CopyButton` at the row's far end, after anything in
+   * `actionSlot`, so the copy buttons down a list line up whatever else a row holds. Usually the
+   * value itself — `value={id} copyValue={id}` — but it may be what the value stands for, such as
+   * the whole key behind a masked one.
+   */
+  copyValue?: string | undefined;
+  /**
+   * The copy button's name: "Copy client ID". Left out, it is "Copy {label}" when the label is a
+   * string, and "Copy" when it is not. Only with `copyValue`.
+   */
+  copyLabel?: string | undefined;
+  /**
+   * Draw a string value as code — an id, a URL, a key, a hash: the monospaced type `Code` and
+   * `CodeBlock` use, broken anywhere a line will not hold it. Rather than restating
+   * `valueClassName="font-mono break-all"` on every row, where each app had picked its own size.
+   */
+  code?: boolean | undefined;
   /** On the row, the label and value together. */
   className?: string | undefined;
   /** On the label's own `Text`, the `<dt>` on the web. */
@@ -147,11 +176,27 @@ export function PropertyRow({
   value,
   hint,
   actionSlot,
+  copyValue,
+  copyLabel,
+  code = false,
   className,
   labelClassName,
   valueClassName,
 }: PropertyRowProps) {
   const layout = React.useContext(LayoutContext);
+  const copy =
+    copyValue === undefined ? null : (
+      <CopyButton value={copyValue} label={copyLabel ?? (typeof label === 'string' ? `Copy ${label}` : undefined)} />
+    );
+  const actions =
+    copy === null ? (
+      actionSlot
+    ) : (
+      <>
+        {actionSlot}
+        {copy}
+      </>
+    );
 
   return (
     <div data-slot="property-row" className={cn('cube-rn-view', 'min-w-0', ROWS[layout], className)}>
@@ -176,19 +221,19 @@ export function PropertyRow({
         )}
       >
         <div className="cube-rn-view min-w-0 flex-1 gap-0.5">
-          {asText(value, cn('break-words text-foreground text-sm', valueClassName))}
+          {asText(value, cn(code ? CODE_VALUE : PLAIN_VALUE, valueClassName))}
           {hint ? (
             <span data-slot="property-row-hint" className="cube-rn-text text-foreground/60 text-xs">
               {hint}
             </span>
           ) : null}
         </div>
-        {hasSlot(actionSlot) ? (
+        {hasSlot(actions) ? (
           <div
             data-slot="property-row-action"
-            className={cn('cube-rn-view', 'shrink-0 flex-row items-center', actionGap(actionSlot))}
+            className={cn('cube-rn-view', 'shrink-0 flex-row items-center', actionGap(actions))}
           >
-            {actionSlot}
+            {actions}
           </div>
         ) : null}
       </dd>

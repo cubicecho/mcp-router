@@ -10,8 +10,8 @@ import {
 } from '@tanstack/react-router';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
-import { toast } from 'sonner';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as api from '@/lib/api';
 import { ServerList } from '../list.tsx';
@@ -37,7 +37,9 @@ function renderList() {
     path: '/',
     component: () => (
       <TooltipProvider>
-        <ServerList servers={[server]} />
+        <ToastProvider>
+          <ServerList servers={[server]} />
+        </ToastProvider>
       </TooltipProvider>
     ),
   });
@@ -67,8 +69,6 @@ describe('ServerList row actions menu', () => {
       ],
     });
 
-    const successSpy = vi.spyOn(toast, 'success').mockImplementation(() => '');
-
     const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
     renderList();
 
@@ -76,12 +76,11 @@ describe('ServerList row actions menu', () => {
     await user.click(await screen.findByRole('menuitem', { name: 'Test connection' }));
 
     await waitFor(() => expect(toolsSpy).toHaveBeenCalledWith({ kind: 'server', name: 'my-server' }));
-    await waitFor(() => expect(successSpy).toHaveBeenCalledWith('my-server connected — 2 tools'));
+    expect(await screen.findByText('my-server connected — 2 tools')).toBeInTheDocument();
   });
 
   it('asks before deleting, and deletes only once confirmed', async () => {
     const deleteSpy = vi.spyOn(api, 'deleteServer').mockResolvedValue(undefined);
-    vi.spyOn(toast, 'success').mockImplementation(() => '');
 
     const user = userEvent.setup({ pointerEventsCheck: PointerEventsCheckLevel.Never });
     renderList();

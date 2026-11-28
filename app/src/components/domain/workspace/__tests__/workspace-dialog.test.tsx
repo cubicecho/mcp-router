@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@/components/ui/toast';
 import * as api from '@/lib/api';
 import { WorkspaceDialog } from '../workspace-dialog.tsx';
 
@@ -28,7 +29,9 @@ function renderDialog(workspace?: WorkspaceStatus) {
   const onOpenChange = vi.fn();
   render(
     <QueryClientProvider client={client}>
-      <WorkspaceDialog open onOpenChange={onOpenChange} workspace={workspace} />
+      <ToastProvider>
+        <WorkspaceDialog open onOpenChange={onOpenChange} workspace={workspace} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
   return onOpenChange;
@@ -117,12 +120,14 @@ describe('WorkspaceDialog', () => {
     const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
     render(
       <QueryClientProvider client={client}>
-        <WorkspaceDialog
-          open
-          onOpenChange={vi.fn()}
-          onSaved={onSaved}
-          workspace={{ ...WORKSPACE, description: 'Team servers' } as WorkspaceStatus}
-        />
+        <ToastProvider>
+          <WorkspaceDialog
+            open
+            onOpenChange={vi.fn()}
+            onSaved={onSaved}
+            workspace={{ ...WORKSPACE, description: 'Team servers' } as WorkspaceStatus}
+          />
+        </ToastProvider>
       </QueryClientProvider>,
     );
 
