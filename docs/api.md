@@ -86,8 +86,8 @@ them.
 ## MCP endpoints
 
 All three speak streamable HTTP and take an API key, as `Authorization: Bearer <api-key>` or `x-api-key`, and nothing
-else: a UI session never opens them, on a trusted network (`SECURE_LOCAL_NET`) too. No key or a dead one is a `401`,
-two different keys a `400`.
+else: a UI session never opens them. Under `SECURE_LOCAL_NET` they are open without a key, as before keys. Otherwise
+no key or a dead one is a `401`, two different keys a `400`.
 
 | Endpoint | Purpose |
 | --- | --- |

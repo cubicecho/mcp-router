@@ -72,6 +72,15 @@ describe('the credential guards', () => {
     expect((await request(appWith()).post('/admin/mcp').set('x-api-key', key)).status).toBe(200);
     expect((await request(appWith()).post('/admin/mcp')).status).toBe(401);
   });
+
+  it('opens /mcp without a key on a trusted network, and leaves /admin/mcp guarded', async () => {
+    const app = express();
+    app.use('/mcp', createApiKeyMiddleware(authHost, { trustedNetwork: true }), (_req, res) => res.json({ ok: true }));
+    app.use('/admin/mcp', createCallerMiddleware(authHost), (_req, res) => res.json({ ok: true }));
+    expect((await request(app).post('/mcp')).status).toBe(200);
+    expect((await request(app).post('/mcp/echo')).status).toBe(200);
+    expect((await request(app).post('/admin/mcp')).status).toBe(401);
+  });
 });
 
 describe('isLoopbackOrigin', () => {

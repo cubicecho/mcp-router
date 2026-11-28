@@ -95,7 +95,7 @@ export async function readCaller(auth: Auth, headers: Headers): Promise<Identity
 
 /**
  * Reads the machine caller a request to the proxied MCP endpoints is from, by its API key alone. A session is never
- * read there, on a trusted network too: MCP clients carry keys.
+ * read there: MCP clients carry keys. On a trusted network the guard lets every request through without asking.
  *
  * @param auth - The auth instance for this request.
  * @param headers - The request's headers.

@@ -164,7 +164,7 @@ permalink: /docs/
           </table>
         </div>
         <p>They speak streamable HTTP and take an API key, as <code>Authorization: Bearer</code> or
-          <code>x-api-key</code>; a UI session never opens them. Disabled servers return 404; a missing or dead key
+          <code>x-api-key</code>; a UI session never opens them. Under <code>SECURE_LOCAL_NET</code> they need no key. Disabled servers return 404; a missing or dead key
           returns 401 before any MCP handling.</p>
 
         <h2 id="security">Security notes</h2>

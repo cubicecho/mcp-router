@@ -122,7 +122,15 @@ async function main(): Promise<void> {
     console.warn(`[discovery] lanAdvertise is on, but the router listens on ${host} only, so it is not announced`);
   }
 
-  const app = createApp({ store, manager, oauth, lanServers, db: database.db, authHost });
+  const app = createApp({
+    store,
+    manager,
+    oauth,
+    lanServers,
+    db: database.db,
+    authHost,
+    trustedNetwork: secureLocalNet(),
+  });
   const onListen = () => {
     console.log(`[server] listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     logSignIn(authHost.oidc(), authHost.baseUrl());

@@ -46,6 +46,11 @@ export interface AppDeps {
    * @defaultValue `createRateLimiter()`
    */
   limiter?: RateLimiter;
+  /**
+   * The router is on a trusted network (SECURE_LOCAL_NET): the proxied /mcp endpoints need no API key.
+   * @defaultValue false
+   */
+  trustedNetwork?: boolean;
 }
 
 /** The path the router's own management schema is served at as MCP tools. Beside /mcp, which proxies servers. */
@@ -114,7 +119,12 @@ export function createApp(deps: AppDeps): express.Express {
 
   const lanServers = deps.lanServers ?? idleLanServers();
   // The proxied servers take an API key only, in Authorization: Bearer or x-api-key.
-  app.use('/mcp', originGuard, createApiKeyMiddleware(authHost), createMcpRouter({ store, manager }));
+  app.use(
+    '/mcp',
+    originGuard,
+    createApiKeyMiddleware(authHost, { trustedNetwork: deps.trustedNetwork }),
+    createMcpRouter({ store, manager }),
+  );
 
   // The management API, as GraphQL for the UI and as MCP tools for agents, under the same body cap (the express.json
   // above). /graphql is open to nobody too, for signing in: permissions refuse everything else. /admin/mcp needs a key

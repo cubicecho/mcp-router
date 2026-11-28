@@ -63,8 +63,8 @@ export function ApiKeysCard() {
       description={
         <>
           For MCP clients and agents. A client sends its key as <Code>Authorization: Bearer {'<key>'}</Code> to{' '}
-          <Code>/mcp</Code>, <Code>/mcp/{'<name>'}</Code> or <Code>/mcp/w/{'<slug>'}</Code>. Those take only API keys,
-          even on a trusted network.
+          <Code>/mcp</Code>, <Code>/mcp/{'<name>'}</Code> or <Code>/mcp/w/{'<slug>'}</Code>. Under{' '}
+          <Code>SECURE_LOCAL_NET</Code> those are open without one.
         </>
       }
       actionSlot={<Button size="sm" iconSlot={<Plus />} onClick={() => setIsCreating(true)} content="Create API key" />}

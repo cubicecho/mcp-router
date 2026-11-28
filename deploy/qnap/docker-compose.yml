@@ -6,8 +6,8 @@
 #      sudo chown 1000:1000 /share/Container/mcp-router/data
 #   2. Replace change-me with a long random secret (`openssl rand -hex 32`).
 #      The router refuses to start while it is still change-me. Opening the
-#      web UI signs you in as the local admin (SECURE_LOCAL_NET); make API keys
-#      for your MCP clients in its Settings.
+#      web UI signs you in as the local admin (SECURE_LOCAL_NET), and MCP
+#      clients on your network connect without a key.
 #   3. Replace pg-change-me (twice) with a database password.
 #   4. If port 3000 is taken on the NAS, change the left-hand number.
 services:

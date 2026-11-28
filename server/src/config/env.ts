@@ -121,8 +121,8 @@ export function routerUrl(
 
 /**
  * Whether the router is on a trusted network (`SECURE_LOCAL_NET`): whoever opens the UI is signed in as the local
- * admin, with no provider. It never opens /mcp, /graphql or /admin/mcp to a request without a credential: MCP clients
- * and agents still need an API key.
+ * admin, with no provider, and the proxied /mcp endpoints are open without an API key, as before keys. /graphql and
+ * /admin/mcp still need a credential.
  *
  * @param [env] - The process environment.
  * @returns True when the variable is set to a truthy value. Boot refuses it when the router's address is public.

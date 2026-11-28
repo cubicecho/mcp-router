@@ -19,7 +19,7 @@ import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import type { RouterStatus } from '@/lib/api';
 import { formatUptime } from '@/lib/format';
-import { useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
+import { useAuthConfig, useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
 import { toastApiError } from '@/lib/toast';
 
 /** The `/settings` route. */
@@ -234,6 +234,8 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
  */
 function SettingsPage() {
   const status = useRouterStatus();
+  const authConfig = useAuthConfig();
+  const isTrustedNetwork = authConfig.data?.authConfig.trustedNetwork === true;
   const { data } = status;
   const discovery = useDiscovery();
   const dismissed = (discovery.data?.servers ?? []).filter((server) => server.state === LanServerState.Dismissed);
@@ -281,12 +283,19 @@ function SettingsPage() {
                             <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
                             <PropertyRow
                               label="MCP clients"
-                              value="API key required"
+                              value={isTrustedNetwork ? 'Open on this network' : 'API key required'}
                               hint={
-                                <>
-                                  Each client sends a key from the API keys tab to <Code>/mcp*</Code>, even on a trusted
-                                  network (<Code>SECURE_LOCAL_NET</Code>). Your sign-in does not open it.
-                                </>
+                                isTrustedNetwork ? (
+                                  <>
+                                    <Code>SECURE_LOCAL_NET</Code> is on, so <Code>/mcp*</Code> takes clients without a
+                                    key. A key from the API keys tab still works.
+                                  </>
+                                ) : (
+                                  <>
+                                    Each client sends a key from the API keys tab to <Code>/mcp*</Code>. Your sign-in
+                                    does not open it.
+                                  </>
+                                )
                               }
                             />
                           </>

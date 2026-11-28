@@ -19,7 +19,8 @@ const API_KEY_PLACEHOLDER = '<YOUR_API_KEY>';
  *
  * @remarks
  * The snippets send a placeholder API key for the reader to replace with one from Settings → API keys: `/mcp*` takes
- * only API keys, even on a trusted network. The UI's own session is never put in them; it does not open `/mcp`.
+ * only API keys, except on a trusted network (`SECURE_LOCAL_NET`), where it is open. The UI's own session is never put
+ * in them; it does not open `/mcp`.
  */
 export function ConnectCard({
   endpoint,

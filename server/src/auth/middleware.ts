@@ -92,18 +92,33 @@ function credentialGuard(authHost: AuthHost, read: ReadIdentity, refusal: string
   };
 }
 
+/** How the proxied MCP endpoints' guard treats requests. */
+export interface ApiKeyGuardOptions {
+  /**
+   * The router is on a trusted network (SECURE_LOCAL_NET): the endpoints are open to anyone who can reach them, as
+   * before API keys, so keyless MCP clients on a home network keep working.
+   * @defaultValue false
+   */
+  trustedNetwork?: boolean;
+}
+
 /**
  * Builds the API-key guard for the proxied MCP endpoints (/mcp, /mcp/<name>, /mcp/w/<slug>).
  *
  * @param authHost - Where the current auth instance is, whose api-key plugin checks the key.
+ * @param [options] - Whether the router is on a trusted network.
  * @returns Middleware that passes a request with a live API key, in `Authorization: Bearer` or `x-api-key`, and answers
- * anything else with the JSON error envelope: 401 for no key or a dead one, 400 for two different keys.
+ * anything else with the JSON error envelope: 401 for no key or a dead one, 400 for two different keys. On a trusted
+ * network it passes every request.
  *
  * @remarks
- * A session never opens these, on a trusted network (SECURE_LOCAL_NET) too: MCP clients carry keys. The old router
- * token works here because boot imported it as a key.
+ * A session never opens these: MCP clients carry keys. The old router token works here because boot imported it as a
+ * key.
  */
-export function createApiKeyMiddleware(authHost: AuthHost): RequestHandler {
+export function createApiKeyMiddleware(authHost: AuthHost, options: ApiKeyGuardOptions = {}): RequestHandler {
+  if (options.trustedNetwork === true) {
+    return (_req, _res, next) => next();
+  }
   return credentialGuard(authHost, readKeyCaller, NEEDS_KEY);
 }
 

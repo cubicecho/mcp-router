@@ -122,8 +122,8 @@ The single bearer token is replaced by a sign-in for the UI and API keys for MCP
 - **Sign in to the UI** through an OIDC provider, or set `SECURE_LOCAL_NET=true` on a private network. The UI
   no longer asks for the token. For OIDC, set `publicUrl` in Settings (or before, from the API) to the
   address your browser uses.
-- **`SECURE_LOCAL_NET` no longer opens `/mcp`.** It signs whoever opens the UI in as the local admin; MCP
-  clients still need an API key (the imported token is one).
+- **`SECURE_LOCAL_NET` still opens `/mcp` without a key**, and now also signs whoever opens the UI in as the
+  local admin. `/graphql` and `/admin/mcp` take a session or an API key.
 - **`authEnabled: false` is ignored**, with a warning at boot. Use `SECURE_LOCAL_NET=true` for a router on a
   trusted network.
 
@@ -149,7 +149,8 @@ Sessions are signed with `BETTER_AUTH_SECRET`, which production requires (at lea
 
 **Machines use API keys.** Make one under **Settings → API keys**; it is shown once, and only its hash is kept.
 Send it as `Authorization: Bearer <api-key>` or `x-api-key: <api-key>`. The proxied MCP endpoints (`/mcp`,
-`/mcp/<name>`, `/mcp/w/<slug>`) take a key and nothing else: a UI session never opens them. On `/graphql` and
+`/mcp/<name>`, `/mcp/w/<slug>`) take a key and nothing else (a UI session never opens them), except under `SECURE_LOCAL_NET`, which opens
+them without one. On `/graphql` and
 `/admin/mcp` a key is an agent, which may do everything the router is for (servers, workspaces, registries,
 tool calls) except manage API keys, read or end sessions, change how people sign in, and edit the settings.
 Those are for a signed-in person, so a leaked key can't mint its successor.
