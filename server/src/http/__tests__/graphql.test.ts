@@ -8,6 +8,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost, mintTestKey } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { MCP_DEFAULTS, OPERATION_LIMIT_DEFAULTS } from '../../core/defaults.ts';
 import { createTestDb, createTestStore } from '../../db/__tests__/test-db.ts';
@@ -25,6 +27,7 @@ describe('/graphql and /admin/mcp', () => {
   let store: ConfigStore;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
@@ -33,10 +36,11 @@ describe('/graphql and /admin/mcp', () => {
     database = await createTestDb();
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-graphql-http-'));
     store = await createTestStore(database, dataDir);
-    token = store.getSettings().authToken ?? '';
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     reconcileOnChange({ store, manager });
-    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterAll(async () => {
@@ -48,10 +52,9 @@ describe('/graphql and /admin/mcp', () => {
 
   const post = (query: string) => request(app).post('/graphql').set('Authorization', `Bearer ${token}`).send({ query });
 
-  it('requires the bearer token on both doors', async () => {
-    expect((await request(app).post('/graphql').send({ query: '{ __typename }' })).status).toBe(
-      HttpStatus.Unauthorized,
-    );
+  it('refuses nobody on both doors: /graphql per field, /admin/mcp with a 401', async () => {
+    const anonymous = await request(app).post('/graphql').send({ query: '{ routerStatus { version } }' });
+    expect(anonymous.body.errors[0].extensions.code).toBe(ErrorCode.Unauthenticated);
     expect((await request(app).post(ADMIN_MCP_PATH).send({})).status).toBe(HttpStatus.Unauthorized);
   });
 

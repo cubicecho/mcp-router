@@ -14,6 +14,8 @@ import {
 } from '@modelcontextprotocol/sdk/types.js';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost, mintTestKey } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { upstreamFailed } from '../../core/errors.ts';
 import { SERVER_VERSION } from '../../core/version.ts';
@@ -42,6 +44,7 @@ describe('the management API over /graphql', () => {
   let database: Database;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
@@ -56,10 +59,11 @@ describe('the management API over /graphql', () => {
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-app-'));
     await resetTestDb(database);
     store = await createTestStore(database, dataDir);
-    token = store.getSettings().authToken as string;
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
@@ -86,8 +90,9 @@ describe('the management API over /graphql', () => {
     await manager.reconcile(store.getServers(), store.getWorkspaces());
   };
 
-  it('requires auth on /graphql and /mcp, and serves no /api', async () => {
-    expect((await request(app).post('/graphql').send({ query: '{ __typename }' })).status).toBe(401);
+  it('requires a credential on /graphql and /mcp, and serves no /api', async () => {
+    const anonymous = await request(app).post('/graphql').send({ query: '{ routerStatus { version } }' });
+    expect(anonymous.body.errors[0].extensions.code).toBe(ErrorCode.Unauthenticated);
     expect((await request(app).post('/mcp').send({})).status).toBe(401);
     expect((await authed(request(app).get('/api/servers'))).status).toBe(404);
   });
@@ -99,8 +104,8 @@ describe('the management API over /graphql', () => {
   });
 
   it('reports router status', async () => {
-    const { data } = await gql('{ routerStatus { version serverCount runningCount authEnabled } }');
-    expect(data.routerStatus).toEqual({ version: SERVER_VERSION, serverCount: 0, runningCount: 0, authEnabled: true });
+    const { data } = await gql('{ routerStatus { version serverCount runningCount } }');
+    expect(data.routerStatus).toEqual({ version: SERVER_VERSION, serverCount: 0, runningCount: 0 });
   });
 
   it('stops serving a server on /mcp once it is disabled', async () => {
@@ -311,7 +316,8 @@ describe('the built web UI', () => {
     await writeFile(path.join(appDist, 'index.html'), '<!doctype html><title>MCP Router</title>');
     const store = await createTestStore(database, dataDir);
     manager = new GatewayManager(() => store.getSettings());
-    app = createApp({ db: database.db, store, manager, appDistDir: appDist });
+    const authHost = await createTestAuthHost(database.db);
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: appDist });
   });
 
   afterAll(async () => {
@@ -339,6 +345,7 @@ describe('MCP session lifecycle', () => {
   let database: Database;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
@@ -353,10 +360,11 @@ describe('MCP session lifecycle', () => {
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-session-'));
     await resetTestDb(database);
     store = await createTestStore(database, dataDir);
-    token = store.getSettings().authToken as string;
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     await manager.reconcile(store.getServers());
-    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {

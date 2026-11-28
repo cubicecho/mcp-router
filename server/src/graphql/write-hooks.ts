@@ -8,6 +8,7 @@ import {
 } from '@mcp-router/shared';
 import type { OnWriteConfig, TableWriteHooks, WriteHookPayload } from '@vantreeseba/drizzle-graphql';
 import type { z } from 'zod';
+import { publicLocalNetError } from '../config/env.ts';
 import type { Context } from '../core/context.ts';
 import { codedError, errorMessage } from '../core/errors.ts';
 import { parseOrThrow } from '../core/validation.ts';
@@ -155,10 +156,19 @@ export const EDITABLE_SETTINGS: ReadonlySet<string> = new Set([
  * @throws BAD_USER_INPUT naming the first such setting.
  */
 function refuseLockedSettings({ args }: WriteHookPayload): void {
-  const named = writtenRows(args).flatMap((row) => Object.keys(row));
+  const rows = writtenRows(args);
+  const named = rows.flatMap((row) => Object.keys(row));
   const locked = named.find((key) => EDITABLE_SETTINGS.has(key) === false);
   if (locked !== undefined) {
     throw codedError(ErrorCode.BadUserInput, `"${locked}" can't be changed through the API.`);
+  }
+  // Boot refuses SECURE_LOCAL_NET at a public address; the same address must not arrive through the UI instead.
+  for (const { publicUrl } of rows) {
+    const exposed =
+      typeof publicUrl === 'string' && URL.canParse(publicUrl) ? publicLocalNetError(publicUrl) : undefined;
+    if (exposed !== undefined) {
+      throw codedError(ErrorCode.BadUserInput, exposed);
+    }
   }
 }
 

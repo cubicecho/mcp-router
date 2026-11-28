@@ -191,13 +191,12 @@ export interface Health {
   version: string;
 }
 
-/** The router's own status: version, uptime, server counts and whether auth is on. */
+/** The router's own status: version, uptime and server counts. */
 const routerStatusSchema = z.object({
   version: z.string(),
   uptimeSeconds: z.number(),
   serverCount: z.number(),
   runningCount: z.number(),
-  authEnabled: z.boolean(),
   /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
   idleTimeoutMs: z.number(),
   /** The stored `publicUrl`, when set. */
@@ -279,3 +278,18 @@ export const apiErrorSchema = z.object({
 });
 /** The JSON error envelope of a refused HTTP request. */
 export type ApiError = z.infer<typeof apiErrorSchema>;
+
+/** The longest name an API key may have. The server's api-key plugin is held to the same. */
+export const API_KEY_NAME_MAX_LENGTH = 64;
+/** The longest lifetime an API key may be given, in days. A key may also never expire. */
+export const API_KEY_MAX_EXPIRES_IN_DAYS = 365;
+
+/** What `createApiKey` takes. */
+export const createApiKeyRequestSchema = z.object({
+  /** What the operator calls it: the agent or client that will hold it. */
+  name: z.string().trim().min(1, 'Name the key.').max(API_KEY_NAME_MAX_LENGTH),
+  /** Days until it stops working; null or absent for never. */
+  expiresInDays: z.number().int().min(1).max(API_KEY_MAX_EXPIRES_IN_DAYS).nullable().default(null),
+});
+/** One API key the operator asks for. */
+export type CreateApiKeyRequest = z.infer<typeof createApiKeyRequestSchema>;

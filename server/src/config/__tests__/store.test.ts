@@ -49,14 +49,10 @@ describe('ConfigStore', () => {
     vi.restoreAllMocks();
   });
 
-  it('seeds settings with a generated auth token and the official registry on first run', async () => {
-    const settingsToken = store.getSettings().authToken;
-    expect(store.getSettings().authEnabled).toBe(true);
-    expect(settingsToken).toMatch(/^[0-9a-f]{64}$/);
-    expect(console.log).toHaveBeenCalledWith(expect.stringContaining(settingsToken as string));
-
+  it('seeds settings and the official registry on first run, with no router token: callers use API keys', async () => {
+    expect(store.getSettings().authToken).toBeNull();
     const [row] = await database.db.select().from(settings);
-    expect(row?.authToken).toBe(settingsToken);
+    expect(row?.authToken).toBeNull();
     expect(store.getRegistries()).toEqual([DEFAULT_REGISTRY]);
   });
 
@@ -65,13 +61,6 @@ describe('ConfigStore', () => {
     await database.db.update(settings).set({ instanceId: 'kept' });
     await store.reload();
     expect(store.getSettings().instanceId).toBe('kept');
-  });
-
-  it('does not generate a token when MCP_ROUTER_TOKEN is set', async () => {
-    await resetTestDb(database);
-    process.env.MCP_ROUTER_TOKEN = 'env-token';
-    const withEnvToken = await createTestStore(database, dataDir);
-    expect(withEnvToken.getSettings().authToken).toBeNull();
   });
 
   it('round-trips server configs through the database', async () => {
