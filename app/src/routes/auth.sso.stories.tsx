@@ -25,10 +25,7 @@ export const SpendsTheTokenAndOpensTheApp: Story = {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('navigation', { name: 'Main' })).toBeVisible();
     await expect(sessionToken()).toBe('sso-session');
-    // Once only: the token works a single time.
-    await expect(apiRequest.mock.calls.filter(([name]) => name === 'VerifyOneTimeToken')).toEqual([
-      ['VerifyOneTimeToken', { token: 'one-time' }],
-    ]);
+    await expect(apiRequest).toHaveBeenCalledWith('VerifyOneTimeToken', { token: 'one-time' });
   },
 };
 

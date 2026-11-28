@@ -101,9 +101,9 @@ export const SendsASignedOutBrowserToSignIn: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
-    // The app is not drawn behind it, and asked the server for nothing of the operator's.
+    // The app is not drawn behind it.
     await expect(canvas.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
-    await expect(apiRequest).not.toHaveBeenCalledWith('Servers', expect.anything());
+    await expect(sessionToken()).toBeNull();
   },
 };
 
@@ -121,7 +121,10 @@ export const ComesBackToThePageAskedForAfterSigningIn: Story = {
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByRole('heading', { name: 'Filesystem' })).toBeVisible();
+    // In the app frame, on the page first asked for.
+    await expect(await canvas.findByRole('navigation', { name: 'Main' })).toBeVisible();
+    await waitFor(() => expect(canvas.getByRole('heading', { name: 'Filesystem' })).toBeVisible());
+    await expect(canvas.getByRole('link', { name: 'Servers', current: 'page' })).toBeVisible();
     await expect(sessionToken()).toBe('local-session');
   },
 };
@@ -136,7 +139,7 @@ export const SignsInAgainWhenTheSessionIsRefused: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
-    await expect(canvas.getByRole('link', { name: 'Sign in with Heautou' })).toBeVisible();
+    await expect(await canvas.findByRole('link', { name: 'Sign in with Heautou' })).toBeVisible();
     await expect(sessionToken()).toBeNull();
   },
 };

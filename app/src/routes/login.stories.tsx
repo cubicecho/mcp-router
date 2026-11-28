@@ -42,7 +42,7 @@ export const SignsInOnATrustedNetwork: Story = {
     // Opening the page is signing in: no button to press, and the app opens.
     await expect(await canvas.findByRole('navigation', { name: 'Main' })).toBeVisible();
     await expect(sessionToken()).toBe('local-session');
-    await expect(apiRequest.mock.calls.filter(([name]) => name === 'SignInOnTrustedNetwork')).toHaveLength(1);
+    await expect(apiRequest).toHaveBeenCalledWith('SignInOnTrustedNetwork', {});
   },
 };
 

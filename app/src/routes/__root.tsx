@@ -1,4 +1,4 @@
-import { createLink, createRootRoute, Navigate, Outlet, useLocation } from '@tanstack/react-router';
+import { createLink, createRootRoute, Navigate, Outlet, useLocation, useRouterState } from '@tanstack/react-router';
 import { CompassIcon } from 'lucide-react';
 import { AppLayout } from '@/components/layouts/app-layout';
 import { AppBarItem, SidebarItem } from '@/components/sidebar';
@@ -49,13 +49,32 @@ function RootComponent() {
   // Applies the stored theme on every screen and keeps System in step with the device.
   useThemePreference();
   const location = useLocation();
+  // The page on screen, which lags the address while the next page loads. Leaving sign-in, the card stays on its own
+  // until the page the frame will hold is ready, rather than the frame drawing itself around the card for a moment.
+  const shownPath = useRouterState({ select: (state) => state.resolvedLocation?.pathname ?? state.location.pathname });
   const hasSession = useHasSession();
-  const isSignInPage = SIGN_IN_PATHS.has(location.pathname);
+  const isShowingSignIn = SIGN_IN_PATHS.has(shownPath);
+  const isGoingToSignIn = SIGN_IN_PATHS.has(location.pathname);
   const next = location.href === '/' ? undefined : location.href;
+
+  /**
+   * Picks the screen.
+   *
+   * @returns The sign-in page bare, nothing while it loads, the frame while signed in, or the redirect to sign-in.
+   */
+  const screen = () => {
+    if (isShowingSignIn) {
+      return <Outlet />;
+    }
+    if (isGoingToSignIn) {
+      return null;
+    }
+    return hasSession ? <AppFrame /> : <Navigate to="/login" search={{ next }} replace />;
+  };
 
   return (
     <TooltipProvider>
-      {isSignInPage ? <Outlet /> : hasSession ? <AppFrame /> : <Navigate to="/login" search={{ next }} replace />}
+      {screen()}
       {/* The vendored toaster is fixed to sonner's dark theme, whose near-white description is unreadable on a light popover. */}
       <Toaster toastOptions={{ classNames: { description: 'text-popover-foreground/70!' } }} />
     </TooltipProvider>
