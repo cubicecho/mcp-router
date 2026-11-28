@@ -3,7 +3,6 @@ import { CodeBlock } from '@/components/ui/code';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { claudeCodeSnippet, curlSnippet, mcpJsonSnippet, opencodeSnippet } from '@/lib/connect-snippets';
-import { useRouterStatus } from '@/lib/queries';
 import { toastCopyError } from '@/lib/toast';
 
 /** What the snippets carry where the client's API key goes. */
@@ -19,8 +18,8 @@ const API_KEY_PLACEHOLDER = '<YOUR_API_KEY>';
  * @returns The card.
  *
  * @remarks
- * With auth on, the snippets send a placeholder API key for the reader to replace with one of theirs from Settings.
- * The UI's own session is never put in them: it is the operator's sign-in, and it expires.
+ * The snippets send a placeholder API key for the reader to replace with one from Settings → API keys: `/mcp*` takes
+ * only API keys, even on a trusted network. The UI's own session is never put in them; it does not open `/mcp`.
  */
 export function ConnectCard({
   endpoint,
@@ -34,11 +33,7 @@ export function ConnectCard({
   /** Heading rank of the card title: `2` under a page title, `3` inside a dialog. */
   level?: 2 | 3;
 }) {
-  const { data: status } = useRouterStatus();
-  // Assume auth until status says otherwise — a placeholder header is easier
-  // to delete than a missing one is to diagnose.
-  const authEnabled = status?.authEnabled ?? true;
-  const token = authEnabled ? API_KEY_PLACEHOLDER : undefined;
+  const token = API_KEY_PLACEHOLDER;
 
   const snippets = [
     { value: 'claude-code', title: 'Claude Code', build: claudeCodeSnippet },
@@ -77,11 +72,9 @@ export function ConnectCard({
               );
             })}
           </Tabs>
-          {authEnabled && (
-            <p className="mt-2 text-xs text-foreground/60">
-              Replace {API_KEY_PLACEHOLDER} with an API key from Settings, under Access.
-            </p>
-          )}
+          <p className="mt-2 text-xs text-foreground/60">
+            Replace {API_KEY_PLACEHOLDER} with a key from Settings → API keys. Every client needs one.
+          </p>
         </>
       }
     />

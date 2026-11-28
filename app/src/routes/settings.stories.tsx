@@ -9,7 +9,6 @@ import {
   discovery,
   lanServersAnswer,
   reloadResult,
-  routerStatus,
   settingsResult,
 } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
@@ -35,14 +34,22 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const ShowsSignInAndApiKeysUnderAccess: Story = {
+export const ShowsHowTheOperatorSignsIn: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await openTab(canvasElement, 'Access');
+    await openTab(canvasElement, 'Sign-in');
     await expect(await canvas.findByRole('heading', { name: 'Sign-in', level: 2 })).toBeVisible();
-    await expect(canvas.getByRole('heading', { name: 'API keys', level: 2 })).toBeVisible();
-    await expect(await canvas.findByText('Claude Code')).toBeVisible();
     await expect(await canvas.findByText('Heautou')).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+  },
+};
+
+export const ShowsTheApiKeys: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvasElement, 'API keys');
+    await expect(await canvas.findByRole('heading', { name: 'API keys', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText('Claude Code')).toBeVisible();
     await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
   },
 };
@@ -53,7 +60,7 @@ export const ShowsTheRouterStatus: Story = {
     await expect(await canvas.findByRole('heading', { name: 'Settings' })).toBeVisible();
     await expect(await canvas.findByText('2.7.1')).toBeVisible();
     await expect(canvas.getByText('1/2 running')).toBeVisible();
-    await expect(canvas.getByText('disabled')).toBeVisible();
+    await expect(canvas.getByText('API key required')).toBeVisible();
     await expect(canvas.getByRole('textbox', { name: TIMEOUT_LABEL })).toHaveValue('5');
     // Nothing to save until the timeout changes.
     await expect(canvas.getByRole('button', { name: 'Save' })).toBeDisabled();
@@ -65,12 +72,11 @@ export const ShowsTheRouterStatus: Story = {
   },
 };
 
-export const WithAuthOn: Story = {
-  parameters: { api: { ...appRoutes(), RouterStatus: { routerStatus: routerStatus({ authEnabled: true }) } } },
+export const SaysMcpClientsNeedAKey: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(await canvas.findByText('enabled')).toBeVisible();
-    await expect(canvas.queryByText('disabled')).not.toBeInTheDocument();
+    await expect(await canvas.findByText('API key required')).toBeVisible();
+    await expect(canvas.getByText(/Your sign-in does not open it\./)).toBeVisible();
   },
 };
 

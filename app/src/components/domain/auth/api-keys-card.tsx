@@ -23,11 +23,14 @@ export const IMPORTED_KEY_NAME = 'Imported router token';
  * The line under a key's name: how it starts, and when it was made.
  *
  * @param key - The key.
- * @returns E.g. "mcpr_a1b2… · created 3d ago".
+ * @returns E.g. "mcpr_a1b2… · created 3d ago", with when it expires for a key that does.
  */
 function keyDescription(key: ApiKey): string {
-  const created = `created ${formatRelativeTime(key.createdAt)}`;
-  return key.start ? `${key.start}… · ${created}` : created;
+  const parts = [key.start ? `${key.start}…` : null, `created ${formatRelativeTime(key.createdAt)}`];
+  if (key.expiresAt) {
+    parts.push(`expires ${formatAbsoluteTime(key.expiresAt)}`);
+  }
+  return parts.filter((part) => part !== null).join(' · ');
 }
 
 /**
@@ -60,7 +63,8 @@ export function ApiKeysCard() {
       description={
         <>
           For MCP clients and agents. A client sends its key as <Code>Authorization: Bearer {'<key>'}</Code> to{' '}
-          <Code>/mcp</Code>, <Code>/mcp/{'<name>'}</Code> or <Code>/mcp/w/{'<slug>'}</Code>.
+          <Code>/mcp</Code>, <Code>/mcp/{'<name>'}</Code> or <Code>/mcp/w/{'<slug>'}</Code>. Those take only API keys,
+          even on a trusted network.
         </>
       }
       actionSlot={<Button size="sm" iconSlot={<Plus />} onClick={() => setIsCreating(true)} content="Create API key" />}

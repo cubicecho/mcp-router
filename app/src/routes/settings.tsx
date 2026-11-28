@@ -12,7 +12,6 @@ import { LoadError } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
 import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
-import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
@@ -193,7 +192,7 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
         <>
           <SettingRow
             title="Announce this router"
-            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs an API key when auth is on.`}
+            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs an API key.`}
             actionSlot={({ titleId, descriptionId }) => (
               <Switch
                 checked={status.lanAdvertise}
@@ -228,8 +227,8 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
 }
 
 /**
- * The Settings page, in four tabs: the router's status and settings, how people sign in and the API keys clients
- * use, network discovery with the dismissed servers, and where the config is stored, with a reload button.
+ * The Settings page, in five tabs: the router's status and settings, how the operator signs in, the API keys
+ * clients use, network discovery with the dismissed servers, and where the config is stored, with a reload button.
  *
  * @returns The page, opened on General.
  */
@@ -257,7 +256,8 @@ function SettingsPage() {
         <Tabs defaultValue="general" className="py-4 md:py-6">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
-            <TabsTrigger value="access">Access</TabsTrigger>
+            <TabsTrigger value="sign-in">Sign-in</TabsTrigger>
+            <TabsTrigger value="api-keys">API keys</TabsTrigger>
             <TabsTrigger value="network">Network</TabsTrigger>
             <TabsTrigger value="config">Configuration</TabsTrigger>
           </TabsList>
@@ -280,19 +280,12 @@ function SettingsPage() {
                             <PropertyRow label="Port" value={port} />
                             <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
                             <PropertyRow
-                              label="Auth"
-                              value={
-                                data.authEnabled ? (
-                                  <Badge variant="positive">enabled</Badge>
-                                ) : (
-                                  <Badge variant="secondary">disabled</Badge>
-                                )
-                              }
+                              label="MCP clients"
+                              value="API key required"
                               hint={
                                 <>
-                                  MCP clients send an API key (under Access) to <Code>/mcp*</Code> and{' '}
-                                  <Code>/admin/mcp</Code>. <Code>SECURE_LOCAL_NET</Code> turns it off on a trusted
-                                  network.
+                                  Each client sends a key from the API keys tab to <Code>/mcp*</Code>, even on a trusted
+                                  network (<Code>SECURE_LOCAL_NET</Code>). Your sign-in does not open it.
                                 </>
                               }
                             />
@@ -315,8 +308,10 @@ function SettingsPage() {
               }
             />
           </TabsContent>
-          <TabsContent value="access" className="flex flex-col gap-6 pt-4">
+          <TabsContent value="sign-in" className="pt-4">
             <SignInCard />
+          </TabsContent>
+          <TabsContent value="api-keys" className="pt-4">
             <ApiKeysCard />
           </TabsContent>
           <TabsContent value="network" className="flex flex-col gap-6 pt-4">

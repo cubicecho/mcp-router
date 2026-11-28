@@ -1,10 +1,8 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
-import { routerStatus } from '@/storybook/fixtures';
-import { pending, STORY_SESSION } from '@/storybook/mock-api';
+import { STORY_SESSION } from '@/storybook/mock-api';
 import { ConnectCard } from './connect-card.tsx';
 
-const STATUS = 'RouterStatus';
 const ENDPOINT = 'http://router.example.test/mcp/filesystem';
 
 const meta = {
@@ -14,7 +12,6 @@ const meta = {
     label: 'filesystem',
     description: 'Point an MCP client directly at filesystem (tools keep their original names).',
   },
-  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: true }) } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -26,36 +23,25 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
-export const WithAuthOffLeavesOutTheHeader: Story = {
-  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: false }) } } },
+export const AsksForAnApiKey: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('heading', { name: 'Connect a client', level: 2 })).toBeVisible();
     await expect(canvas.getByText(/Point an MCP client directly at filesystem/)).toBeVisible();
-    await expect(await canvas.findByText(`claude mcp add --transport http filesystem ${ENDPOINT}`)).toBeVisible();
-    await expect(canvas.queryByText(/Replace <YOUR_API_KEY>/)).not.toBeInTheDocument();
-  },
-};
-
-export const WithAuthOnAsksForAnApiKey: Story = {
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(await canvas.findByText(/--header "Authorization: Bearer <YOUR_API_KEY>"/)).toBeVisible();
-    await expect(canvas.getByText('Replace <YOUR_API_KEY> with an API key from Settings, under Access.')).toBeVisible();
+    await expect(
+      canvas.getByText(
+        `claude mcp add --transport http filesystem ${ENDPOINT} --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
+    ).toBeVisible();
+    await expect(
+      canvas.getByText('Replace <YOUR_API_KEY> with a key from Settings → API keys. Every client needs one.'),
+    ).toBeVisible();
     // The operator's own session is never handed to a client.
     await expect(canvas.queryByText(new RegExp(STORY_SESSION))).not.toBeInTheDocument();
   },
 };
 
-export const AssumesAuthUntilTheRouterAnswers: Story = {
-  parameters: { api: { [STATUS]: pending() } },
-  play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/Authorization: Bearer <YOUR_API_KEY>/)).toBeVisible();
-  },
-};
-
 export const ShowsASnippetPerClient: Story = {
-  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: false }) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true');

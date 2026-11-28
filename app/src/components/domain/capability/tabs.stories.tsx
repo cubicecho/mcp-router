@@ -85,7 +85,9 @@ export const ConnectsStraightToAServer: Story = {
       canvas.getByText('Point an MCP client directly at filesystem (tools keep their original names).'),
     ).toBeVisible();
     await expect(
-      await canvas.findByText(`claude mcp add --transport http filesystem ${window.location.origin}/mcp/filesystem`),
+      await canvas.findByText(
+        `claude mcp add --transport http filesystem ${window.location.origin}/mcp/filesystem --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
     ).toBeVisible();
   },
 };
@@ -100,7 +102,9 @@ export const ConnectsToAWorkspaceAggregate: Story = {
     await userEvent.click(canvas.getByRole('tab', { name: 'Connect' }));
     await expect(canvas.getByText(/this workspace's aggregate endpoint/)).toBeVisible();
     await expect(
-      await canvas.findByText(`claude mcp add --transport http research ${window.location.origin}/mcp/w/research`),
+      await canvas.findByText(
+        `claude mcp add --transport http research ${window.location.origin}/mcp/w/research --header "Authorization: Bearer <YOUR_API_KEY>"`,
+      ),
     ).toBeVisible();
   },
 };
