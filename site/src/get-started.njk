@@ -27,24 +27,46 @@ permalink: /get-started/
       <div class="step" id="run">
         <h2>Run the router</h2>
         <p>MCP Router ships as a single image, for <code>amd64</code> and <code>arm64</code>. Every way of
-          starting it lands you on the same web UI at <code>http://localhost:3000</code>. State lives in
-          <code>./data</code> (mounted at <code>/data</code> in the container), so nothing is hidden away.</p>
+          starting it lands you on the same web UI at <code>http://localhost:3000</code>. The config lives in
+          Postgres, which <code>DATABASE_URL</code> names and the router needs to start. Installed server packages
+          and caches live in <code>./data</code> (mounted at <code>/data</code> in the container).</p>
 
         <h3>Docker Compose</h3>
-        <p>Save this as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>:</p>
+        <p>Save this as <code>docker-compose.yml</code> and run <code>docker compose up -d</code>. It runs a
+          Postgres beside the router:</p>
         <pre class="code"><code>services:
   mcp-router:
     image: vantreeseba/mcp-router:latest
+    depends_on:
+      postgres: { condition: service_healthy }
     ports:
       - '3000:3000'
     volumes:
       - ./data:/data
     environment:
+      DATABASE_URL: postgres://mcp_router:pg-change-me@postgres:5432/mcp_router
       MCP_ROUTER_TOKEN: change-me <span class="cmt"># replace: openssl rand -hex 32</span>
-    restart: unless-stopped</code></pre>
+    restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mcp_router
+      POSTGRES_PASSWORD: pg-change-me <span class="cmt"># and in DATABASE_URL above</span>
+      POSTGRES_DB: mcp_router
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  pgdata:</code></pre>
 
-        <h3>Plain <code>docker run</code></h3>
+        <h3>Plain <code>docker run</code>, with a Postgres you already run</h3>
         <pre class="code"><code>docker run -d -p 3000:3000 -v ./data:/data \
+  -e DATABASE_URL=postgres://mcp_router:secret@192.168.1.20:5432/mcp_router \
   -e MCP_ROUTER_TOKEN=your-secret-token \
   vantreeseba/mcp-router:latest</code></pre>
 
@@ -55,7 +77,9 @@ permalink: /get-started/
 
         <h3>From source <span class="pill">Node ≥ 26</span></h3>
         <pre class="code"><code>npm install &amp;&amp; npm run build
-MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
+npm run db:up    <span class="cmt"># a Postgres on localhost:5433</span>
+DATABASE_URL=postgres://mcp_router:mcp_router@localhost:5433/mcp_router \
+  MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
 
         <div class="gs-callout">
           <strong>Token.</strong> The router won't start while it is still <code>change-me</code>. Leave

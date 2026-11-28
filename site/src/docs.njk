@@ -34,10 +34,10 @@ permalink: /docs/
         </p>
 
         <h2 id="config">Configuration</h2>
-        <p>All config lives in a database: an embedded PGlite under <code>DATA_DIR/pg</code>
-          (<code>./data/pg</code> locally, <code>/data/pg</code> in Docker), or Postgres when
-          <code>DATABASE_URL</code> is a <code>postgres://</code> URL (<code>DB_CONNECT_TIMEOUT_MS</code> bounds how
-          long boot waits for it). Migrations run on boot. Manage it from the web UI, <code>/graphql</code> or the
+        <p>All config lives in the Postgres that <code>DATABASE_URL</code> names, which must be a
+          <code>postgres://</code> URL: the router refuses to start without one. The compose files run a
+          <code>postgres:17</code> beside it (<code>DB_CONNECT_TIMEOUT_MS</code> bounds how long boot waits for it).
+          Migrations run on boot. Manage it from the web UI, <code>/graphql</code> or the
           REST API; there are no config files to edit. The shapes below are what each row holds, written as JSON.
           If something other than the router writes the tables, have it re-read them:</p>
         <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
@@ -119,11 +119,13 @@ permalink: /docs/
           and deleting a server removes it from every workspace.</p>
 
         <h3 id="upgrading">Upgrading from 2.x</h3>
-        <p>Older routers kept their config as JSON files under <code>DATA_DIR/config</code>. On its first boot,
+        <p>Older routers kept their config as JSON files under <code>DATA_DIR/config</code>. The new router needs
+          a Postgres: add the <code>postgres</code> service from the compose file beside it, or use one you already
+          run, and set <code>DATABASE_URL</code>. On its first boot,
           while the database is empty, the router imports them in one transaction and renames each one
           <code>*.imported</code>; after that they are never read again. The image now runs as uid 1000, so a data
-          folder an older (root) image wrote needs <code>sudo chown -R 1000:1000 data</code>. To back up, stop the
-          router and copy the data folder, or use <code>pg_dump</code> when the config is in Postgres.</p>
+          folder an older (root) image wrote needs <code>sudo chown -R 1000:1000 data</code>. To back up, use
+          <code>pg_dump</code>, plus <code>DATA_DIR/servers</code> for the installed npm packages.</p>
 
         <h2 id="api">REST API</h2>
         <p>Management API under <code>/api</code>, bearer auth, JSON in/out. Errors are non-2xx with
@@ -167,9 +169,9 @@ permalink: /docs/
 
         <h2 id="security">Security notes</h2>
         <ul class="notes">
-          <li><strong>Secrets are plaintext</strong> in the JSON config (env values, remote headers, the auth
-            token). Files are mode <code>0600</code>, but anyone with read access to <code>DATA_DIR</code> can
-            read them. Protect the directory.</li>
+          <li><strong>Secrets are plaintext</strong> in the database (env values, remote headers, OAuth tokens,
+            the auth token). Anyone who can read the Postgres database, its volume or a dump of it can read them.
+            Protect it, and its backups.</li>
           <li><strong>One bearer token guards everything.</strong> Treat it like a password. Set it via
             <code>MCP_ROUTER_TOKEN</code>.</li>
           <li><strong>Don't expose the router directly to the internet</strong> — it speaks plain HTTP. Put it

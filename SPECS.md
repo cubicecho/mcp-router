@@ -4,7 +4,7 @@ An MCP gateway/router: install MCP servers from registries or npm, run them
 locally (stdio) or point at remote ones (streamable HTTP), and re-expose every
 one of them over streamable HTTP — per-server routes, one merged aggregate, and
 per-**workspace** custom aggregates. Managed through a React web UI; state lives
-in a database (PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`).
+in Postgres (`DATABASE_URL`, required).
 
 ## Decisions (locked)
 
@@ -16,7 +16,7 @@ in a database (PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`).
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
 | Secrets | Plaintext values in the database (the settings row, the servers' `env`, headers and `oauth` columns) |
 | Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's row, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
-| Config | Drizzle tables (`server/src/db/tables/`), migrations committed in `server/drizzle/` and run on boot. PGlite data dir `DATA_DIR/pg` (pid lockfile `DATA_DIR/pg.lock`) when `DATABASE_URL` is unset, Postgres for a `postgres://` URL. `ConfigStore` caches it in memory and emits `change` after every write; anything else that writes the tables calls `store.reload()`, as `POST /api/reload` does. On first boot with an empty database the old `DATA_DIR/config` files are imported once and renamed `*.imported` |
+| Config | Drizzle tables (`server/src/db/tables/`), migrations committed in `server/drizzle/` and run on boot. Postgres only: boot refuses to start, with a `[db]` message, unless `DATABASE_URL` is a `postgres://` or `postgresql://` URL, always waits for it (`waitForDatabase`), and in production forces TLS for a host the internet could reach (`requiresSsl`: not for private/LAN hosts or an explicit `sslmode`). PGlite is for tests only (an in-memory database per test file). The compose files run `postgres:17` beside the router. `ConfigStore` caches it in memory and emits `change` after every write; anything else that writes the tables calls `store.reload()`, as `POST /api/reload` does. On first boot with an empty database the old `DATA_DIR/config` files are imported once and renamed `*.imported` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
 | Stack | TypeScript everywhere, npm workspaces (`shared`, `server`, `app`), Express 5, MCP TS SDK, React 19 + Vite + Tailwind + shadcn/ui + TanStack Router/Query, Biome, Vitest |
 | Server runtime | Node 26 type stripping everywhere: `node --watch src/index.ts` in dev, `node server/src/index.ts` in prod/Docker. No server build; `tsc --noEmit` only checks |
@@ -34,7 +34,7 @@ mcp-router/
 ├── server/          # Express + MCP SDK backend        [Track A]
 ├── app/             # Vite + React + shadcn web UI     [Track B]
 ├── Dockerfile, docker-compose.yml, README.md           [Track C]
-└── data/            # runtime, gitignored: pg/ (PGlite), servers/<name>/ (npm prefixes), logs
+└── data/            # runtime, gitignored: servers/<name>/ (npm prefixes), caches, logs
 ```
 
 ### Config tables (one row per entry; the shapes are the shared schemas)
@@ -481,7 +481,7 @@ pool leaves `naming.ts` untouched, as predicted.
 
 - [x] A1 Package scaffold: `server/package.json` (deps: express@5, @modelcontextprotocol/sdk, zod, chokidar), `tsconfig.json` (`noEmit`: Node 26 runs the sources, no build), `src/index.ts` entry
 - [x] A2 Config store (`src/config/`): load/validate/write `settings.json`, `registries.json`, `servers/*.json` via shared schemas; atomic writes (tmp+rename, mode 0600); seed defaults on first run (official registry, generated auth token → log it once); chokidar watcher (debounced) emitting typed change events; `reload()` for the API
-- [x] A2b Database (#91, step 1): the config store reads and writes Drizzle tables (PGlite `DATA_DIR/pg` with a pid lockfile, or Postgres via `DATABASE_URL`, `waitForDatabase` at boot, migrations run on boot), emits `change` after its writes and on `reload()`; the watcher and chokidar are gone; first boot on an empty database imports `DATA_DIR/config` in one transaction and renames the files `*.imported`
+- [x] A2b Database (#91, step 1): the config store reads and writes Drizzle tables (Postgres via `DATABASE_URL`, required; `waitForDatabase` at boot, migrations run on boot; PGlite in tests only), emits `change` after its writes and on `reload()`; the watcher and chokidar are gone; first boot on an empty database imports `DATA_DIR/config` in one transaction and renames the files `*.imported`
 - [x] A3 Auth middleware: bearer check for `/api` and `/mcp`; constant-time compare; skipped when `authEnabled: false`; `GET /api/status` reports authEnabled
 - [x] A4 Registry client (`src/registry/`): fetch + zod-parse `GET {url}/v0/servers` (search, cursor, version=latest) and single-server detail; per-registry base URL; friendly errors for unreachable/invalid registries
 - [x] A5 Installer (`src/installer/`): `npm install --prefix data/servers/<name> <pkg>@<ver>` via execFile (no shell); derive stdio transport: resolve installed package `bin` → `node <binPath>` (+ registry runtimeArguments/packageArguments where value is fixed); map registry `environmentVariables` → `envMeta`; build `ServerConfig` from an `InstallRequest` for all three source types; uninstall = rm install dir

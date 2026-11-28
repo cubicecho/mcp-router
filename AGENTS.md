@@ -8,7 +8,7 @@ streamable-HTTP servers), and re-exposes each one over streamable HTTP at
 tools. **Workspaces** are custom aggregates — a chosen subset of servers at
 `/mcp/w/<slug>` with optional per-workspace param overrides, each member running
 as an isolated instance independent of the server's global state. Configuration
-lives in a database (Drizzle; PGlite under `DATA_DIR/pg`, or Postgres via `DATABASE_URL`); a React web UI
+lives in Postgres (Drizzle, `DATABASE_URL`, required; PGlite only in tests); a React web UI
 manages registries, installs, workspaces, and per-server env vars/API keys.
 
 **Read [`SPECS.md`](SPECS.md) first** — it holds the locked design decisions,
@@ -23,7 +23,7 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 | --- | --- |
 | `core/` | what every other folder reads: defaults, errors and error codes, version |
 | `config/` | env flags and the config store (cached over the config tables; first-boot import of old config files) |
-| `db/` | the Drizzle tables, the PGlite-or-Postgres client, `waitForDatabase` |
+| `db/` | the Drizzle tables, the node-postgres client (`requiresSsl` for remote hosts), `waitForDatabase` |
 | `http/` | the Express app (`createApp`), server timeouts, graceful shutdown |
 | `auth/` | bearer-token and origin guards |
 | `api/` | the REST routes under `/api` and the error middleware |
@@ -41,6 +41,7 @@ All from the workspace root.
 
 ```bash
 # Dev
+npm run db:up            # a Postgres for dev on localhost:5433 (docker-compose.dev.yml); db:down stops it
 npm run dev              # server (watch) + Vite dev server, concurrently
 npm run dev:server       # Express + MCP gateway only (port 3001)
 npm run dev:app          # Vite dev server only (port 3000, proxies /api, /mcp and /graphql)
@@ -60,7 +61,7 @@ npx playwright install chromium   # once per machine — the stories project nee
 npm run build            # codegen → app vite build (the server has no build step)
 npm run start            # node server/src/index.ts (serves app/dist)
 npm run build:docker     # docker build -t mcp-router .
-docker compose up        # run the container as node; named volume at /data
+docker compose up        # the container beside its Postgres (postgres:17); named volumes for /data and the database
 ```
 
 ## Tech Stack
@@ -69,7 +70,7 @@ docker compose up        # run the container as node; named volume at /data
 | --- | --- |
 | **Biome** | Single formatter+linter; enforces `useImportType`, `noUnusedImports` |
 | **Express 5 + @modelcontextprotocol/sdk** | `StreamableHTTPServerTransport` for exposed endpoints; SDK `Client` with stdio/streamable-http transports for downstream servers |
-| **Drizzle 1.0.0-rc.5 + PGlite/Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. PGlite data dir `DATA_DIR/pg` unless `DATABASE_URL` is a `postgres://` URL. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
+| **Drizzle 1.0.0-rc.5 + Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. Boot refuses to start unless `DATABASE_URL` is a `postgres://` URL, then waits for it (`waitForDatabase`). PGlite is a dev dependency, for tests only. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
 | **Node 26 type stripping** | Node 26 everywhere (`engines`, CI, `node:26-slim`). The server runs its `.ts` sources directly in dev, prod and Docker (`node server/src/index.ts`); there is no server build and `tsc` only checks (`noEmit`). `shared/` is imported as raw `.ts` through its workspace link — so **use `.ts` extensions in all relative imports** in `server/` and `shared/`, and erasable syntax only |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes); the UI talks GraphQL through typed documents from codegen's client preset (`app/codegen.ts`) |
 | **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/api/*`, `/graphql`, `/admin/mcp` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |

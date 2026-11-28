@@ -18,8 +18,8 @@ the built-in web UI.
 
 ## Quickstart
 
-Make the data folder, owned by uid 1000 (the container's `node` user), and save this as
-`docker-compose.yml` beside it:
+The router keeps its config in Postgres, so it runs beside one. Make the data folder, owned by uid 1000
+(the container's `node` user), and save this as `docker-compose.yml` beside it:
 
 ```bash
 mkdir data && sudo chown 1000:1000 data
@@ -29,13 +29,32 @@ mkdir data && sudo chown 1000:1000 data
 services:
   mcp-router:
     image: vantreeseba/mcp-router:latest
+    depends_on:
+      postgres: { condition: service_healthy }
     ports:
       - '3000:3000'
     volumes:
       - ./data:/data
     environment:
+      DATABASE_URL: postgres://mcp_router:pg-change-me@postgres:5432/mcp_router
       MCP_ROUTER_TOKEN: change-me # replace with a long random value: openssl rand -hex 32
     restart: unless-stopped
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: mcp_router
+      POSTGRES_PASSWORD: pg-change-me # and in DATABASE_URL above
+      POSTGRES_DB: mcp_router
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U mcp_router -d mcp_router']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+volumes:
+  pgdata:
 ```
 
 ```bash
@@ -45,15 +64,17 @@ docker compose up -d
 Open http://localhost:3000, sign in with your token, and install a server from the **Browse** page. Then
 [connect your client](#connecting-mcp-clients).
 
-All state (the database, installed server packages, caches) lives in `./data`, which must stay writable by
-uid 1000: a folder an older image wrote to (they ran as root) needs `sudo chown -R 1000:1000 data`. The
-router refuses to start while the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it
-generates one into its database, printing it once to the log (`docker compose logs`).
+The config (settings, servers, workspaces, secrets) lives in Postgres. Installed server packages and caches
+live in `./data`, which must stay writable by uid 1000: a folder an older image wrote to (they ran as root)
+needs `sudo chown -R 1000:1000 data`. The router refuses to start without a `postgres://` `DATABASE_URL`, and
+while the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into its
+database, printing it once to the log (`docker compose logs`).
 
-Or without compose:
+Or without compose, against a Postgres you already run:
 
 ```bash
 docker run -d -p 3000:3000 -v ./data:/data \
+  -e DATABASE_URL=postgres://mcp_router:secret@192.168.1.20:5432/mcp_router \
   -e MCP_ROUTER_TOKEN=your-secret-token \
   vantreeseba/mcp-router:latest
 ```
@@ -68,12 +89,17 @@ Ready-made files are in [`deploy/`](deploy/README.md):
 
 - **Portainer** and **Dockhand:** an app-template catalog with the router as a stack or a single container
 - **QNAP Container Station:** a compose file to paste in as an Application, and a custom App Template
-- **A fuller compose file**, with the port, data folder and image tag set from `.env`
+- **A fuller compose file**, with the port, data folder, database password and image tag set from `.env`
 
 ### Upgrading from 2.x
 
-- **Config moves into a database.** On its first boot the new router imports the old config files under
-  `DATA_DIR/config` automatically and renames them `*.imported`. Nothing needs doing by hand.
+- **The router now needs a Postgres.** Add one beside it (the `postgres` service in the
+  [quickstart](#quickstart) or [`deploy/docker-compose.yml`](deploy/docker-compose.yml)) or use one you
+  already run, and set `DATABASE_URL` to it. Without a `postgres://` `DATABASE_URL` the router refuses to
+  start.
+- **Config moves into that database.** On its first boot against an empty database the new router imports
+  the old config files under `DATA_DIR/config` automatically and renames them `*.imported`. Nothing else
+  needs doing by hand: keep the same `/data` mount so it finds them.
 - **Config is no longer hand-editable.** Manage it from the web UI, `/graphql` or the REST API; there is no file
   watcher. See [docs/configuration.md](docs/configuration.md#upgrading-from-the-config-files).
 - **The data folder must be writable by uid 1000.** The image no longer runs as root, so give a folder an older
@@ -138,9 +164,8 @@ process contributes nothing until it does, so reconnect after it wakes to pick t
   session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. A server's elicitation is put
   to the session whose call asked for it. Sampling and roots are not proxied yet
 - One bearer token guards the management API and all MCP endpoints
-- Config lives in a database: an embedded PGlite under `DATA_DIR/pg` by default, or Postgres when
-  `DATABASE_URL` is a `postgres://` URL. A router upgraded from the file-based config imports
-  `DATA_DIR/config` on its first boot and renames the files `*.imported`
+- Config lives in Postgres (`DATABASE_URL`), migrated on every boot. A router upgraded from the file-based
+  config imports `DATA_DIR/config` on its first boot and renames the files `*.imported`
 
 ### Workspaces
 
@@ -205,8 +230,8 @@ The main environment variables:
 | `MCP_ROUTER_TOKEN` | The bearer token. Generated into the database when unset |
 | `SECURE_LOCAL_NET` | `true` turns auth off. Only on a network you trust |
 | `PORT` / `HOST` | Where to listen (default `3000` on all interfaces) |
-| `DATA_DIR` | Where state lives (`/data` in the image) |
-| `DATABASE_URL` | A `postgres://` URL to use Postgres. Unset uses PGlite in `DATA_DIR/pg` |
+| `DATABASE_URL` | Required. The `postgres://` (or `postgresql://`) URL of the router's Postgres |
+| `DATA_DIR` | Where installed server packages and caches live (`/data` in the image) |
 
 Everything else (`DB_CONNECT_TIMEOUT_MS`, the keep-alive timeouts, what the settings, registries, servers and
 workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
@@ -215,9 +240,8 @@ workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/confi
 ## Security notes
 
 - **Secrets are stored in plaintext** in the database: `env` values, remote-transport headers, OAuth
-  tokens and client secrets, and the auth token. Anyone with read access to `DATA_DIR` (the PGlite data
-  dir), to your Docker bind mount, or to the Postgres database can read them. Protect the folder accordingly
-  and keep backups equally private.
+  tokens and client secrets, and the auth token. Anyone who can read the Postgres database, its volume or
+  a dump of it can read them. Protect it accordingly and keep backups equally private.
 - **One bearer token guards everything** (`/api/*` and `/mcp*`). Treat it like a password. Setting
   `authEnabled: false` in the settings, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
   entirely. Only do that on a trusted network. The `/mcp` Origin guard still applies with auth off, so a
@@ -261,12 +285,16 @@ Requires Node >= 26 (the server runs its TypeScript sources directly).
 
 ```bash
 npm install
+npm run db:up    # a Postgres for development, on localhost:5433 (docker-compose.dev.yml)
 npm run build
-MCP_ROUTER_TOKEN=your-secret-token npm start
+DATABASE_URL=postgres://mcp_router:mcp_router@localhost:5433/mcp_router \
+  MCP_ROUTER_TOKEN=your-secret-token npm start
 ```
 
-The server listens on port 3000 and serves the built web UI, with state in `./data`. `npm start` and
-`npm run dev` also read a `.env` from the repo root (`cp .env.example .env`).
+The server listens on port 3000 and serves the built web UI, with its config in that Postgres and installed
+packages in `./data`. `npm start` and `npm run dev` also read a `.env` from the repo root
+(`cp .env.example .env`), which is the easier place for `DATABASE_URL`. Tests need no Postgres: they run on
+an in-memory PGlite.
 
 To build and run the image from your checkout instead, `docker compose up -d --build` uses the root
 [`docker-compose.yml`](docker-compose.yml).

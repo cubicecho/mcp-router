@@ -48,7 +48,8 @@ COPY --from=builder /app/app/dist ./app/dist
 
 ENV NODE_ENV=production
 ENV PORT=3000
-# The PGlite database (/data/pg), the installed servers' packages and logs live under /data.
+# The installed servers' packages, caches and logs live under /data. The config is in the
+# Postgres that DATABASE_URL names, which must be set at run time.
 ENV DATA_DIR=/data
 # uv's cache and the Pythons it downloads persist on the volume, so a cold
 # spawn doesn't fetch them again. agent-mcp-pool passes both to uvx children.

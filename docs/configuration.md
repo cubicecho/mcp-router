@@ -22,9 +22,9 @@ registries, installed servers and workspaces are rows in that database, edited f
 | `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) turns bearer auth off for `/api` and `/mcp`, and no token is minted. Overrides `authEnabled`. Only on a network you trust |
 | `PORT` | `3000` | HTTP port. Wins over the stored `port` |
 | `HOST` | all interfaces | Interface to bind. Wins over the stored `host`. `127.0.0.1` restricts it to localhost |
-| `DATA_DIR` | `./data` (`/data` in the image) | Where the PGlite database, installed server packages and caches live |
-| `DATABASE_URL` | unset | A `postgres://` (or `postgresql://`) URL stores the config in that Postgres instead of PGlite. Unset uses PGlite in `DATA_DIR/pg` |
-| `DB_CONNECT_TIMEOUT_MS` | `60000` | How long boot waits for Postgres to answer before giving up, retrying while it is still starting. PGlite ignores it |
+| `DATABASE_URL` | required | The `postgres://` (or `postgresql://`) URL of the Postgres that holds the config. Boot refuses to start, with a `[db]` message, when it is unset or anything else |
+| `DB_CONNECT_TIMEOUT_MS` | `60000` | How long boot waits for Postgres to answer before giving up, retrying while it is still starting |
+| `DATA_DIR` | `./data` (`/data` in the image) | Where installed server packages, caches and the old config files (imported on upgrade) live |
 | `HTTP_KEEP_ALIVE_TIMEOUT_MS` | `75000` | How long an idle client connection stays open. `0` never closes one. See below |
 | `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` | `30000` | How long an idle connection to a remote MCP server stays open when that server sends no `Keep-Alive` timeout of its own |
 
@@ -42,13 +42,18 @@ Node's defaults allow for:
 
 ## Where config is stored
 
-By default the config lives in an embedded [PGlite](https://pglite.dev) database in `DATA_DIR/pg`: `./data/pg`
-locally, `/data/pg` in Docker. PGlite allows one process per data dir, so the router holds a pid lockfile at
-`DATA_DIR/pg.lock` and a second router pointed at the same folder refuses to start. Set `DATABASE_URL` to a
-`postgres://` URL to use an existing Postgres instead, for instance to run the router beside other services
-or to back it up with your usual Postgres tooling.
+The config lives in the Postgres that `DATABASE_URL` names. The compose files in this repo and in
+[`deploy/`](../deploy/README.md) run a `postgres:17` beside the router, with its data in its own volume, and
+start the router once Postgres is healthy. Any other Postgres works too: point `DATABASE_URL` at it. For
+`npm run dev`, `npm run db:up` starts one on `localhost:5433` (`docker-compose.dev.yml`).
 
-Either way, migrations run on every boot, so an upgraded router brings its tables up to date by itself. The
+Boot waits for Postgres to answer (up to `DB_CONNECT_TIMEOUT_MS`), retrying while it is still starting, and
+fails at once on a wrong password or a missing database. In production (`NODE_ENV=production`, as in the
+image) TLS is required for a host the internet could reach; a private or local host (a compose service name,
+`localhost`, an RFC 1918 or link-local address, a `.lan`, `.local`, `.internal` or `.home.arpa` name) is
+connected to without it. A `sslmode` in the URL always wins, e.g. `?sslmode=disable` or `?sslmode=require`.
+
+Migrations run on every boot, so an upgraded router brings its tables up to date by itself. The
 router caches the config in memory and applies its own writes at once. If something else changes the tables
 (a SQL client, another tool against the same Postgres), tell the router to re-read the database:
 
@@ -234,8 +239,10 @@ installed server, and deleting a server removes it from every workspace. Manage 
 ## Upgrading from the config files
 
 Routers before the database (2.x) kept their config as JSON files under `DATA_DIR/config`: `settings.json`,
-`registries.json`, `servers/<name>.json` and `workspaces/<slug>.json`. On the first boot of a newer router,
-while the database is still empty, it imports them all in one transaction and renames each imported file
+`registries.json`, `servers/<name>.json` and `workspaces/<slug>.json`. A newer router needs a Postgres: add
+the `postgres` service from [`deploy/docker-compose.yml`](../deploy/docker-compose.yml) beside it, or use one
+you already run, and set `DATABASE_URL`. Keep the same data folder mounted at `/data`. On the first boot of the
+newer router, while the database is still empty, it imports them all in one transaction and renames each imported file
 `*.imported`, so they are kept but never read again. After that the database is the only source of truth, and
 the files are not read again.
 
@@ -252,6 +259,7 @@ the files are not read again.
 
 ## Backups
 
-With PGlite, everything (the database, installed server packages, caches) is in the data folder: stop the
-router and copy `DATA_DIR`. With Postgres, back up the database with `pg_dump`, plus `DATA_DIR/servers` for the
-installed npm packages. Secrets are stored in plaintext, so keep backups as private as the router itself.
+Back up the database with `pg_dump` (beside the compose stack:
+`docker compose exec postgres pg_dump -U mcp_router mcp_router > backup.sql`). The data folder holds
+installed packages and caches; copy `DATA_DIR/servers` too for the installed npm packages.
+Secrets are stored in plaintext, so keep backups as private as the router itself.
