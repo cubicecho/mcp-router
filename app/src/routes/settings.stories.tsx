@@ -35,6 +35,18 @@ const meta = {
 export default meta;
 type Story = StoryObj<typeof meta>;
 
+export const ShowsSignInAndApiKeysUnderAccess: Story = {
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await openTab(canvasElement, 'Access');
+    await expect(await canvas.findByRole('heading', { name: 'Sign-in', level: 2 })).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'API keys', level: 2 })).toBeVisible();
+    await expect(await canvas.findByText('Claude Code')).toBeVisible();
+    await expect(await canvas.findByText('Heautou')).toBeVisible();
+    await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
+  },
+};
+
 export const ShowsTheRouterStatus: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);

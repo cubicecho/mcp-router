@@ -5,6 +5,8 @@ import { toast } from 'sonner';
 import { LanServerState } from '@/__generated__/graphql';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
+import { ApiKeysCard } from '@/components/domain/auth/api-keys-card';
+import { SignInCard } from '@/components/domain/auth/sign-in-card';
 import { DismissedServersCard } from '@/components/domain/discovery/dismissed-servers-card';
 import { LoadError } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
@@ -191,7 +193,7 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
         <>
           <SettingRow
             title="Announce this router"
-            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs the token when auth is on.`}
+            description={`Lets other tools on your network find it as “MCP Router on ${status.instanceId}”. Connecting still needs an API key when auth is on.`}
             actionSlot={({ titleId, descriptionId }) => (
               <Switch
                 checked={status.lanAdvertise}
@@ -226,8 +228,8 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
 }
 
 /**
- * The Settings page, in three tabs: the router's status and settings, network discovery with the dismissed servers,
- * and where the config is stored, with a reload button.
+ * The Settings page, in four tabs: the router's status and settings, how people sign in and the API keys clients
+ * use, network discovery with the dismissed servers, and where the config is stored, with a reload button.
  *
  * @returns The page, opened on General.
  */
@@ -255,6 +257,7 @@ function SettingsPage() {
         <Tabs defaultValue="general" className="py-4 md:py-6">
           <TabsList>
             <TabsTrigger value="general">General</TabsTrigger>
+            <TabsTrigger value="access">Access</TabsTrigger>
             <TabsTrigger value="network">Network</TabsTrigger>
             <TabsTrigger value="config">Configuration</TabsTrigger>
           </TabsList>
@@ -287,9 +290,9 @@ function SettingsPage() {
                               }
                               hint={
                                 <>
-                                  The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable, or
-                                  generated into the database on first run; it protects <Code>/graphql</Code>,{' '}
-                                  <Code>/admin/mcp</Code> and <Code>/mcp*</Code>.
+                                  MCP clients send an API key (under Access) to <Code>/mcp*</Code> and{' '}
+                                  <Code>/admin/mcp</Code>. <Code>SECURE_LOCAL_NET</Code> turns it off on a trusted
+                                  network.
                                 </>
                               }
                             />
@@ -311,6 +314,10 @@ function SettingsPage() {
                 )
               }
             />
+          </TabsContent>
+          <TabsContent value="access" className="flex flex-col gap-6 pt-4">
+            <SignInCard />
+            <ApiKeysCard />
           </TabsContent>
           <TabsContent value="network" className="flex flex-col gap-6 pt-4">
             {data && <NetworkDiscoveryCard status={data} />}
