@@ -2,7 +2,6 @@ import { type DiscoveryResponse, ErrorCode, type Registry, setDismissedRequestSc
 import { GraphQLJSON } from '@vantreeseba/drizzle-graphql';
 import { eq } from 'drizzle-orm';
 import { GraphQLBoolean, type GraphQLFieldConfigMap, GraphQLNonNull, GraphQLString } from 'graphql';
-import { applyConfig } from '../../api/deps.ts';
 import type { Context } from '../../core/context.ts';
 import { codedError } from '../../core/errors.ts';
 import { parseOrThrow } from '../../core/validation.ts';
@@ -129,9 +128,9 @@ export function systemMutations(): GraphQLFieldConfigMap<unknown, Context> {
     reloadConfig: handField<Record<string, never>>({
       type: new GraphQLNonNull(ReloadResultType),
       description: 'Re-reads the stored config and reconciles the running servers to it.',
+      // The reload emits `change`, which reconciles the gateway (see `reconcileOnChange`).
       resolve: async (_args, ctx) => {
         const state = await ctx.store.reload();
-        await applyConfig(ctx);
         return { reloaded: true, serverCount: state.servers.length };
       },
     }),

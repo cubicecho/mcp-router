@@ -7,7 +7,7 @@ import { type ApiDeps, applyConfig } from '../deps.ts';
  * Builds the router-wide endpoints: status, global settings, and a config reload.
  *
  * @param deps.store - Holds the settings and is what a reload re-reads.
- * @param deps.manager - Reconciled after a settings change or a reload.
+ * @param deps.manager - Awaited after a settings change. A reload reaches it through the store's `change` event.
  * @returns The router, with paths relative to /api; uptime counts from this call.
  */
 export function createSystemRoutes({ store, manager }: ApiDeps): Router {
@@ -36,9 +36,9 @@ export function createSystemRoutes({ store, manager }: ApiDeps): Router {
     });
   });
 
+  // The reload emits `change`, which reconciles the gateway (see `reconcileOnChange`).
   router.post('/reload', async (_req, res) => {
     const state = await store.reload();
-    await manager.reconcile(state.servers, state.workspaces);
     res.json({ reloaded: true, serverCount: state.servers.length });
   });
 

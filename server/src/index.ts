@@ -1,5 +1,6 @@
 import { createAdvertiser, watchServers } from '@cubicecho/mcp-discovery/mdns';
 import { TRANSPORT_STREAMABLE_HTTP } from '@mcp-router/shared';
+import { reconcileOnChange } from './api/deps.ts';
 import {
   authDisabledByEnv,
   databaseUrl,
@@ -11,7 +12,6 @@ import {
   refusePlaceholderToken,
 } from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
-import { errorMessage } from './core/errors.ts';
 import { openDatabase } from './db/client.ts';
 import { waitForDatabase } from './db/wait.ts';
 import { createLanServers } from './discovery/lan-servers.ts';
@@ -49,12 +49,7 @@ async function main(): Promise<void> {
   // After a sign-in or sign-out, every connection of that server dials again with what is stored now.
   oauth.setOnChange((name) => manager.resetServer(name));
   await manager.reconcile(store.getServers(), store.getWorkspaces());
-  store.on('change', (state) => {
-    console.log('[config] changed, reconciling servers');
-    manager.reconcile(state.servers, state.workspaces).catch((err: unknown) => {
-      console.warn(`[config] reconcile after a config change failed: ${errorMessage(err)}`);
-    });
-  });
+  reconcileOnChange({ store, manager });
 
   const port = listenPort(store.getSettings().port);
   // Unset binds all interfaces (Docker/LAN); set HOST=127.0.0.1 to restrict to localhost.

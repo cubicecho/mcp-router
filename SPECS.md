@@ -105,7 +105,7 @@ Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are b
 | `GET /api/workspaces/:slug` | single `WorkspaceStatus` |
 | `PATCH /api/workspaces/:slug` | `UpdateWorkspaceRequest` (name, enabled, description, members); a name change re-derives the slug and moves the endpoint |
 | `DELETE /api/workspaces/:slug` | delete the workspace and its memberships (underlying servers untouched) |
-| `POST /api/reload` | re-read all config from disk, reconcile running processes |
+| `POST /api/reload` | re-read all config from the database; its `change` reconciles running processes |
 
 Errors: non-2xx with `{ error, code, detail? }`. `code` is one of the shared `ErrorCode` values
 (`BAD_USER_INPUT` 400, `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409,
@@ -114,9 +114,10 @@ on it, never on the `error` text. Validation via the shared zod schemas.
 
 ### Management GraphQL (`/graphql`) and its MCP door (`/admin/mcp`), bearer auth
 
-Served beside `/api` (which stays until the UI moves over) when `createApp` is given the Drizzle `db`;
-without one neither path exists. Both sit behind the same bearer guard as `/api` (`/admin/mcp` also
-behind the Origin guard, like `/mcp`) and the same `express.json` cap (`HTTP_DEFAULTS.bodyLimit`).
+Always served beside `/api` (which stays until the UI moves over), over the same database the
+`ConfigStore` reads: `createApp` requires the Drizzle `db`, and index.ts passes the one it opened.
+Both sit behind the same bearer guard as `/api` (`/admin/mcp` also behind the Origin guard, like
+`/mcp`) and the same `express.json` cap (`HTTP_DEFAULTS.bodyLimit`).
 They serve one permissioned schema (`server/src/graphql/build-schema.ts`) through one context factory
 (`createContextFactory` in `core/context.ts`): today every request that passed the guard is the
 operator; a later auth step reads sessions and API keys there.
@@ -132,7 +133,9 @@ operator; a later auth step reads sessions and API keys there.
   `updateSetting` (only the settings the UI edits; the port, host, token, `authEnabled`, `instanceId`
   and `allowedOrigins` are refused). `createServer` exists but is FORBIDDEN: servers come from
   `installServer`. `onWrite` hooks check each written row against the shared zod schemas
-  (BAD_USER_INPUT) and, once the write commits, call `store.reload()` so the gateway sees it.
+  (BAD_USER_INPUT) and, once the write commits, call `store.reload()`, whose `change` reconciles the
+  gateway (`reconcileOnChange` in `api/deps.ts`, wired at boot). Hand-written writes that answer with
+  gateway state also await `applyConfig`, which queues behind that reconcile.
 - **Hand-written queries:** `routerStatus`, `serverRuntimes`, `serverRuntime(name)`,
   `serverTools`/`serverResources`/`serverPrompts`/`serverActivity(name)`,
   `workspaceTools`/`workspaceResources`/`workspacePrompts`/`workspaceActivity(slug)`,

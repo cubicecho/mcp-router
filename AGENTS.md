@@ -102,7 +102,10 @@ try {
 
 **Config writes go through `ConfigStore`** (or a transaction followed by
 `store.reload()`): a multi-row write is one transaction, and rows are
-validated with the shared schemas when read back. Tests use a PGlite
+validated with the shared schemas when read back. Every write and reload
+emits `change`, and `reconcileOnChange` (`api/deps.ts`, wired in index.ts and
+the GraphQL test harnesses) reconciles the gateway from it; a route that needs
+the gateway settled before it answers awaits `applyConfig` after the write. Tests use a PGlite
 `memory://` database from `server/src/db/__tests__/test-db.ts`: one per file
 (`beforeAll`), `resetTestDb` between tests.
 

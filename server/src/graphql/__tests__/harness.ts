@@ -2,6 +2,7 @@ import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { type ExecutionResult, type GraphQLSchema, graphql } from 'graphql';
+import { reconcileOnChange } from '../../api/deps.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { CALLER_OPERATOR, type Caller, type Context, type ContextDeps, UNKNOWN_IP } from '../../core/context.ts';
 import { createTestStore } from '../../db/__tests__/test-db.ts';
@@ -35,7 +36,10 @@ export interface Refusal {
 
 /** The collaborators a resolver test drives, and a client over them. */
 export interface Harness {
-  /** The real store, over the same database the schema writes to. Spy on `reload` to see a write reach the gateway. */
+  /**
+   * The real store, over the same database the schema writes to, and followed by the gateway as at boot. Spy on
+   * `reload`, or listen for `change`, to see a write reach the gateway.
+   */
   store: ConfigStore;
   manager: GatewayManager;
   /** Runs an operation in-process as `caller` and returns the raw result. */
@@ -44,7 +48,7 @@ export interface Harness {
   expectOk: (query: string, variables?: Variables) => Promise<AnyData>;
   /** Runs as the operator and returns the first error. Throws on success. */
   expectError: (query: string, variables?: Variables) => Promise<Refusal>;
-  /** Stops the gateway's children and removes the temp dir. */
+  /** Stops following the store, stops the gateway's children and removes the temp dir. */
   close: () => Promise<void>;
 }
 
@@ -64,6 +68,7 @@ export async function createHarness(database: Database, overrides: HarnessOverri
   const store = await createTestStore(database, dataDir);
   const oauth = new OAuthService(store);
   const manager = new GatewayManager(() => store.getSettings(), oauth);
+  const unfollow = reconcileOnChange({ store, manager });
   const deps: ContextDeps = {
     db,
     store,
@@ -98,6 +103,7 @@ export async function createHarness(database: Database, overrides: HarnessOverri
     return { message: error.message, code: error.extensions.code };
   };
   const close = async () => {
+    unfollow();
     await manager.stopAll();
     await rm(dataDir, { recursive: true, force: true });
   };

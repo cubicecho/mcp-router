@@ -239,6 +239,19 @@ describe('hand-written router fields', () => {
     expect(reload).toHaveBeenCalled();
   });
 
+  it("records a dismissal in the settings row a fresh store's first boot seeded", async () => {
+    // The database was emptied before this test and nothing wrote a settings row but the store's first boot.
+    const seeded = await db.select().from(settings).where(eq(settings.id, SETTINGS_ROW_ID));
+    expect(seeded).toHaveLength(1);
+    await harness.expectOk(
+      `mutation($key: String!) { setLanServerDismissed(key: $key, dismissed: true) { enabled } }`,
+      {
+        key: FOUND.key,
+      },
+    );
+    expect(harness.store.getSettings().lanDismissed).toEqual([FOUND.key]);
+  });
+
   it('saves a workspace with its members, then replaces the members in one call', async () => {
     const install = (name: string) => harness.expectOk(INSTALL_REMOTE, { name });
     const first = (await install('first')).installServer.id;

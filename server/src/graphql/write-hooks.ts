@@ -78,13 +78,14 @@ function reloadAfterCommit({ context, onCommit }: WriteHookPayload): void {
 }
 
 /**
- * Has the gateway take a hand-written write in at once: reload the store, then reconcile from it.
+ * Has the gateway take a hand-written write in at once: reload the store, then wait for the gateway to settle.
  *
- * @param ctx - The request, whose store and manager are reloaded and reconciled.
+ * @param ctx - The request, whose store is reloaded and whose manager is awaited.
  *
  * @remarks
- * A hand-written mutation answers with what the gateway now runs (a server's state, say), so unlike a generated write
- * it waits for the reconcile instead of leaving it to the store's `change` event.
+ * The reload emits `change`, which starts the reconcile (`reconcileOnChange`). A hand-written mutation answers with
+ * what the gateway now runs (a server's state, say), so unlike a generated write it also awaits `applyConfig`, which
+ * queues behind that reconcile and finds nothing left to change.
  */
 export async function settleWrite(ctx: Pick<Context, 'store' | 'manager'>): Promise<void> {
   await ctx.store.reload();

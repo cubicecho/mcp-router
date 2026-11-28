@@ -1,13 +1,19 @@
-import { ErrorCode } from '@mcp-router/shared';
+import { once } from 'node:events';
+import { ErrorCode, serverConfigSchema } from '@mcp-router/shared';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createTestDb, resetTestDb } from '../../db/__tests__/test-db.ts';
 import type { Database, DB } from '../../db/client.ts';
 import { registries } from '../../db/tables/registries.ts';
+import { workspaceInstanceKey } from '../../gateway/instance-key.ts';
 import { createHarness, type Harness } from './harness.ts';
 
 const CREATE_WORKSPACE = `mutation($slug: String!) { createWorkspace(values: { name: "Work", slug: $slug }) { id slug } }`;
 const RENAME_WORKSPACE = `mutation($id: UUID!, $name: String!) {
   updateWorkspace(where: { id: { eq: $id } }, set: { name: $name }) { id name slug }
+}`;
+
+const CREATE_MEMBER = `mutation($workspaceId: UUID!, $serverId: UUID!) {
+  createWorkspaceMember(values: { workspaceId: $workspaceId, serverId: $serverId }) { id }
 }`;
 
 describe('generated CRUD', () => {
@@ -50,6 +56,27 @@ describe('generated CRUD', () => {
     const reload = vi.spyOn(harness.store, 'reload');
     await harness.expectOk(CREATE_WORKSPACE, { slug: 'work' });
     expect(reload).toHaveBeenCalledTimes(1);
+  });
+
+  it('shows a write through the store, and its change reaches the gateway', async () => {
+    await harness.store.saveServer(
+      serverConfigSchema.parse({
+        name: 'remote',
+        source: { type: 'remote' },
+        transport: { type: 'streamable-http', url: 'https://remote.example.com/mcp' },
+      }),
+    );
+    const { servers } = await harness.expectOk('{ servers { id name } }');
+    const { createWorkspace } = await harness.expectOk(CREATE_WORKSPACE, { slug: 'work' });
+    const changed = once(harness.store, 'change');
+    await harness.expectOk(CREATE_MEMBER, { workspaceId: createWorkspace.id, serverId: servers[0].id });
+    const [state] = await changed;
+
+    expect(state.workspaces).toEqual(harness.store.getWorkspaces());
+    expect(harness.store.getWorkspace('work')?.members).toEqual({ remote: { enabled: true } });
+    expect(harness.store.getServers().map((server) => server.name)).toEqual(['remote']);
+    // The harness follows the store as boot does, so the change alone gave the workspace its own instance.
+    expect(harness.manager.status(workspaceInstanceKey('work', 'remote'))).toBeDefined();
   });
 
   it('refuses a slug the workspace rules reject, writes nothing and does not reload', async () => {

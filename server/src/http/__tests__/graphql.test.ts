@@ -8,6 +8,7 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
+import { reconcileOnChange } from '../../api/deps.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { MCP_DEFAULTS, OPERATION_LIMIT_DEFAULTS } from '../../core/defaults.ts';
 import { createTestDb, createTestStore } from '../../db/__tests__/test-db.ts';
@@ -34,6 +35,7 @@ describe('/graphql and /admin/mcp', () => {
     store = await createTestStore(database, dataDir);
     token = store.getSettings().authToken ?? '';
     manager = new GatewayManager(() => store.getSettings());
+    reconcileOnChange({ store, manager });
     app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
