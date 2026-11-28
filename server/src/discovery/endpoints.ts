@@ -33,7 +33,7 @@ const AGGREGATE_PATH = '/mcp';
 /** The header a client must send when bearer auth is on; its value is never in the card. */
 const AUTH_HEADER: KeyValueInput = {
   name: 'Authorization',
-  description: 'Bearer <token>, the router token from settings.json or MCP_ROUTER_TOKEN',
+  description: 'Bearer <token>, the router token from its settings or MCP_ROUTER_TOKEN',
   isRequired: true,
   isSecret: true,
 };

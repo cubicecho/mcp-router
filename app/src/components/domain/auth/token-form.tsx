@@ -29,7 +29,7 @@ export function TokenForm({ onUnlock }: { onUnlock: (token: string) => void }) {
       title="Authentication required"
       description={
         <>
-          Enter the router token (from <Code>MCP_ROUTER_TOKEN</Code> or <Code>settings.json</Code>).
+          Enter the router token (from <Code>MCP_ROUTER_TOKEN</Code>, or the one the router logged on first run).
         </>
       }
       contentSlot={

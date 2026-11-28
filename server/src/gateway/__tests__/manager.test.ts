@@ -318,7 +318,7 @@ describe('GatewayManager stdio failures', () => {
     const manager = new GatewayManager(() => current);
     await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);
 
-    // The operator edits settings.json and the config watcher reconciles. The row is
+    // The operator changes the setting and the store's change event reconciles. The row is
     // re-read, so the new patience applies at the next connect.
     current = settingsFileSchema.parse({ connectTimeoutMs: 300 });
     await manager.reconcile([crashingConfig('wedged', 'setInterval(() => {}, 1_000)')]);

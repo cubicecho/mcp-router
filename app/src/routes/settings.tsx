@@ -12,7 +12,7 @@ import { PropertyList, PropertyRow } from '@/components/property-list';
 import { SettingRow } from '@/components/setting-row';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
-import { Code, CodeBlock } from '@/components/ui/code';
+import { Code } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -25,12 +25,6 @@ import { toastApiError } from '@/lib/toast';
 export const Route = createFileRoute('/settings')({
   component: SettingsPage,
 });
-
-const CONFIG_TREE = `config/
-├── settings.json        # port, auth token, auth enabled, idle timeout, network discovery
-├── registries.json      # { registries: [{ name, url }] }
-└── servers/
-    └── <name>.json      # one file per installed server`;
 
 /**
  * Inline editor for the default idle timeout, entered in minutes.
@@ -233,7 +227,7 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
 
 /**
  * The Settings page, in three tabs: the router's status and settings, network discovery with the dismissed servers,
- * and the config-file layout with a reload button.
+ * and where the config is stored, with a reload button.
  *
  * @returns The page, opened on General.
  */
@@ -293,8 +287,9 @@ function SettingsPage() {
                               }
                               hint={
                                 <>
-                                  The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable or{' '}
-                                  <Code>settings.json</Code>; it protects <Code>/api/*</Code> and <Code>/mcp*</Code>.
+                                  The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable, or
+                                  generated into the database on first run; it protects <Code>/api/*</Code> and{' '}
+                                  <Code>/mcp*</Code>.
                                 </>
                               }
                             />
@@ -324,19 +319,20 @@ function SettingsPage() {
           <TabsContent value="config" className="pt-4">
             <CardLayout
               level={2}
-              title="Configuration files"
+              title="Configuration storage"
               description={
                 <>
-                  All configuration lives in flat, hand-editable JSON files under <Code>DATA_DIR/config</Code>:
+                  All configuration lives in the router's database: an embedded PGlite under <Code>DATA_DIR/pg</Code>,
+                  or the Postgres that <Code>DATABASE_URL</Code> names.
                 </>
               }
               contentClassName="flex flex-col gap-4"
               contentSlot={
                 <>
-                  <CodeBlock content={CONFIG_TREE} />
                   <p className="text-sm text-foreground/60">
-                    Files are watched for changes automatically. After hand-editing you can also trigger an explicit
-                    reload — it re-reads everything from disk and reconciles running servers.
+                    Change it from these pages, <Code>/graphql</Code> or the REST API under <Code>/api</Code>. If
+                    something else writes to the database directly, reload — it re-reads everything from the database
+                    and reconciles running servers.
                   </p>
                   <div>
                     <Button

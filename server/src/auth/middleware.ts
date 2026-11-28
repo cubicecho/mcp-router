@@ -13,7 +13,7 @@ export interface AuthConfig {
 }
 
 /**
- * Resolves the auth actually in force: settings.json, as overridden by the environment.
+ * Resolves the auth actually in force: the settings row, as overridden by the environment.
  *
  * @param settings - The stored auth settings.
  * @param [env] - Read for `SECURE_LOCAL_NET`, which turns auth off, and `MCP_ROUTER_TOKEN`, which replaces the token.

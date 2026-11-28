@@ -50,14 +50,14 @@ export const WhenLoadingFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      Registries: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'registries.json is unreadable'),
+      Registries: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'the database is unreachable'),
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const alert = within(await canvas.findByRole('alert'));
     await expect(alert.getByText('Could not load registries')).toBeVisible();
-    await expect(alert.getByText('registries.json is unreadable')).toBeVisible();
+    await expect(alert.getByText('the database is unreachable')).toBeVisible();
     await expect(canvas.queryByRole('table')).not.toBeInTheDocument();
   },
 };

@@ -1,7 +1,7 @@
 // The values the config contract falls back to or is bounded by, as plain data.
 // Nothing here computes, reads the environment or imports.
 
-/** What settings.json means when a key is absent. */
+/** What a setting means when it is absent (from the settings row, or from an imported settings.json). */
 export interface RouterSettings {
   /** The port to listen on. `PORT` overrides it. */
   port: number;
@@ -17,7 +17,7 @@ export interface RouterSettings {
   callTimeoutMs: number;
 }
 
-/** The values `settings.json` falls back to, frozen. */
+/** The values the settings fall back to, frozen. */
 export const SETTINGS_DEFAULTS: Readonly<RouterSettings> = Object.freeze({
   port: 3000,
   idleTimeoutMs: 300_000,

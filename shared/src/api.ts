@@ -80,7 +80,7 @@ export type OAuthClientRequest = z.infer<typeof oauthClientRequestSchema>;
 /** Body of `POST /api/servers/:name/oauth/start`. */
 export const oauthStartRequestSchema = z.object({
   /** The UI's own origin. The sign-in window reports back to it, and it is the router's address
-   *  when settings.json has no `publicUrl`. */
+   *  when the settings have no `publicUrl`. */
   origin: z.url(),
 });
 /** Body of the start-sign-in request. */
@@ -362,9 +362,9 @@ export const routerStatusSchema = z.object({
   authEnabled: z.boolean(),
   /** Default idle shutdown for stdio child processes, ms (per-server override wins). */
   idleTimeoutMs: z.number(),
-  /** settings.json's `publicUrl`, when set. */
+  /** The stored `publicUrl`, when set. */
   publicUrl: z.string().optional(),
-  /** This router's network name, from settings.json's `instanceId`. */
+  /** This router's network name, from the stored `instanceId`. */
   instanceId: z.string(),
   /** Whether the router announces itself on the local network. */
   lanAdvertise: z.boolean(),
@@ -374,7 +374,7 @@ export const routerStatusSchema = z.object({
 /** The router's own status. */
 export type RouterStatus = z.infer<typeof routerStatusSchema>;
 
-/** The subset of settings.json editable from the UI. */
+/** The subset of the settings editable from the UI. */
 export const updateSettingsRequestSchema = z.object({
   idleTimeoutMs: z.number().int().positive().optional(),
   /** The router's public address; `null` clears it. */
@@ -434,7 +434,7 @@ export type DiscoveredServer = z.infer<typeof discoveredServerSchema>;
 
 /** What `GET /api/discovery` answers. */
 export const discoveryResponseSchema = z.object({
-  /** Whether the router is watching the network (settings.json's `lanDiscovery`). */
+  /** Whether the router is watching the network (the stored `lanDiscovery`). */
   enabled: z.boolean(),
   servers: z.array(discoveredServerSchema),
 });

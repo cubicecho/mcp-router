@@ -79,13 +79,13 @@ export const WhenTheStatusFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      RouterStatus: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'settings.json is unreadable'),
+      RouterStatus: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'the database is unreachable'),
     },
   },
   play: async ({ canvasElement }) => {
     const alert = within(await within(canvasElement).findByRole('alert'));
     await expect(alert.getByText('Could not load status')).toBeVisible();
-    await expect(alert.getByText('settings.json is unreadable')).toBeVisible();
+    await expect(alert.getByText('the database is unreachable')).toBeVisible();
     await expect(alert.getByRole('button', { name: 'Try again' })).toBeVisible();
   },
 };
@@ -125,7 +125,7 @@ export const WhenSavingFails: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      UpdateSetting: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'settings.json is read-only'),
+      UpdateSetting: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'the settings row is locked'),
     },
   },
   play: async ({ canvasElement }) => {
@@ -136,7 +136,7 @@ export const WhenSavingFails: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Save' }));
 
     await waitFor(() =>
-      expect(within(canvasElement.ownerDocument.body).getByText('settings.json is read-only')).toBeVisible(),
+      expect(within(canvasElement.ownerDocument.body).getByText('the settings row is locked')).toBeVisible(),
     );
     // What was typed is kept, to be tried again.
     await expect(input).toHaveValue(String(NEW_TIMEOUT_MINUTES));

@@ -1,5 +1,5 @@
 // Every fixed value someone might tune, as plain data. Nothing here computes, reads the environment or imports.
-// What an operator can change at run time lives in settings.json (`SETTINGS_DEFAULTS` in the shared package).
+// What an operator can change at run time lives in the settings row (`SETTINGS_DEFAULTS` in the shared package).
 
 /** Settings for the HTTP doors. */
 export interface HttpSettings {

@@ -22,7 +22,7 @@ describe('errorMiddleware', () => {
 
   it('hides the message of an unexpected error and logs it', async () => {
     const logged = vi.spyOn(console, 'error').mockImplementation(() => {});
-    const cause = new Error("ENOENT: no such file or directory, open '/data/config/settings.json'");
+    const cause = new Error('connect ECONNREFUSED 127.0.0.1:5432 (postgres://router:secret@db/mcp_router)');
 
     const res = await request(appThrowing(cause)).post('/').send({});
 

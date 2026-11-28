@@ -2,9 +2,10 @@ import { z } from 'zod';
 import { NAME_DEFAULTS, SETTINGS_DEFAULTS } from './defaults.ts';
 
 /**
- * Schemas for the flat config files stored under DATA_DIR/config.
- * These files are hand-editable; parsing is always lenient on unknown keys
- * so user additions survive round-trips.
+ * Schemas for the router's stored config: every settings, registry, server and workspace row is validated against
+ * them when read, and so is every write. They also describe what the first-boot import reads from the JSON files an
+ * older router kept under DATA_DIR/config. Parsing stays lenient on unknown keys, so a value with extra keys still
+ * parses; the tables keep only the keys they have columns for.
  */
 
 /** A server name doubles as its route segment (/mcp/<name>) and its install dir. */
@@ -24,7 +25,7 @@ export const registrySchema = z
   })
   .loose();
 
-/** Shape of `registries.json`. */
+/** The registry list as one object: the import's `registries.json`. */
 export const registriesFileSchema = z
   .object({
     registries: z.array(registrySchema).default([]),
@@ -33,7 +34,7 @@ export const registriesFileSchema = z
 
 /** A configured registry. */
 export type Registry = z.infer<typeof registrySchema>;
-/** Parsed `registries.json`. */
+/** A parsed registry list. */
 export type RegistriesFile = z.infer<typeof registriesFileSchema>;
 
 /** The registry seeded on first run. */
@@ -49,7 +50,10 @@ export const instanceIdSchema = z
   .max(NAME_DEFAULTS.serverNameMaxLength)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'lowercase alphanumerics and dashes; must start alphanumeric');
 
-/** Shape of `settings.json`; every key has a fallback, so an empty object parses. */
+/**
+ * The router's settings: the one settings row, or an imported `settings.json`. Every key has a fallback, so an empty
+ * object parses.
+ */
 export const settingsFileSchema = z
   .object({
     /** HTTP port. Env PORT wins over this. */
@@ -108,7 +112,7 @@ export const settingsFileSchema = z
   })
   .loose();
 
-/** Parsed `settings.json`, fallbacks filled in. */
+/** Parsed settings, fallbacks filled in. */
 export type SettingsFile = z.infer<typeof settingsFileSchema>;
 
 /** Where a server came from. */
@@ -135,7 +139,7 @@ export const serverSourceSchema = z.discriminatedUnion('type', [
   /** Installed from a configured registry. */
   z.object({
     type: z.literal(SourceType.Registry),
-    /** Name of the registry in registries.json */
+    /** Name of a configured registry */
     registry: z.string(),
     /** Registry server name, e.g. "io.github.owner/repo" */
     serverName: z.string(),
@@ -230,7 +234,7 @@ export const discoveredFromSchema = z
 /** Where a discovered server came from. */
 export type DiscoveredFrom = z.infer<typeof discoveredFromSchema>;
 
-/** Shape of `servers/<name>.json`: one installed server. */
+/** One installed server: a `servers` row, or an imported `servers/<name>.json`. */
 export const serverConfigSchema = z
   .object({
     name: serverNameSchema,
@@ -293,7 +297,7 @@ export const workspaceConfigSchema = z
   .object({
     /** Human-facing display name. */
     name: z.string().min(1).max(NAME_DEFAULTS.workspaceNameMaxLength),
-    /** URL slug — the route segment at /mcp/w/<slug>, also the config filename. */
+    /** URL slug — the route segment at /mcp/w/<slug>. */
     slug: serverNameSchema,
     /** Disable to 404 the workspace's endpoint without deleting it. */
     enabled: z.boolean().default(true),
