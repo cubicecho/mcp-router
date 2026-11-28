@@ -16,7 +16,7 @@
     "@cubicecho/agent-mcp-pool": "^3.16.2",
     "@cubicecho/graphql-better-auth": "^1.1.0",
     "@cubicecho/graphql-mcp": "^3.1.0",
-    "@cubicecho/mcp-discovery": "^0.3.0",
+    "@cubicecho/mcp-discovery": "^0.5.0",
     "@escape.tech/graphql-armor-max-aliases": "^2.6.2",
     "@escape.tech/graphql-armor-max-depth": "^2.4.2",
     "@mcp-router/shared": "*",
