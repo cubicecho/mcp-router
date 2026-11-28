@@ -1,6 +1,5 @@
 import { createAdvertiser, watchServers } from '@cubicecho/mcp-discovery/mdns';
 import { TRANSPORT_STREAMABLE_HTTP } from '@mcp-router/shared';
-import { reconcileOnChange } from './api/deps.ts';
 import {
   authDisabledByEnv,
   databaseUrl,
@@ -17,6 +16,7 @@ import { openDatabase } from './db/client.ts';
 import { waitForDatabase } from './db/wait.ts';
 import { createLanServers } from './discovery/lan-servers.ts';
 import { GatewayManager } from './gateway/manager.ts';
+import { reconcileOnChange } from './gateway/reconcile.ts';
 import { createApp } from './http/app.ts';
 import { stopOnSignals } from './http/shutdown.ts';
 import { tuneInbound } from './http/tuning.ts';
@@ -92,9 +92,11 @@ async function main(): Promise<void> {
     console.log(`[server] listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
     const settings = store.getSettings();
     if (authDisabledByEnv()) {
-      console.warn('[auth] SECURE_LOCAL_NET is on: /api and /mcp are open to this network. Private networks only.');
+      console.warn(
+        '[auth] SECURE_LOCAL_NET is on: /graphql, /admin/mcp and /mcp are open to this network. Private networks only.',
+      );
     } else if (settings.authEnabled === false) {
-      console.warn('[auth] authEnabled is false in the settings: /api and /mcp are open.');
+      console.warn('[auth] authEnabled is false in the settings: /graphql, /admin/mcp and /mcp are open.');
     } else if (envToken() !== undefined) {
       console.log('[auth] bearer token from MCP_ROUTER_TOKEN, which overrides the stored one');
     } else {

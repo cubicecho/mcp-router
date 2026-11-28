@@ -2,7 +2,7 @@
 
 MCP Router is configured through a few environment variables and a database that it manages itself. Settings,
 registries, installed servers and workspaces are rows in that database, edited from the web UI, `/graphql`
-(and the `/admin/mcp` MCP endpoint over it) or the REST API under `/api`. There are no config files to edit.
+or the `/admin/mcp` MCP endpoint over it. There are no config files to edit.
 
 - [Environment variables](#environment-variables)
 - [Where config is stored](#where-config-is-stored)
@@ -18,8 +18,8 @@ registries, installed servers and workspaces are rows in that database, edited f
 
 | Variable | Default | |
 | --- | --- | --- |
-| `MCP_ROUTER_TOKEN` | generated | Bearer token for `/api/*` and `/mcp*`. Wins over the stored `authToken`. When neither is set, one is generated into the database on first run and logged once. The placeholder `change-me` is refused |
-| `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) turns bearer auth off for `/api` and `/mcp`, and no token is minted. Overrides `authEnabled`. Only on a network you trust |
+| `MCP_ROUTER_TOKEN` | generated | Bearer token for `/graphql`, `/admin/mcp` and `/mcp*`. Wins over the stored `authToken`. When neither is set, one is generated into the database on first run and logged once. The placeholder `change-me` is refused |
+| `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) turns bearer auth off for `/graphql`, `/admin/mcp` and `/mcp`, and no token is minted. Overrides `authEnabled`. Only on a network you trust |
 | `PORT` | `3000` | HTTP port. Wins over the stored `port` |
 | `HOST` | all interfaces | Interface to bind. Wins over the stored `host`. `127.0.0.1` restricts it to localhost |
 | `DATABASE_URL` | required | The `postgres://` (or `postgresql://`) URL of the Postgres that holds the config. Boot refuses to start, with a `[db]` message, when it is unset or anything else |
@@ -58,8 +58,9 @@ router caches the config in memory and applies its own writes at once. If someth
 (a SQL client, another tool against the same Postgres), tell the router to re-read the database:
 
 ```bash
-curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
-  http://localhost:3000/api/reload
+curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" -H 'Content-Type: application/json' \
+  -d '{"query":"mutation { reloadConfig { reloaded serverCount } }"}' \
+  http://localhost:3000/graphql
 ```
 
 (or use the **Reload config** button on the Settings page).
@@ -81,7 +82,7 @@ restarting.
 {
   // HTTP port. The PORT env var wins over this.
   "port": 3000,
-  // Bearer token for /api/* and /mcp*. The MCP_ROUTER_TOKEN env var wins.
+  // Bearer token for /graphql, /admin/mcp and /mcp*. The MCP_ROUTER_TOKEN env var wins.
   // Generated on first run when auth is enabled and no token exists.
   "authToken": "a-long-random-secret",
   // Set false to allow unauthenticated access (trusted networks only!).
@@ -130,7 +131,7 @@ restarting.
 
 ### Registries
 
-Managed from the **Registries** page or `/api/registries`.
+Managed from the **Registries** page, or GraphQL's `createRegistry` and `deleteRegistry`.
 
 ```jsonc
 [
@@ -234,7 +235,7 @@ workspace can run a server that's globally disabled, and its overrides never tou
 A member's effective enabled state is `workspace.enabled && member.enabled`. The base server's own `enabled`
 flag is ignored inside a workspace. Members are stored as `workspace_members` rows, so a member must name an
 installed server, and deleting a server removes it from every workspace. Manage workspaces from the
-**Workspaces** page in the web UI, `/api/workspaces` or GraphQL.
+**Workspaces** page in the web UI, or GraphQL's `saveWorkspace` and `deleteWorkspace`.
 
 ## Upgrading from the config files
 

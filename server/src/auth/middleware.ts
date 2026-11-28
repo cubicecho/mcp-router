@@ -80,7 +80,7 @@ export function createOriginMiddleware(getAllowedOrigins: () => string[]): Reque
 }
 
 /**
- * Builds the bearer-token middleware for /api and /mcp.
+ * Builds the bearer-token middleware for /graphql, /admin/mcp and /mcp.
  *
  * @param getAuth - The auth in force, read on every request.
  * @returns Middleware that passes everything when auth is disabled, and otherwise answers a missing or wrong token

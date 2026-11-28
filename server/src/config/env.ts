@@ -74,7 +74,7 @@ export function listenHost(settingsHost: string | undefined, env: NodeJS.Process
 }
 
 /**
- * Whether `SECURE_LOCAL_NET` has turned bearer auth off for /api and /mcp. It overrides `authEnabled` in the
+ * Whether `SECURE_LOCAL_NET` has turned bearer auth off for /graphql, /admin/mcp and /mcp. It overrides `authEnabled` in the
  * stored settings, for a trusted local network where minting and passing tokens is not worth it.
  *
  * @param [env] - The process environment.

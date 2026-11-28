@@ -8,12 +8,12 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { reconcileOnChange } from '../../api/deps.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { MCP_DEFAULTS, OPERATION_LIMIT_DEFAULTS } from '../../core/defaults.ts';
 import { createTestDb, createTestStore } from '../../db/__tests__/test-db.ts';
 import type { Database } from '../../db/client.ts';
 import { GatewayManager } from '../../gateway/manager.ts';
+import { reconcileOnChange } from '../../gateway/reconcile.ts';
 import { ADMIN_TOOLS } from '../../graphql/admin-mcp.ts';
 import { ADMIN_MCP_PATH, createApp } from '../app.ts';
 

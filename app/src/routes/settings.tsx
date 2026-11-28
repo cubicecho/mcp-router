@@ -288,8 +288,8 @@ function SettingsPage() {
                               hint={
                                 <>
                                   The bearer token is set via the <Code>MCP_ROUTER_TOKEN</Code> environment variable, or
-                                  generated into the database on first run; it protects <Code>/api/*</Code> and{' '}
-                                  <Code>/mcp*</Code>.
+                                  generated into the database on first run; it protects <Code>/graphql</Code>,{' '}
+                                  <Code>/admin/mcp</Code> and <Code>/mcp*</Code>.
                                 </>
                               }
                             />
@@ -322,15 +322,14 @@ function SettingsPage() {
               title="Configuration storage"
               description={
                 <>
-                  All configuration lives in the router's database: an embedded PGlite under <Code>DATA_DIR/pg</Code>,
-                  or the Postgres that <Code>DATABASE_URL</Code> names.
+                  All configuration lives in the Postgres that <Code>DATABASE_URL</Code> names.
                 </>
               }
               contentClassName="flex flex-col gap-4"
               contentSlot={
                 <>
                   <p className="text-sm text-foreground/60">
-                    Change it from these pages, <Code>/graphql</Code> or the REST API under <Code>/api</Code>. If
+                    Change it from these pages, <Code>/graphql</Code> or the MCP tools at <Code>/admin/mcp</Code>. If
                     something else writes to the database directly, reload — it re-reads everything from the database
                     and reconciles running servers.
                   </p>

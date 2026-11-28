@@ -206,7 +206,7 @@ function connectionRow(config: ServerConfig): McpServerConfig {
 }
 
 /**
- * Words one of the pool's refusals of a connection, for the REST contract.
+ * Words one of the pool's refusals of a connection, for the management API.
  *
  * @param code - The refusal; `client()` and `use()` throw only the first four, and anything else reads as a failed
  * connect.
@@ -547,7 +547,7 @@ export class GatewayManager {
    *
    * @remarks
    * The status is the pool's `httpStatusFor`, so it cannot drift from what the other gateways answer. The wording
-   * stays the router's own: these strings are part of the REST contract and are read by the UI. `backoff` (503) and
+   * stays the router's own: these strings are part of the management API and are read by the UI. `backoff` (503) and
    * `connect-failed` (502) are kept apart: the first means the pool declined to dial, the second that it dialled and
    * could not. A remote that wants a sign-in is a 502 either way, since the retry the 503 promises will not help it.
    */

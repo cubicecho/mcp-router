@@ -8,6 +8,7 @@ import type { DB } from '../db/client.ts';
 import { mapDatabaseError } from './database-errors.ts';
 import { serverMutations, serverQueries } from './fields/servers.ts';
 import { systemMutations, systemQueries } from './fields/system.ts';
+import { uiCallMutations } from './fields/ui-calls.ts';
 import { workspaceMutations, workspaceQueries } from './fields/workspaces.ts';
 import { permissions } from './permissions.ts';
 import { writeHooks } from './write-hooks.ts';
@@ -97,6 +98,7 @@ export function createSchema(db: DB): BuiltSchema {
       ...systemMutations(),
       ...serverMutations(Server),
       ...workspaceMutations(Workspace),
+      ...uiCallMutations(),
     },
   });
   const base = new GraphQLSchema({

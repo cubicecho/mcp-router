@@ -69,6 +69,12 @@ export const permissions: PermissionsMap = {
     saveWorkspace: isOperator,
     clearWorkspaceActivity: isOperator,
     reloadConfig: isOperator,
+    callServerTool: isOperator,
+    readServerResource: isOperator,
+    getServerPrompt: isOperator,
+    callWorkspaceTool: isOperator,
+    readWorkspaceResource: isOperator,
+    getWorkspacePrompt: isOperator,
     setLanServerDismissed: isOperator,
   },
 };

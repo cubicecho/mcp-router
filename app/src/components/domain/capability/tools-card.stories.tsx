@@ -6,7 +6,7 @@ import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { ToolsCard } from './tools-card.tsx';
 
 const LIST = 'ServerTools';
-const CALL = 'POST /api/servers/filesystem/tools/call';
+const CALL = 'CallServerTool';
 /** The first load and the one retry. */
 const LOADS_AFTER_RETRY = 2;
 
@@ -16,7 +16,7 @@ const TOOLS = { serverTools: toolsResponse() };
 const meta = {
   component: ToolsCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: TOOLS, [CALL]: toolCallResult() } },
+  parameters: { api: { [LIST]: TOOLS, [CALL]: { callServerTool: toolCallResult() } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -83,7 +83,11 @@ export const RunsAToolAndShowsItsResult: Story = {
     await typeArguments(box, '{{"path":"/tmp/notes.txt"}');
     await userEvent.click(canvas.getByRole('button', { name: 'Run' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(CALL, { name: 'read_file', arguments: { path: '/tmp/notes.txt' } }),
+      expect(apiRequest).toHaveBeenCalledWith(CALL, {
+        name: 'filesystem',
+        tool: 'read_file',
+        arguments: { path: '/tmp/notes.txt' },
+      }),
     );
     await expect(await canvas.findByText('Result')).toBeVisible();
     await expect(canvas.getByText(/hello from notes.txt/)).toBeVisible();
@@ -105,7 +109,9 @@ export const MarksAResultTheToolCalledAnError: Story = {
   parameters: {
     api: {
       [LIST]: TOOLS,
-      [CALL]: toolCallResult({ isError: true, content: [{ type: 'text', text: 'ENOENT: no such file' }] }),
+      [CALL]: {
+        callServerTool: toolCallResult({ isError: true, content: [{ type: 'text', text: 'ENOENT: no such file' }] }),
+      },
     },
   },
   play: async ({ canvasElement }) => {

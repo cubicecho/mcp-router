@@ -100,7 +100,7 @@ Ready-made files are in [`deploy/`](deploy/README.md):
 - **Config moves into that database.** On its first boot against an empty database the new router imports
   the old config files under `DATA_DIR/config` automatically and renames them `*.imported`. Nothing else
   needs doing by hand: keep the same `/data` mount so it finds them.
-- **Config is no longer hand-editable.** Manage it from the web UI, `/graphql` or the REST API; there is no file
+- **Config is no longer hand-editable.** Manage it from the web UI or `/graphql`; there is no file
   watcher. See [docs/configuration.md](docs/configuration.md#upgrading-from-the-config-files).
 - **The data folder must be writable by uid 1000.** The image no longer runs as root, so give a folder an older
   image wrote to to its `node` user: `sudo chown -R 1000:1000 data`.
@@ -234,15 +234,15 @@ The main environment variables:
 | `DATA_DIR` | Where installed server packages and caches live (`/data` in the image) |
 
 Everything else (`DB_CONNECT_TIMEOUT_MS`, the keep-alive timeouts, what the settings, registries, servers and
-workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
-[docs/api.md](docs/api.md).
+workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/configuration.md). The GraphQL management API and the MCP
+endpoints are in [docs/api.md](docs/api.md).
 
 ## Security notes
 
 - **Secrets are stored in plaintext** in the database: `env` values, remote-transport headers, OAuth
   tokens and client secrets, and the auth token. Anyone who can read the Postgres database, its volume or
   a dump of it can read them. Protect it accordingly and keep backups equally private.
-- **One bearer token guards everything** (`/api/*` and `/mcp*`). Treat it like a password. Setting
+- **One bearer token guards everything** (`/graphql`, `/admin/mcp` and `/mcp*`). Treat it like a password. Setting
   `authEnabled: false` in the settings, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
   entirely. Only do that on a trusted network. The `/mcp` Origin guard still applies with auth off, so a
   malicious web page can't reach the endpoints through DNS rebinding.
@@ -254,7 +254,7 @@ workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/confi
 - **The Activity tab keeps recent request and response bodies in memory.** For debugging, the router keeps
   the newest 200 proxied calls per server, including tool arguments and results, which may contain sensitive
   data. They are bounded, never written to disk, cleared when the server is removed or the process exits, and
-  clearable from the UI. Anyone with the bearer token can read them via `GET /api/servers/:name/activity`.
+  clearable from the UI. Anyone with the bearer token can read them through GraphQL's `serverActivity`.
 
 ## Limitations
 

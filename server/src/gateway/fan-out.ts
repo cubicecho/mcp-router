@@ -12,7 +12,7 @@ export interface FanOutDeps {
   withClient: WithClient;
   /** Writes an entry to the named server's activity log. */
   recordActivity: (name: string, entry: ActivityRecord) => void;
-  /** The upstream session the listing is for; absent for the REST API's. */
+  /** The upstream session the listing is for; absent for the management API's. */
   session?: Server;
 }
 

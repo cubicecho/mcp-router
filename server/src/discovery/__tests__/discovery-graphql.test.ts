@@ -15,7 +15,7 @@ import { createApp } from '../../http/app.ts';
 
 const FOUND_URL = 'http://192.168.1.20:3000/mcp';
 
-describe('/api/discovery', () => {
+describe('LAN discovery over /graphql', () => {
   let dataDir: string;
   let store: ConfigStore;
   let database: Database;
@@ -76,44 +76,64 @@ describe('/api/discovery', () => {
 
   const authed = (req: request.Test) => req.set('Authorization', `Bearer ${token}`);
 
+  /**
+   * Posts one operation to /graphql with the token.
+   *
+   * @param query - The operation.
+   * @param [variables] - Its variables.
+   * @returns The answer's `data`.
+   */
+  const gql = async (query: string, variables?: Record<string, unknown>) => {
+    const { body } = await authed(request(app).post('/graphql')).send({ query, variables });
+    expect(body.errors).toBeUndefined();
+    return body.data;
+  };
+
+  const LAN_SERVERS = '{ lanServers { enabled servers { key cardName suggestedName url state serverName } } }';
+
   it('lists what was found, behind the token', async () => {
-    expect((await request(app).get('/api/discovery')).status).toBe(401);
-    const response = await authed(request(app).get('/api/discovery'));
-    expect(response.body).toMatchObject({
+    expect((await request(app).post('/graphql').send({ query: LAN_SERVERS })).status).toBe(401);
+    const { lanServers } = await gql(LAN_SERVERS);
+    expect(lanServers).toMatchObject({
       enabled: true,
-      servers: [{ suggestedName: 'skills', url: FOUND_URL, state: 'available' }],
+      servers: [{ suggestedName: 'skills', url: FOUND_URL, state: 'AVAILABLE' }],
     });
   });
 
   it('dismisses a found server and restores it, keeping the choice in the settings row', async () => {
     const key = 'MCP Skills on nas/io.github.cubicecho.mcp-skills.nas/skills';
-    const dismissed = await authed(request(app).post('/api/discovery/dismissed')).send({ key, dismissed: true });
-    expect(dismissed.body.servers[0].state).toBe('dismissed');
+    const dismiss =
+      'mutation($key: String!, $dismissed: Boolean!) { setLanServerDismissed(key: $key, dismissed: $dismissed) { servers { state } } }';
+    const dismissed = await gql(dismiss, { key, dismissed: true });
+    expect(dismissed.setLanServerDismissed.servers[0].state).toBe('DISMISSED');
     const [row] = await database.db.select().from(settings);
     expect(row?.lanDismissed).toEqual([key]);
-    const restored = await authed(request(app).post('/api/discovery/dismissed')).send({ key, dismissed: false });
-    expect(restored.body.servers[0].state).toBe('available');
+    const restored = await gql(dismiss, { key, dismissed: false });
+    expect(restored.setLanServerDismissed.servers[0].state).toBe('AVAILABLE');
   });
 
   it('adds a found server as a remote one that remembers where it came from', async () => {
-    const [found] = (await authed(request(app).get('/api/discovery'))).body.servers;
-    const added = await authed(request(app).post('/api/servers')).send({
-      name: found.suggestedName,
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: found.url, headers: { Authorization: 'Bearer secret' } },
-      discovered: { key: found.key, cardName: found.cardName },
+    const [found] = (await gql(LAN_SERVERS)).lanServers.servers;
+    await gql('mutation($input: InstallServerInput!) { installServer(input: $input) { id } }', {
+      input: {
+        name: found.suggestedName,
+        source: { type: 'remote' },
+        transport: { type: 'streamable-http', url: found.url, headers: { Authorization: 'Bearer secret' } },
+        discovered: { key: found.key, cardName: found.cardName },
+      },
     });
-    expect(added.status).toBe(201);
     expect(store.getServer('skills')?.discovered).toEqual({ key: found.key, cardName: found.cardName });
-    const after = await authed(request(app).get('/api/discovery'));
-    expect(after.body.servers[0]).toMatchObject({ state: 'added', serverName: 'skills' });
+    const after = await gql(LAN_SERVERS);
+    expect(after.lanServers.servers[0]).toMatchObject({ state: 'ADDED', serverName: 'skills' });
   });
 
-  it('reports the discovery settings in the status and changes them by PATCH', async () => {
-    const status = await authed(request(app).get('/api/status'));
-    expect(status.body).toMatchObject({ lanAdvertise: false, lanDiscovery: true });
-    expect(status.body.instanceId).toMatch(/^[a-z0-9][a-z0-9-]*$/);
-    const patched = await authed(request(app).patch('/api/settings')).send({ lanAdvertise: true });
-    expect(patched.body).toMatchObject({ lanAdvertise: true, lanDiscovery: true });
+  it('reports the discovery settings in the status and changes them', async () => {
+    const { routerStatus } = await gql('{ routerStatus { lanAdvertise lanDiscovery instanceId } }');
+    expect(routerStatus).toMatchObject({ lanAdvertise: false, lanDiscovery: true });
+    expect(routerStatus.instanceId).toMatch(/^[a-z0-9][a-z0-9-]*$/);
+    const { updateSetting } = await gql(
+      'mutation { updateSetting(set: { lanAdvertise: true }, where: { id: { eq: 1 } }) { lanAdvertise lanDiscovery } }',
+    );
+    expect(updateSetting).toEqual({ lanAdvertise: true, lanDiscovery: true });
   });
 });

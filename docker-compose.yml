@@ -18,8 +18,8 @@ services:
     # compose network).
     # Installed server packages, caches and logs. A named volume, because the
     # container runs as node (uid 1000) and a bind mount keeps the host folder's
-    # owner. Config lives in Postgres and is managed from the web UI, /graphql or
-    # /api; there are no config files to edit.
+    # owner. Config lives in Postgres and is managed from the web UI or /graphql;
+    # there are no config files to edit.
     volumes: [mcp_router_data:/data]
     environment:
       # The router's config database. Required: boot refuses to start without it.

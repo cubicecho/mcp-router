@@ -23,12 +23,12 @@ function prompt(name: string, args: Array<{ name: string; description?: string }
     arguments: args.map((arg) => ({ description: null, required: null, ...arg })),
   };
 }
-const GET = 'POST /api/servers/filesystem/prompts/get';
+const GET = 'GetServerPrompt';
 
 const meta = {
   component: PromptsCard,
   args: { scope: { kind: 'server', name: 'filesystem' } },
-  parameters: { api: { [LIST]: { serverPrompts: promptsResponse() }, [GET]: promptGetResult() } },
+  parameters: { api: { [LIST]: { serverPrompts: promptsResponse() }, [GET]: { getServerPrompt: promptGetResult() } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -71,7 +71,11 @@ export const GetsAPromptWithItsArguments: Story = {
     await userEvent.type(path, '/tmp/notes.txt');
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'summarise', arguments: { path: '/tmp/notes.txt' } }),
+      expect(apiRequest).toHaveBeenCalledWith(GET, {
+        name: 'filesystem',
+        prompt: 'summarise',
+        arguments: { path: '/tmp/notes.txt' },
+      }),
     );
     await expect(await canvas.findByText('Result')).toBeVisible();
     await expect(canvas.getByText(/Summarise \/tmp\/notes.txt in one line/)).toBeVisible();
@@ -99,7 +103,7 @@ export const LeavesOutArgumentsLeftBlank: Story = {
           prompt('greet', [{ name: 'name' }, { name: 'tone', description: 'Formal or casual.' }]),
         ]),
       },
-      [GET]: promptGetResult(),
+      [GET]: { getServerPrompt: promptGetResult() },
     },
   },
   play: async ({ canvasElement }) => {
@@ -107,18 +111,31 @@ export const LeavesOutArgumentsLeftBlank: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: /greet/ }));
     await userEvent.type(canvas.getByRole('textbox', { name: /tone/ }), 'casual');
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'greet', arguments: { tone: 'casual' } }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(GET, {
+        name: 'filesystem',
+        prompt: 'greet',
+        arguments: { tone: 'casual' },
+      }),
+    );
   },
 };
 
 export const GetsAPromptThatTakesNoArguments: Story = {
-  parameters: { api: { [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) }, [GET]: promptGetResult() } },
+  parameters: {
+    api: {
+      [LIST]: { serverPrompts: promptsResponse([prompt('standup')]) },
+      [GET]: { getServerPrompt: promptGetResult() },
+    },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('button', { name: /standup/ }));
     await expect(canvas.getByText('This prompt takes no arguments.')).toBeVisible();
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'standup', arguments: {} }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(GET, { name: 'filesystem', prompt: 'standup', arguments: {} }),
+    );
     await expect(await canvas.findByText('Result')).toBeVisible();
   },
 };
