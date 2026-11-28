@@ -6,8 +6,6 @@
     "moduleDetection": "force",
     "jsx": "react-jsx",
     "lib": ["DOM", "DOM.Iterable", "ES2023"],
-    "noEmit": true,
-    "rewriteRelativeImportExtensions": false,
     "useDefineForClassFields": true,
     "types": ["vite/client"],
     "paths": {

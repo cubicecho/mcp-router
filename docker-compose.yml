@@ -1,24 +1,28 @@
+# Builds the image from this checkout and runs it: `docker compose up -d --build`.
+# deploy/docker-compose.yml runs the published image instead.
+name: mcp-router
 services:
   mcp-router:
-    build: .
     image: mcp-router
+    build: .
+    restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '${PORT:-3000}:3000'
     # LAN discovery (finding servers on the network, and announcing the router)
     # uses mDNS multicast, which the default bridge network drops. For it to work,
     # replace `ports` with:
     # network_mode: host
-    volumes:
-      # Config files, installed server packages, and logs — hand-editable on
-      # the host; apply edits with POST /api/reload (or the Settings page).
-      - ./data:/data
+    # Config files, installed server packages, caches and logs. A named volume,
+    # because the container runs as node (uid 1000) and a bind mount keeps the
+    # host folder's owner. Edit the config with
+    # `docker compose exec mcp-router sh`, then POST /api/reload (or the Settings page).
+    volumes: [mcp_router_data:/data]
     environment:
       # Set a bearer token, OR set SECURE_LOCAL_NET=true to disable auth on a
       # trusted local network. If neither is set, a token is generated into
-      # data/config/settings.json on first run and printed to the logs.
+      # /data/config/settings.json on first run and printed to the logs.
       MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
-      SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-}
-    restart: unless-stopped
+      SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
     healthcheck:
       # /healthz needs no token and answers 200 once the server is listening.
       test:
@@ -26,9 +30,11 @@ services:
           'CMD',
           'node',
           '-e',
-          'fetch("http://localhost:" + (process.env.PORT || 3000) + "/healthz").then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))',
+          "fetch('http://127.0.0.1:'+(process.env.PORT||3000)+'/healthz').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
       interval: 30s
       timeout: 5s
       start_period: 15s
       retries: 3
+volumes:
+  mcp_router_data:

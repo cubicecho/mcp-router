@@ -12,8 +12,7 @@ import { claimPidLock } from './lock.ts';
 import { relations } from './relations.ts';
 
 /**
- * The committed migrations, in the server package's `drizzle/` folder. This module is `src/db/` in dev and `dist/db/`
- * in production, so two levels up is the package root either way.
+ * The committed migrations, in the server package's `drizzle/` folder, two levels up from this module's `src/db/`.
  */
 const MIGRATIONS_FOLDER = fileURLToPath(new URL('../../drizzle', import.meta.url));
 

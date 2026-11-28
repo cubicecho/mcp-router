@@ -1,7 +1,8 @@
 # MCP Router for QNAP Container Station 3: Applications → Create, paste this in.
 #
 # Container Station does not read .env files, so the values are written inline:
-#   1. In File Station, create the folder Container/mcp-router/data.
+#   1. In File Station, create the folder Container/mcp-router/data. The container
+#      runs as uid 1000, so over SSH: sudo chown 1000:1000 /share/Container/mcp-router/data
 #   2. Replace change-me with a long random token (`openssl rand -hex 32`).
 #      The router refuses to start while it is still change-me.
 #   3. If port 3000 is taken on the NAS, change the left-hand number.

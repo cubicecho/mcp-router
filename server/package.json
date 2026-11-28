@@ -5,7 +5,6 @@
   "type": "module",
   "scripts": {
     "dev": "DATA_DIR=../data PORT=3001 node --env-file-if-exists=../.env --watch src/index.ts",
-    "build": "tsc -p tsconfig.json",
     "test": "vitest run",
     "codegen": "node src/graphql/write-schema.ts",
     "db:generate": "drizzle-kit generate",

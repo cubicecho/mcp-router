@@ -12,7 +12,7 @@
     "isolatedModules": true,
     "verbatimModuleSyntax": true,
     "allowImportingTsExtensions": true,
-    "rewriteRelativeImportExtensions": true,
+    "noEmit": true,
     "erasableSyntaxOnly": true,
     "noUncheckedIndexedAccess": true,
     "noUnusedLocals": true,
