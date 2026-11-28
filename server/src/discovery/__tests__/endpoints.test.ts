@@ -4,6 +4,8 @@ import path from 'node:path';
 import { cardConnection, parseAiCatalog, parseServerCard } from '@cubicecho/mcp-discovery';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
 import type { Database } from '../../db/client.ts';
@@ -15,6 +17,7 @@ describe('discovery documents', () => {
   let dataDir: string;
   let store: ConfigStore;
   let database: Database;
+  let authHost: AuthHost;
   let manager: GatewayManager;
   let app: ReturnType<typeof createApp>;
 
@@ -49,7 +52,8 @@ describe('discovery documents', () => {
     });
     await store.saveWorkspace({ name: 'Team', slug: 'team', enabled: true, members: {} });
     manager = new GatewayManager(() => store.getSettings());
-    app = createApp({ db: database.db, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
+    authHost = await createTestAuthHost(database.db);
+    app = createApp({ db: database.db, authHost, store, manager, appDistDir: path.join(dataDir, 'no-such-dist') });
   });
 
   afterEach(async () => {
@@ -81,18 +85,15 @@ describe('discovery documents', () => {
     expect(aggregate._meta?.[ROUTER_ROLE_META_KEY]).toBe('aggregate');
   });
 
-  it('asks for the router token when auth is on, and points at the address the client used', async () => {
+  it('asks for an API key, and points at the address the client used', async () => {
     const response = await request(app).get('/mcp/w/team/server-card').set('Host', 'nas.local:3000');
     expect(cardConnection(parseServerCard(response.body, 'test'))).toEqual({
       url: 'http://nas.local:3000/mcp/w/team',
       requiredHeaders: ['Authorization'],
     });
-    await store.updateSettings({ authEnabled: false });
-    const open = await request(app).get('/mcp/w/team/server-card');
-    expect(cardConnection(parseServerCard(open.body, 'test'))?.requiredHeaders).toEqual([]);
   });
 
-  it('keeps /mcp itself behind the token', async () => {
+  it('keeps /mcp itself behind an API key', async () => {
     expect((await request(app).post('/mcp').send({})).status).toBe(401);
   });
 });

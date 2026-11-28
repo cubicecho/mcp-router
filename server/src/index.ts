@@ -1,15 +1,20 @@
 import { createAdvertiser, watchServers } from '@cubicecho/mcp-discovery/mdns';
 import { TRANSPORT_STREAMABLE_HTTP } from '@mcp-router/shared';
+import { createAuthHost } from './auth/auth-host.ts';
+import { ImportedFrom } from './auth/keys.ts';
+import { carryOverRouterTokens } from './auth/router-token.ts';
 import {
-  authDisabledByEnv,
   databaseUrl,
   dbConnectTimeoutMs,
   dataDir as envDataDir,
-  envToken,
   isProduction,
   listenHost,
   listenPort,
-  refusePlaceholderToken,
+  oidcRedirectUri,
+  publicLocalNetError,
+  refuseBadAuthConfig,
+  routerUrl,
+  secureLocalNet,
 } from './config/env.ts';
 import { ConfigStore } from './config/store.ts';
 import { openDatabase } from './db/client.ts';
@@ -32,7 +37,7 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
 async function main(): Promise<void> {
   // First, so a router with no Postgres fails with a sentence before anything opens.
   const url = databaseUrl();
-  refusePlaceholderToken();
+  refuseBadAuthConfig();
   const dataDir = envDataDir();
   const database = openDatabase(url, { isProduction: isProduction() });
   try {
@@ -44,6 +49,36 @@ async function main(): Promise<void> {
   console.log(`[db] using ${database.location}`);
   const store = new ConfigStore({ db: database.db, dataDir });
   await store.init();
+
+  // Whoever opens the UI on a trusted network is the admin, so the router's address must be a private one.
+  const exposed = publicLocalNetError(routerUrl(store.getSettings()));
+  if (exposed !== undefined) {
+    throw new Error(`[auth] ${exposed}`);
+  }
+  // The old router token becomes an API key, so MCP clients configured with it keep working.
+  const carried = await carryOverRouterTokens(database.db, store);
+  for (const from of carried.imported) {
+    const where = from === ImportedFrom.Env ? 'MCP_ROUTER_TOKEN' : 'the stored router token';
+    console.log(`[auth] imported ${where} as an API key; clients configured with it keep working`);
+  }
+  if (carried.wasAuthDisabled) {
+    console.warn(
+      '[auth] authEnabled is false in the settings, which no longer turns auth off: /mcp takes an API key, and the UI a ' +
+        'sign-in. Set SECURE_LOCAL_NET=true on a private network to sign the UI in without a provider.',
+    );
+  }
+  const authHost = await createAuthHost(database.db, { baseUrl: () => routerUrl(store.getSettings()) });
+  // better-auth is built for one address: a new publicUrl needs a new instance. Sessions are rows, so nobody is signed out.
+  let builtFor = authHost.baseUrl();
+  store.on('change', () => {
+    const next = routerUrl(store.getSettings());
+    if (next !== builtFor) {
+      builtFor = next;
+      authHost.rebuild().catch((error: unknown) => {
+        console.error('[auth] could not rebuild sign-in for the new publicUrl:', error);
+      });
+    }
+  });
 
   const oauth = new OAuthService(store);
   const manager = new GatewayManager(() => store.getSettings(), oauth);
@@ -87,22 +122,10 @@ async function main(): Promise<void> {
     console.warn(`[discovery] lanAdvertise is on, but the router listens on ${host} only, so it is not announced`);
   }
 
-  const app = createApp({ store, manager, oauth, lanServers, db: database.db });
+  const app = createApp({ store, manager, oauth, lanServers, db: database.db, authHost });
   const onListen = () => {
     console.log(`[server] listening on http://${host ?? 'localhost'}:${port} (data dir: ${dataDir})`);
-    const settings = store.getSettings();
-    if (authDisabledByEnv()) {
-      console.warn(
-        '[auth] SECURE_LOCAL_NET is on: /graphql, /admin/mcp and /mcp are open to this network. Private networks only.',
-      );
-    } else if (settings.authEnabled === false) {
-      console.warn('[auth] authEnabled is false in the settings: /graphql, /admin/mcp and /mcp are open.');
-    } else if (envToken() !== undefined) {
-      console.log('[auth] bearer token from MCP_ROUTER_TOKEN, which overrides the stored one');
-    } else {
-      // Where it is, never the token: boot logs are kept and shipped, and the token is printed once, when it is generated.
-      console.log(`[auth] bearer token is auth_token in the settings table of ${database.location}`);
-    }
+    logSignIn(authHost.oidc(), authHost.baseUrl());
     // After listen, so whoever finds the announcement can already read the catalog.
     void advertiser.sync();
     void lanServers.sync();
@@ -122,6 +145,30 @@ async function main(): Promise<void> {
       await database.close();
     },
   });
+}
+
+/**
+ * Says at boot how people sign in to the UI, and warns when nobody can.
+ *
+ * @param oidc - The provider sign-in uses, or null.
+ * @param baseUrl - The router's address.
+ */
+function logSignIn(oidc: { name: string; issuer: string } | null, baseUrl: string): void {
+  console.log(`[auth] router address ${baseUrl}; MCP clients and agents send an API key, made in Settings`);
+  if (secureLocalNet()) {
+    console.warn(
+      '[auth] SECURE_LOCAL_NET is on: whoever opens the UI is signed in as the local admin. Private networks only.',
+    );
+  }
+  if (oidc !== null) {
+    console.log(`[auth] sign-in with ${oidc.name} (${oidc.issuer}); redirect URI ${oidcRedirectUri(baseUrl)}`);
+  }
+  if (oidc === null && secureLocalNet() === false) {
+    console.warn(
+      '[auth] no way to sign in to the UI yet: paste a setup URL from your OIDC provider on the login page, set ' +
+        'OIDC_ISSUER and OIDC_CLIENT_ID, or set SECURE_LOCAL_NET=true on a private network.',
+    );
+  }
 }
 
 main().catch((err: unknown) => {

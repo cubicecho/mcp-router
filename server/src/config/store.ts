@@ -1,4 +1,3 @@
-import { randomBytes } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { hostname } from 'node:os';
 import path from 'node:path';
@@ -13,8 +12,6 @@ import {
   workspaceConfigSchema,
 } from '@mcp-router/shared';
 import { asc, eq } from 'drizzle-orm';
-import { effectiveAuth } from '../auth/middleware.ts';
-import { CONFIG_DEFAULTS } from '../core/defaults.ts';
 import { errorMessage } from '../core/errors.ts';
 import type { DB } from '../db/client.ts';
 import { registries } from '../db/tables/registries.ts';
@@ -276,13 +273,9 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
   }
 
   /**
-   * Reads the settings row, storing it when a bearer token or the instance id had to be filled in.
+   * Reads the settings row, storing it when the instance id had to be filled in.
    *
    * @returns The settings. Throws when the row fails validation.
-   *
-   * @remarks
-   * A token is generated, and printed that one time, when auth is on and neither the row nor `MCP_ROUTER_TOKEN`
-   * holds one.
    */
   private async loadSettings(): Promise<SettingsFile> {
     const row = await this.readSettingsRow();
@@ -293,18 +286,11 @@ export class ConfigStore extends EventEmitter<{ change: [ConfigState] }> {
       throw new Error(`The settings row failed validation: ${errorMessage(cause)}`, { cause });
     }
     const next = { ...loaded };
-    const auth = effectiveAuth(next);
-    // Auth is on and neither the settings nor MCP_ROUTER_TOKEN holds a token.
-    if (auth.enabled && !auth.token) {
-      next.authToken = randomBytes(CONFIG_DEFAULTS.authTokenBytes).toString('hex');
-      // The one time the token is printed: first run, when nobody has seen it yet.
-      console.log(`[auth] generated a bearer token and saved it in the settings table:\n  ${next.authToken}`);
-    }
     // Kept once written, so renaming the machine does not change the router's identity on the network.
     if (next.instanceId === undefined) {
       next.instanceId = hostSlug(hostname(), FALLBACK_INSTANCE_ID);
     }
-    const isChanged = row === undefined || next.authToken !== loaded.authToken || next.instanceId !== loaded.instanceId;
+    const isChanged = row === undefined || next.instanceId !== loaded.instanceId;
     if (isChanged) {
       await this.writeSettings(next);
     }

@@ -68,13 +68,12 @@ export const LanServerStateType = enumOf(
 
 export const RouterStatusType = new GraphQLObjectType({
   name: 'RouterStatus',
-  description: "The router's own status: version, uptime, server counts and whether auth is on.",
+  description: "The router's own status: version, uptime and server counts.",
   fields: {
     version: { type: required(GraphQLString) },
     uptimeSeconds: { type: required(GraphQLInt) },
     serverCount: { type: required(GraphQLInt) },
     runningCount: { type: required(GraphQLInt) },
-    authEnabled: { type: required(GraphQLBoolean) },
     idleTimeoutMs: { type: required(GraphQLFloat), description: 'Default idle shutdown for stdio children, in ms.' },
     publicUrl: { type: GraphQLString },
     instanceId: { type: required(GraphQLString), description: "This router's name on the network." },

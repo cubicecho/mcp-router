@@ -101,6 +101,9 @@ jobs:
       # (depends_on: service_healthy), then the router's /healthz once it has migrated the database.
       - name: Start the stack
         run: docker compose up -d --no-build --wait --wait-timeout 180
+        env:
+          # The image runs in production, which refuses to start without a strong session secret. Throwaway.
+          BETTER_AUTH_SECRET: ci-boot-only-secret-0123456789abcdef0123456789abcdef
       - name: Check /healthz
         run: curl -fsS http://127.0.0.1:3000/healthz
       - name: Logs

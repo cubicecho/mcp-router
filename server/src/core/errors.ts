@@ -14,6 +14,7 @@ const STATUS_BY_CODE = {
   [ErrorCode.Unavailable]: HttpStatus.ServiceUnavailable,
   [ErrorCode.UpstreamTimeout]: HttpStatus.GatewayTimeout,
   [ErrorCode.QueryTooComplex]: HttpStatus.BadRequest,
+  [ErrorCode.TooManyRequests]: HttpStatus.TooManyRequests,
 } as const satisfies Record<ErrorCode, HttpStatus>;
 
 /** An error carrying an error code; rendered as the envelope { error, code, detail? } with the code's HTTP status. */
@@ -140,6 +141,17 @@ export function errorDetailMessage(err: unknown): string {
 export function codedError(code: ErrorCode, message: string, detail?: string): GraphQLError {
   const extensions = detail ? { code, detail } : { code };
   return new GraphQLError(message, { extensions });
+}
+
+/**
+ * Builds the error a throttled sign-in attempt is refused with.
+ *
+ * @param message - Says how long to wait, in words.
+ * @param retryAfterSeconds - The same, in `extensions.retryAfter`, for a client that waits by itself.
+ * @returns The error, for the caller to throw.
+ */
+export function rateLimited(message: string, retryAfterSeconds: number): GraphQLError {
+  return new GraphQLError(message, { extensions: { code: ErrorCode.TooManyRequests, retryAfter: retryAfterSeconds } });
 }
 
 /**

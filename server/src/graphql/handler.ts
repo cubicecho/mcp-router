@@ -1,8 +1,11 @@
+import { ErrorCode } from '@mcp-router/shared';
 import type { Request } from 'express';
 import type { GraphQLSchema } from 'graphql';
 import { createYoga } from 'graphql-yoga';
+import { ConflictingKeysError } from '../auth/caller.ts';
 import { isProduction } from '../config/env.ts';
 import type { Context, ContextFactory } from '../core/context.ts';
+import { codedError } from '../core/errors.ts';
 import { graphqlLogger } from './logger.ts';
 import { operationLimitsPlugin } from './operation-limits.ts';
 
@@ -30,7 +33,13 @@ export function createGraphQLHandler(schema: GraphQLSchema, contextFor: ContextF
     // Masked errors are logged here with their real cause. Variables never are.
     logging: graphqlLogger,
     plugins: [operationLimitsPlugin()],
-    // Express's view of the client.
-    context: ({ request, req }) => contextFor(request.headers, req?.ip),
+    context: async ({ request, req }) => {
+      try {
+        // Express's view of the client, which honours TRUST_PROXY.
+        return await contextFor(request.headers, req?.ip);
+      } catch (error) {
+        throw error instanceof ConflictingKeysError ? codedError(ErrorCode.BadUserInput, error.message) : error;
+      }
+    },
   });
 }

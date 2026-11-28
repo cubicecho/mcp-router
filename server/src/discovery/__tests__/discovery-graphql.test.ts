@@ -5,6 +5,8 @@ import { createServerCard } from '@cubicecho/mcp-discovery';
 import { type ServerWatchHandlers, toMcpHost } from '@cubicecho/mcp-discovery/mdns';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost, mintTestKey, signInTestOperator } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
 import type { Database } from '../../db/client.ts';
@@ -21,6 +23,7 @@ describe('LAN discovery over /graphql', () => {
   let database: Database;
   let manager: GatewayManager;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
@@ -35,7 +38,8 @@ describe('LAN discovery over /graphql', () => {
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-lan-'));
     await resetTestDb(database);
     store = await createTestStore(database, dataDir);
-    token = store.getSettings().authToken ?? '';
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     manager = new GatewayManager(() => store.getSettings());
     let handlers: ServerWatchHandlers | undefined;
     const lanServers = createLanServers({
@@ -65,7 +69,14 @@ describe('LAN discovery over /graphql', () => {
       cardUrl: null,
       connection: { url: FOUND_URL, requiredHeaders: [] },
     });
-    app = createApp({ db: database.db, store, manager, lanServers, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({
+      db: database.db,
+      authHost,
+      store,
+      manager,
+      lanServers,
+      appDistDir: path.join(dataDir, 'no-such-dist'),
+    });
   });
 
   afterEach(async () => {
@@ -92,7 +103,8 @@ describe('LAN discovery over /graphql', () => {
   const LAN_SERVERS = '{ lanServers { enabled servers { key cardName suggestedName url state serverName } } }';
 
   it('lists what was found, behind the token', async () => {
-    expect((await request(app).post('/graphql').send({ query: LAN_SERVERS })).status).toBe(401);
+    const anonymous = await request(app).post('/graphql').send({ query: LAN_SERVERS });
+    expect(anonymous.body.errors[0].extensions.code).toBe('UNAUTHENTICATED');
     const { lanServers } = await gql(LAN_SERVERS);
     expect(lanServers).toMatchObject({
       enabled: true,
@@ -131,9 +143,16 @@ describe('LAN discovery over /graphql', () => {
     const { routerStatus } = await gql('{ routerStatus { lanAdvertise lanDiscovery instanceId } }');
     expect(routerStatus).toMatchObject({ lanAdvertise: false, lanDiscovery: true });
     expect(routerStatus.instanceId).toMatch(/^[a-z0-9][a-z0-9-]*$/);
-    const { updateSetting } = await gql(
-      'mutation { updateSetting(set: { lanAdvertise: true }, where: { id: { eq: 1 } }) { lanAdvertise lanDiscovery } }',
-    );
-    expect(updateSetting).toEqual({ lanAdvertise: true, lanDiscovery: true });
+    // The settings are a person's to change, not an API key's.
+    const edit =
+      'mutation { updateSetting(set: { lanAdvertise: true }, where: { id: { eq: 1 } }) { lanAdvertise lanDiscovery } }';
+    const { errors } = (await request(app).post('/graphql').set('x-api-key', token).send({ query: edit })).body;
+    expect(errors[0].extensions.code).toBe('FORBIDDEN');
+    const { token: session } = await signInTestOperator(database.db, authHost);
+    const asOperator = await request(app)
+      .post('/graphql')
+      .set('Authorization', `Bearer ${session}`)
+      .send({ query: edit });
+    expect(asOperator.body.data.updateSetting).toEqual({ lanAdvertise: true, lanDiscovery: true });
   });
 });

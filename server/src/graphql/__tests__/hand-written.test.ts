@@ -256,8 +256,8 @@ describe('hand-written router fields', () => {
   });
 
   it("answers the router's status", async () => {
-    const { routerStatus } = await harness.expectOk('{ routerStatus { serverCount runningCount authEnabled } }');
-    expect(routerStatus).toEqual({ serverCount: 0, runningCount: 0, authEnabled: true });
+    const { routerStatus } = await harness.expectOk('{ routerStatus { serverCount runningCount } }');
+    expect(routerStatus).toEqual({ serverCount: 0, runningCount: 0 });
   });
 
   it("browses a registry's servers, passing the page size on", async () => {

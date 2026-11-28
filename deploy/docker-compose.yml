@@ -26,12 +26,21 @@ services:
       # The router's config database. Required: boot refuses to start without it.
       # Point it at your own Postgres instead to drop the service below.
       DATABASE_URL: ${DATABASE_URL:-postgres://mcp_router:${POSTGRES_PASSWORD:-mcp_router}@postgres:5432/mcp_router}
-      # The bearer token for the web UI, the API and every MCP endpoint. Generate
-      # one with `openssl rand -hex 32`. Left empty, a token is generated into the
-      # database on first run and printed once to the container log.
-      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
-      # true turns auth off entirely. Only on a network you trust.
+      # Signs UI sessions. Required: the image runs in production, where the
+      # router refuses to start without a strong one. `openssl rand -hex 32`.
+      BETTER_AUTH_SECRET: ${BETTER_AUTH_SECRET:?set BETTER_AUTH_SECRET, e.g. openssl rand -hex 32}
+      # true: whoever opens the web UI is signed in as the local admin, with no
+      # OIDC provider. Only on a network you trust. MCP clients still need an API
+      # key, made in the UI's Settings.
       SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
+      # Or sign in through an OIDC provider (or paste its setup URL on the login
+      # page instead). See .env.example for the rest of the OIDC_* variables.
+      OIDC_ISSUER: ${OIDC_ISSUER:-}
+      OIDC_CLIENT_ID: ${OIDC_CLIENT_ID:-}
+      OIDC_CLIENT_SECRET: ${OIDC_CLIENT_SECRET:-}
+      # Optional: the old router token, imported on boot as an API key so clients
+      # configured with it keep working.
+      MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
     restart: unless-stopped
   postgres:
     image: postgres:17-alpine

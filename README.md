@@ -37,7 +37,8 @@ services:
       - ./data:/data
     environment:
       DATABASE_URL: postgres://mcp_router:pg-change-me@postgres:5432/mcp_router
-      MCP_ROUTER_TOKEN: change-me # replace with a long random value: openssl rand -hex 32
+      BETTER_AUTH_SECRET: change-me # replace with a long random value: openssl rand -hex 32
+      SECURE_LOCAL_NET: 'true' # on a private network: opening the UI signs you in. See Authentication
     restart: unless-stopped
   postgres:
     image: postgres:17-alpine
@@ -61,21 +62,23 @@ volumes:
 docker compose up -d
 ```
 
-Open http://localhost:3000, sign in with your token, and install a server from the **Browse** page. Then
-[connect your client](#connecting-mcp-clients).
+Open http://localhost:3000. With `SECURE_LOCAL_NET=true` you are signed in as the local admin; otherwise
+sign in through your OIDC provider (see [Authentication](#authentication)). Install a server from the
+**Browse** page, make an API key under **Settings → API keys**, and
+[connect your client](#connecting-mcp-clients) with it.
 
 The config (settings, servers, workspaces, secrets) lives in Postgres. Installed server packages and caches
 live in `./data`, which must stay writable by uid 1000: a folder an older image wrote to (they ran as root)
 needs `sudo chown -R 1000:1000 data`. The router refuses to start without a `postgres://` `DATABASE_URL`, and
-while the token is still `change-me`. Leave `MCP_ROUTER_TOKEN` out entirely and it generates one into its
-database, printing it once to the log (`docker compose logs`).
+without a strong `BETTER_AUTH_SECRET` (at least 32 characters, not a published placeholder).
 
 Or without compose, against a Postgres you already run:
 
 ```bash
 docker run -d -p 3000:3000 -v ./data:/data \
   -e DATABASE_URL=postgres://mcp_router:secret@192.168.1.20:5432/mcp_router \
-  -e MCP_ROUTER_TOKEN=your-secret-token \
+  -e BETTER_AUTH_SECRET="$(openssl rand -hex 32)" \
+  -e SECURE_LOCAL_NET=true \
   vantreeseba/mcp-router:latest
 ```
 
@@ -105,29 +108,75 @@ Ready-made files are in [`deploy/`](deploy/README.md):
 - **The data folder must be writable by uid 1000.** The image no longer runs as root, so give a folder an older
   image wrote to to its `node` user: `sudo chown -R 1000:1000 data`.
 
+### Upgrading from the router token
+
+The single bearer token is replaced by a sign-in for the UI and API keys for MCP clients and agents.
+
+- **Your token keeps working.** On boot the router imports the token it kept in its settings as an API key
+  with the same value, named "Imported router token", and clears the stored copy. `MCP_ROUTER_TOKEN`, when set,
+  is imported the same way (named "MCP_ROUTER_TOKEN"). MCP clients configured with either need no change.
+  Revoke them from **Settings → API keys** once your clients use keys of their own. A revoked
+  `MCP_ROUTER_TOKEN` key comes back on the next boot while the variable is still set, so unset it first.
+- **Set `BETTER_AUTH_SECRET`.** The image runs with `NODE_ENV=production`, where the router refuses to start
+  without a strong secret: `openssl rand -hex 32`.
+- **Sign in to the UI** through an OIDC provider, or set `SECURE_LOCAL_NET=true` on a private network. The UI
+  no longer asks for the token. For OIDC, set `publicUrl` in Settings (or before, from the API) to the
+  address your browser uses.
+- **`SECURE_LOCAL_NET` no longer opens `/mcp`.** It signs whoever opens the UI in as the local admin; MCP
+  clients still need an API key (the imported token is one).
+- **`authEnabled: false` is ignored**, with a warning at boot. Use `SECURE_LOCAL_NET=true` for a router on a
+  trusted network.
+
+## Authentication
+
+**People sign in to the UI**, and their sessions live in Postgres, so a restart signs nobody out. There are
+two ways:
+
+- **An OIDC provider** (heautou, Keycloak, Authentik, ...). Either set `OIDC_ISSUER` and `OIDC_CLIENT_ID` (plus
+  `OIDC_CLIENT_SECRET` for a confidential client, `OIDC_CLIENT_AUTH` and `OIDC_NAME` for the button), or leave
+  them unset and paste a setup URL from your provider on the login page (on a new router) or in Settings (as
+  the admin): the router registers itself with the provider by Dynamic Client Registration. The environment
+  wins and can't be changed from the UI. The redirect URI is `<publicUrl>/api/auth/callback/oidc`, so set
+  `publicUrl` in Settings to the address your browser uses. The first person to sign in becomes the admin,
+  the only one who may pair or disconnect the provider afterwards.
+- **`SECURE_LOCAL_NET=true`**: whoever opens the UI is signed in as the local admin, with no provider. Only on
+  a network nothing hostile can reach. The router refuses to start with it when `publicUrl` is not a private
+  address, unless `I_KNOW_SECURE_LOCAL_NET_IS_PUBLIC=true`.
+
+Sessions are signed with `BETTER_AUTH_SECRET`, which production requires (at least 32 characters:
+`openssl rand -hex 32`). Sign-in attempts are throttled per client address; behind a reverse proxy set
+`TRUST_PROXY` (for example `1`) so the router sees the real address.
+
+**Machines use API keys.** Make one under **Settings → API keys**; it is shown once, and only its hash is kept.
+Send it as `Authorization: Bearer <api-key>` or `x-api-key: <api-key>`. The proxied MCP endpoints (`/mcp`,
+`/mcp/<name>`, `/mcp/w/<slug>`) take a key and nothing else: a UI session never opens them. On `/graphql` and
+`/admin/mcp` a key is an agent, which may do everything the router is for (servers, workspaces, registries,
+tool calls) except manage API keys, read or end sessions, change how people sign in, and edit the settings.
+Those are for a signed-in person, so a leaked key can't mint its successor.
+
 ## Connecting MCP clients
 
-All MCP endpoints speak streamable HTTP and require the bearer token (unless auth is off).
+All MCP endpoints speak streamable HTTP and require an API key (see [Authentication](#authentication)).
 
 **Claude Code**, the aggregate endpoint (every enabled server, tools named `<server>__<tool>`):
 
 ```bash
 claude mcp add --transport http router http://localhost:3000/mcp \
-  --header "Authorization: Bearer <token>"
+  --header "Authorization: Bearer <api-key>"
 ```
 
 Or a single server, without the prefix:
 
 ```bash
 claude mcp add --transport http github http://localhost:3000/mcp/github \
-  --header "Authorization: Bearer <token>"
+  --header "Authorization: Bearer <api-key>"
 ```
 
 Or a workspace, which holds just the servers that client should see:
 
 ```bash
 claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assistant \
-  --header "Authorization: Bearer <token>"
+  --header "Authorization: Bearer <api-key>"
 ```
 
 **Other clients:** any client that supports streamable HTTP works. The usual JSON config shape:
@@ -139,7 +188,7 @@ claude mcp add --transport http coding http://localhost:3000/mcp/w/coding-assist
       "type": "http",
       "url": "http://localhost:3000/mcp",
       "headers": {
-        "Authorization": "Bearer <token>"
+        "Authorization": "Bearer <api-key>"
       }
     }
   }
@@ -163,7 +212,7 @@ process contributes nothing until it does, so reconnect after it wakes to pick t
   subscriptions. Downstream `list_changed`, resource-update and log notifications are relayed over a stateful
   session, and a dropped SSE stream resumes without a gap via `Last-Event-ID`. A server's elicitation is put
   to the session whose call asked for it. Sampling and roots are not proxied yet
-- One bearer token guards the management API and all MCP endpoints
+- A sign-in (OIDC, or the local admin on a trusted network) for the UI, and API keys for MCP clients and agents
 - Config lives in Postgres (`DATABASE_URL`), migrated on every boot. A router upgraded from the file-based
   config imports `DATA_DIR/config` on its first boot and renames the files `*.imported`
 
@@ -190,7 +239,7 @@ MCP Router keeps the tokens in its database (like other secrets, plaintext, neve
 the web UI) and refreshes them on its own. **Sign out** on the server's page forgets them.
 
 The login sends your browser back to `<router>/oauth/callback`. Servers that identify clients by URL (Home
-Assistant does) fetch `<router>/oauth/client-metadata.json`. Both are served without the bearer token. The
+Assistant does) fetch `<router>/oauth/client-metadata.json`. Both are served without a credential. The
 server must be able to reach that address, so set `publicUrl` on the Settings page when
 the router is reached by a different name than the one in your browser. Home Assistant's login also checks
 that the URL you use for it matches its configured Internal or External URL.
@@ -203,7 +252,7 @@ add or edit dialog and enter its client ID and secret.
 The router describes its endpoints so other tools can find them without being given each URL:
 `GET /.well-known/ai-catalog.json` lists the aggregate, every enabled server and every enabled workspace, each
 with an [MCP Server Card](https://modelcontextprotocol.io/seps/2127-mcp-server-cards) at
-`<endpoint>/server-card`. Both are public. A card says when the bearer token is needed but never carries it.
+`<endpoint>/server-card`. Both are public. A card says an API key is needed but never carries one.
 
 With **Look for servers on the network** on (the default), the router watches for MCP servers other machines
 announce over mDNS, such as [mcp-skills-manager](https://github.com/cubicecho/mcp-skills-manager) with its
@@ -227,8 +276,11 @@ The main environment variables:
 
 | Variable | |
 | --- | --- |
-| `MCP_ROUTER_TOKEN` | The bearer token. Generated into the database when unset |
-| `SECURE_LOCAL_NET` | `true` turns auth off. Only on a network you trust |
+| `BETTER_AUTH_SECRET` | Signs sessions. Required in production: `openssl rand -hex 32` |
+| `SECURE_LOCAL_NET` | `true` signs whoever opens the UI in as the local admin. Only on a network you trust |
+| `OIDC_ISSUER` / `OIDC_CLIENT_ID` | Sign in through this OIDC provider (or pair one from the login page) |
+| `TRUST_PROXY` | How many proxies to believe `X-Forwarded-For` from, for the sign-in throttle |
+| `MCP_ROUTER_TOKEN` | Optional. Imported on boot as an API key with this value |
 | `PORT` / `HOST` | Where to listen (default `3000` on all interfaces) |
 | `DATABASE_URL` | Required. The `postgres://` (or `postgresql://`) URL of the router's Postgres |
 | `DATA_DIR` | Where installed server packages and caches live (`/data` in the image) |
@@ -240,13 +292,14 @@ endpoints are in [docs/api.md](docs/api.md).
 ## Security notes
 
 - **Secrets are stored in plaintext** in the database: `env` values, remote-transport headers, OAuth
-  tokens and client secrets, and the auth token. Anyone who can read the Postgres database, its volume or
+  tokens and client secrets, and the OIDC pairing's client secret. API keys and sessions are stored as hashes or
+  random tokens. Anyone who can read the Postgres database, its volume or
   a dump of it can read them. Protect it accordingly and keep backups equally private.
-- **One bearer token guards everything** (`/graphql`, `/admin/mcp` and `/mcp*`). Treat it like a password. Setting
-  `authEnabled: false` in the settings, or `SECURE_LOCAL_NET=true` in the environment, turns auth off
-  entirely. Only do that on a trusted network. The `/mcp` Origin guard still applies with auth off, so a
-  malicious web page can't reach the endpoints through DNS rebinding.
-- **Do not expose the router directly to the internet.** It speaks plain HTTP, so the bearer token would
+- **An API key is a password.** It opens every MCP endpoint, and the management API short of keys, sessions,
+  sign-in setup and settings. Give each client its own and revoke one that leaks. `SECURE_LOCAL_NET=true`
+  makes the network the credential for the UI: only on a trusted network. The `/mcp` Origin guard applies
+  either way, so a malicious web page can't reach the endpoints through DNS rebinding.
+- **Do not expose the router directly to the internet.** It speaks plain HTTP, so keys and sessions would
   travel in cleartext. Put it behind a TLS-terminating reverse proxy (Caddy, nginx, Traefik) if it must be
   reachable remotely, and otherwise bind it to localhost or a private network.
 - Installed servers run as child processes of the router with the env vars you configure. Installing a
@@ -254,7 +307,7 @@ endpoints are in [docs/api.md](docs/api.md).
 - **The Activity tab keeps recent request and response bodies in memory.** For debugging, the router keeps
   the newest 200 proxied calls per server, including tool arguments and results, which may contain sensitive
   data. They are bounded, never written to disk, cleared when the server is removed or the process exits, and
-  clearable from the UI. Anyone with the bearer token can read them through GraphQL's `serverActivity`.
+  clearable from the UI. Anyone with an API key or a session can read them through GraphQL's `serverActivity`.
 
 ## Limitations
 
@@ -288,7 +341,7 @@ npm install
 npm run db:up    # a Postgres for development, on localhost:5433 (docker-compose.dev.yml)
 npm run build
 DATABASE_URL=postgres://mcp_router:mcp_router@localhost:5433/mcp_router \
-  MCP_ROUTER_TOKEN=your-secret-token npm start
+  BETTER_AUTH_SECRET="$(openssl rand -hex 32)" SECURE_LOCAL_NET=true npm start
 ```
 
 The server listens on port 3000 and serves the built web UI, with its config in that Postgres and installed

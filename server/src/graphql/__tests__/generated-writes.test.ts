@@ -105,7 +105,7 @@ describe('generated CRUD', () => {
     // The store's first boot seeded the settings row, so the update has a row to change.
     const edit = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { lanAdvertise: true }) { lanAdvertise } }`;
     expect((await harness.expectOk(edit)).updateSetting).toEqual({ lanAdvertise: true });
-    const locked = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { authEnabled: false }) { authEnabled } }`;
+    const locked = `mutation { updateSetting(where: { id: { eq: 1 } }, set: { port: 1 }) { port } }`;
     const { code } = await harness.expectError(locked);
     expect(code).toBe(ErrorCode.BadUserInput);
   });

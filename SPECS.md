@@ -12,9 +12,9 @@ in Postgres (`DATABASE_URL`, required).
 | --- | --- |
 | Exposure | Per-server routes `/mcp/<name>` **and** aggregate `/mcp` with namespaced tools (`<server>__<tool>`) **and** per-workspace custom aggregates `/mcp/w/<slug>` |
 | Workspaces | Custom aggregates: a named subset of servers at `/mcp/w/<slug>` (slug auto-derived from name); per-member `env`/`args`/`headers`/`url` overrides; each member runs as an isolated downstream instance (key `w:<slug>:<server>`), so a workspace scope is fully independent of a server's global enabled state; effective enabled = `workspace.enabled && member.enabled` |
-| Auth | Single bearer token (env `MCP_ROUTER_TOKEN` or generated into the settings row on first run); protects `/graphql`, `/admin/mcp` and `/mcp*`; can be disabled via `authEnabled: false` or the `SECURE_LOCAL_NET=true` env var (trusted-network escape hatch, overrides settings) |
+| Auth | better-auth ^1.7 over the same Postgres (`server/src/auth/`), as ai-router does it. **People** sign in to the UI through an OIDC provider (better-auth `genericOAuth`: `OIDC_ISSUER`/`OIDC_CLIENT_ID` in the environment, which wins, or one paired from a setup URL by Dynamic Client Registration and kept in `oidc_settings`); the callback hands the UI a one-time token it swaps for a bearer session over GraphQL (`verifyOneTimeToken`); sessions live in Postgres. `SECURE_LOCAL_NET=true` signs whoever opens the UI in as the local admin (`signInOnTrustedNetwork`), and boot refuses it when `publicUrl` is not a private address unless `I_KNOW_SECURE_LOCAL_NET_IS_PUBLIC=true`. **Machines** (agents, MCP clients) send an `@better-auth/api-key` key as `Authorization: Bearer` or `x-api-key`. The caller role comes from the credential, read once in `createContextFactory`: a session is `operator`, a key `agent`, neither nobody. The proxied `/mcp*` take a key only. An agent may do everything but manage keys, read or end sessions, change sign-in and edit settings. Who may pair a provider: the admin (the first account), or anyone while there are no accounts. Sign-in steps are throttled per address (`ctx.limiter`). better-auth's REST routes are not mounted: its endpoints are GraphQL fields (`@cubicecho/graphql-better-auth`), and only the OIDC start and callback are Express routes. The old router token (`settings.authToken`, `MCP_ROUTER_TOKEN`) is imported on boot as an API key with the same value; `authEnabled` is ignored |
 | stdio lifecycle | Lazy spawn on first request, kept warm, killed after idle timeout (default 5 min, per-server override) |
-| Secrets | Plaintext values in the database (the settings row, the servers' `env`, headers and `oauth` columns) |
+| Secrets | Plaintext values in the database (the servers' `env`, headers and `oauth` columns, the OIDC pairing's client secret). API keys are stored as hashes; sessions as better-auth's random tokens |
 | Remote OAuth | A remote server that asks for an MCP OAuth login (401 + `WWW-Authenticate`) is signed in from the UI: the router is the OAuth client (PKCE, Client ID Metadata Document or dynamic registration, or a typed-in client), tokens live in the server's row, and the SDK refreshes them. See [Remote OAuth sign-in](#remote-oauth-sign-in) |
 | Config | Drizzle tables (`server/src/db/tables/`), migrations committed in `server/drizzle/` and run on boot. Postgres only: boot refuses to start, with a `[db]` message, unless `DATABASE_URL` is a `postgres://` or `postgresql://` URL, always waits for it (`waitForDatabase`), and in production forces TLS for a host the internet could reach (`requiresSsl`: not for private/LAN hosts or an explicit `sslmode`). PGlite is for tests only (an in-memory database per test file). The compose files run `postgres:17` beside the router. `ConfigStore` caches it in memory and emits `change` after every write; anything else that writes the tables calls `store.reload()`, as the `reloadConfig` mutation does. On first boot with an empty database the old `DATA_DIR/config` files are imported once and renamed `*.imported` |
 | First registry | `https://registry.modelcontextprotocol.io` (API `GET /v0/servers`, server.json schema 2025-12-11), seeded as `official` |
@@ -39,9 +39,14 @@ mcp-router/
 
 ### Config tables (one row per entry; the shapes are the shared schemas)
 
-- `settings` (one row) — port, authToken, authEnabled, default idleTimeoutMs,
-  connectTimeoutMs, default callTimeoutMs, session TTL/cap, publicUrl (the router's address for OAuth
-  callbacks; the UI's origin when unset)
+- `settings` (one row) — port, default idleTimeoutMs, connectTimeoutMs, default callTimeoutMs, session TTL/cap,
+  publicUrl (the router's address: the OIDC sign-in's base and a remote's OAuth callback; `http://localhost:<port>`
+  for sign-in, and the UI's origin for a remote's callback, when unset). `authToken` and `authEnabled` are
+  deprecated and not served: boot imports `authToken` as an API key and clears it, and ignores `authEnabled`
+- better-auth's tables — `users` (with `role`: admin or user; the first account is the admin), `sessions`,
+  `accounts`, `verifications` (OIDC state, one-time tokens), `apikeys` (the api-key plugin's; `reference_id` is the
+  maker's user id, or `router` for an imported token), and `oidc_settings` (the paired provider, one row or none).
+  None is in the generated GraphQL schema
 - `registries` — `{ name, url }`, seeded with `official`
 - `servers` — one row per installed server (`serverConfigSchema`):
   name, enabled, source (registry | npm | pypi | remote), transport (stdio
@@ -63,7 +68,7 @@ mcp-router/
 ### Health (`/healthz`, no auth)
 
 `GET /healthz` answers `200 { ok: true, version }` (`Health`) once the server is listening. It sits in front of
-the auth middleware so Docker's healthcheck, the CI boot job and a load balancer can call it without a token,
+every credential check so Docker's healthcheck, the CI boot job and a load balancer can call it without a key,
 and it reports nothing else.
 
 ### Discovery documents (no auth)
@@ -109,26 +114,28 @@ envelope `{ error, code, detail? }` (`ApiError`), with the status the code maps 
 `UNAUTHENTICATED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409, `INTERNAL` 500, `UPSTREAM_FAILED` 502,
 `UNAVAILABLE` 503, `UPSTREAM_TIMEOUT` 504.
 
-### Management GraphQL (`/graphql`) and its MCP door (`/admin/mcp`), bearer auth
+### Management GraphQL (`/graphql`) and its MCP door (`/admin/mcp`), session or API key
 
 The router's whole management API, over the same database the `ConfigStore` reads: `createApp`
-requires the Drizzle `db`, and index.ts passes the one it opened. Both sit behind the same bearer
-guard as `/mcp` (`/admin/mcp` also behind the Origin guard) and the same `express.json` cap
-(`HTTP_DEFAULTS.bodyLimit`). GraphiQL is served at `/graphql` outside production.
+requires the Drizzle `db`, and index.ts passes the one it opened. Both sit behind the same
+`express.json` cap (`HTTP_DEFAULTS.bodyLimit`); `/admin/mcp` also behind the Origin guard and a guard that answers a
+request with neither a session nor a key with 401. `/graphql` takes anonymous requests, for signing in, and
+permissions refuse every other field to them as UNAUTHENTICATED. GraphiQL is served at `/graphql` outside production.
 They serve one permissioned schema (`server/src/graphql/build-schema.ts`) through one context factory
-(`createContextFactory` in `core/context.ts`): today every request that passed the guard is the
-operator; a later auth step reads sessions and API keys there.
+(`createContextFactory` in `core/context.ts`), which reads the caller from the credential (`auth/caller.ts`):
+`x-api-key` is only ever a key; a bearer with the `mcpr_` prefix is a key; any other bearer is tried as a session,
+then as a key (an imported token has no prefix). Two different keys in one request are BAD_USER_INPUT.
 
 - **Schema:** drizzle-graphql `buildSchema` over `server/src/db/schema.ts` (create/update/delete
   prefixes, singular type names, `complexity: true`, page sizes from `OPERATION_LIMIT_DEFAULTS`),
-  plus hand-written fields for what no table holds. `servers.oauth` and `settings.authToken` are never
-  readable. `features.nestedWrites` is off: a workspace's members can't be replaced through a nested
+  plus hand-written fields for what no table holds, and better-auth's endpoints (`auth/endpoints.ts`). `servers.oauth`,
+  `settings.authToken` and `settings.authEnabled` are never readable, and better-auth's tables are not served. `features.nestedWrites` is off: a workspace's members can't be replaced through a nested
   update (the NOT NULL `workspace_id` leaves only `create`/`connect`), so `saveWorkspace` does it.
 - **Generated writes** (single-row forms only; every bulk `createXs`/`updateXs`/`deleteXs`/`…Many`
   is FORBIDDEN): `createRegistry`/`updateRegistry`/`deleteRegistry`, `createWorkspace`/`updateWorkspace`/
   `deleteWorkspace`, `createWorkspaceMember`/`updateWorkspaceMember`/`deleteWorkspaceMember`,
-  `updateSetting` (only the settings the UI edits; the port, host, token, `authEnabled`, `instanceId`
-  and `allowedOrigins` are refused). `createServer` exists but is FORBIDDEN: servers come from
+  `updateSetting` (a person only; only the settings the UI edits; the port, host, `instanceId` and
+  `allowedOrigins` are refused, and so is a public `publicUrl` under `SECURE_LOCAL_NET`). `createServer` exists but is FORBIDDEN: servers come from
   `installServer`. `onWrite` hooks check each written row against the shared zod schemas
   (BAD_USER_INPUT) and, once the write commits, call `store.reload()`, whose `change` reconciles the
   gateway (`reconcileOnChange` in `gateway/reconcile.ts`, wired at boot). Hand-written writes that answer with
@@ -158,7 +165,7 @@ operator; a later auth step reads sessions and API keys there.
   never with the operation's variables.
 - `npm run codegen` prints the served schema to `server/__generated__/schema.graphql` (gitignored).
 
-### MCP endpoints (streamable HTTP, bearer auth)
+### MCP endpoints (streamable HTTP, API key)
 
 - `POST/GET/DELETE /mcp/<name>` — proxy to that server: tools, resources,
   resource templates, prompts, completions, logging, and resource subscriptions
@@ -271,8 +278,7 @@ browser. The router is the OAuth client; the browser only carries the redirect.
    would refuse — because the redirect URI shares its origin, which is what an
    IndieAuth-style login such as Home Assistant checks); otherwise RFC 7591
    dynamic registration. `<base>` is `settings.publicUrl`, else the UI's origin.
-4. **Callback.** `GET /oauth/callback?code&state` — mounted before the bearer
-   guard, like `/healthz`; the single-use `state` is its credential. It exchanges
+4. **Callback.** `GET /oauth/callback?code&state` — public, like `/healthz`; the single-use `state` is its credential. It exchanges
    the code, writes the tokens to the server's row, drops every connection of
    the server (base and workspace instances) so the next use dials with them, and
    answers a page that `postMessage`s `{ type: 'mcp-router-oauth', server, ok }`
@@ -633,8 +639,7 @@ notifications, DELETE termination. These are the remaining items.
   (default 1000) before minting a new one. No background timer (nothing to tear
   down). Covered by fake-clock idle-reclaim and cap-eviction tests in `api.test.ts`.
 - [x] H2 **Origin validation / DNS-rebinding protection.** `createOriginMiddleware`
-  (`auth.ts`) now fronts `/mcp` (before auth, so it applies even when
-  `SECURE_LOCAL_NET` drops auth): requests with no `Origin` (native clients) or a
+  (`auth.ts`) now fronts `/mcp` (before the credential check, so it applies whatever a request carries): requests with no `Origin` (native clients) or a
   loopback origin pass, plus any `settings.allowedOrigins`; a foreign origin — what
   a DNS-rebound browser page carries — gets 403. A `HOST` env / `settings.host`
   lets operators bind `127.0.0.1` (default still binds all interfaces for
@@ -717,3 +722,8 @@ Design notes and the mDNS convention are in `@cubicecho/mcp-discovery`'s SPECS.m
 - [x] G3 **Server:** the try-it calls as mutations (`callServerTool` and its siblings); `/api` unmounted and
   `server/src/api/` deleted. The reconcile helpers moved to `gateway/reconcile.ts`, the error middleware to
   `http/`, the test-call logic to `gateway/ui-calls.ts`; the REST-only DTOs left `shared/src/api.ts`.
+- [x] G4 **Server:** better-auth (issue #91, step 4). The operator signs in through OIDC (env or paired from a setup
+  URL) or as the local admin under `SECURE_LOCAL_NET`, with sessions in Postgres; machine callers use api-key plugin
+  keys on `/mcp*`, `/graphql` and `/admin/mcp`; the caller role (`operator`/`agent`) comes from the credential; key
+  management, sessions, sign-in setup and settings are a person's. The old router token is imported as a key. See
+  the Auth decision above.

@@ -33,15 +33,65 @@ export const HTTP_DEFAULTS: Readonly<HttpSettings> = Object.freeze({
   shutdownDeadlineSeconds: 8,
 });
 
-/** Settings for the stored config. */
-export interface ConfigSettings {
-  /** Random bytes in a generated auth token. It is stored as twice as many hex characters. */
-  authTokenBytes: number;
+/** Settings for the sign-in throttle. */
+export interface RateLimitSettings {
+  /** Failed attempts allowed per key inside one window. One that succeeds is given back. */
+  maxAttempts: number;
+  /** How long a failed attempt counts against its key. */
+  windowMinutes: number;
+  /** Past this many keys, a hit sweeps out the ones whose window has passed. */
+  sweepAtKeys: number;
 }
 
-/** The fixed config settings this build ships with. */
-export const CONFIG_DEFAULTS: Readonly<ConfigSettings> = Object.freeze({
-  authTokenBytes: 32,
+/** The fixed sign-in throttle this build ships with. */
+export const RATE_LIMIT_DEFAULTS: Readonly<RateLimitSettings> = Object.freeze({
+  maxAttempts: 5,
+  windowMinutes: 15,
+  sweepAtKeys: 10_000,
+});
+
+/** Sign-in and credential settings. */
+export interface AuthSettings {
+  /** How long a session lasts after it was last used. Long: there is no password to fall back on. */
+  sessionTtlDays: number;
+  /** Shortest signing secret production accepts, in characters. `openssl rand -hex 32` gives twice this. */
+  minSecretLength: number;
+  /** Whether opening the UI signs in as the local admin. `SECURE_LOCAL_NET` overrides it. */
+  secureLocalNet: boolean;
+  /** How long the token an OIDC callback hands the UI works: the hop from the callback to `/auth/sso`. */
+  oneTimeTokenTtlMinutes: number;
+  /** What the login page's OIDC button calls the provider. `OIDC_NAME` overrides it. */
+  oidcName: string;
+  /** How a confidential OIDC client sends its secret. `OIDC_CLIENT_AUTH` overrides it. */
+  oidcClientAuth: 'client_secret_basic' | 'client_secret_post';
+  /** How long pairing waits on the provider before calling it unreachable, in ms. */
+  oidcPairingTimeoutMs: number;
+}
+
+/** The fixed sign-in settings this build ships with. */
+export const AUTH_DEFAULTS: Readonly<AuthSettings> = Object.freeze({
+  sessionTtlDays: 30,
+  minSecretLength: 32,
+  secureLocalNet: false,
+  oneTimeTokenTtlMinutes: 3,
+  oidcName: 'SSO',
+  // The default the OIDC spec names.
+  oidcClientAuth: 'client_secret_basic',
+  oidcPairingTimeoutMs: 10_000,
+});
+
+/**
+ * API keys for machine callers. The longest name and lifetime are the shared package's, since the UI's form is held to
+ * them too.
+ */
+export interface KeySettings {
+  /** Random characters in a new key, after its prefix. */
+  length: number;
+}
+
+/** The fixed API key settings this build ships with. */
+export const KEY_DEFAULTS: Readonly<KeySettings> = Object.freeze({
+  length: 48,
 });
 
 /** Settings for reaching Postgres at boot. */

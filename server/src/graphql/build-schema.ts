@@ -2,9 +2,12 @@ import { ErrorCode } from '@mcp-router/shared';
 import { buildSchema, type SchemaFeatures } from '@vantreeseba/drizzle-graphql';
 import { applyPermissions } from '@vantreeseba/graphql-casl';
 import { GraphQLObjectType, GraphQLSchema } from 'graphql';
+import { applyBetterAuthExtension } from '../auth/endpoints.ts';
+import { authMutations, authQueries } from '../auth/resolvers.ts';
 import { OPERATION_LIMIT_DEFAULTS } from '../core/defaults.ts';
 import { codedError } from '../core/errors.ts';
 import type { DB } from '../db/client.ts';
+import { ssoMutations, ssoQueries } from '../sso/resolvers.ts';
 import { mapDatabaseError } from './database-errors.ts';
 import { serverMutations, serverQueries } from './fields/servers.ts';
 import { systemMutations, systemQueries } from './fields/system.ts';
@@ -15,9 +18,17 @@ import { writeHooks } from './write-hooks.ts';
 
 /**
  * Columns that are never served. `servers.oauth` holds a remote's tokens (`ServerRuntime.oauth` says where its
- * sign-in stands instead), and `settings.authToken` is the bearer token itself.
+ * sign-in stands instead). `settings.authToken` is the old router token, which boot imports as an API key and then
+ * clears, and `settings.authEnabled` no longer means anything: both stay in the table until a later release drops them.
  */
-const SECRET_COLUMNS = { servers: ['oauth'], settings: ['authToken'] };
+const SECRET_COLUMNS = { servers: ['oauth'], settings: ['authToken', 'authEnabled'] };
+
+/**
+ * Tables that are never served as generated CRUD: better-auth's own (accounts, sessions, verifications, API keys) and
+ * the OIDC pairing, which hold credentials. Sign-in, the signed-in person and the keys are served by hand-written
+ * fields instead (auth/resolvers.ts, auth/endpoints.ts, sso/resolvers.ts).
+ */
+const SERVER_TABLES = ['users', 'sessions', 'accounts', 'verifications', 'apikeys', 'oidcSettings'];
 
 /** Tables whose rows are created by hand-written mutations or by first boot: `installServer`, the settings row. */
 const CREATE_RESERVED = new Set<string>(['settings']);
@@ -70,7 +81,7 @@ export function createSchema(db: DB): BuiltSchema {
     prefixes: { insert: 'create', update: 'update', delete: 'delete' },
     // Table keys are plural (`servers`). Types and single-row fields are singular (Server, server).
     typeNameMapper: 'singularize',
-    exclude: { columns: SECRET_COLUMNS },
+    exclude: { tables: SERVER_TABLES, columns: SECRET_COLUMNS },
     features: FEATURES,
     limits: {
       defaultLimit: OPERATION_LIMIT_DEFAULTS.defaultPageSize,
@@ -89,7 +100,14 @@ export function createSchema(db: DB): BuiltSchema {
 
   const query = new GraphQLObjectType({
     name: 'Query',
-    fields: { ...entities.queries, ...systemQueries(), ...serverQueries(), ...workspaceQueries() },
+    fields: {
+      ...entities.queries,
+      ...systemQueries(),
+      ...serverQueries(),
+      ...workspaceQueries(),
+      ...authQueries(),
+      ...ssoQueries(),
+    },
   });
   const mutation = new GraphQLObjectType({
     name: 'Mutation',
@@ -99,6 +117,8 @@ export function createSchema(db: DB): BuiltSchema {
       ...serverMutations(Server),
       ...workspaceMutations(Workspace),
       ...uiCallMutations(),
+      ...authMutations(),
+      ...ssoMutations(),
     },
   });
   const base = new GraphQLSchema({
@@ -106,7 +126,9 @@ export function createSchema(db: DB): BuiltSchema {
     mutation,
     types: [...Object.values(entities.types), ...Object.values(entities.inputs)],
   });
-  const schema = applyPermissions(base, permissions, {
+  // better-auth's own endpoints: the last leg of an OIDC sign-in, sessions and signing out.
+  const withAuth = applyBetterAuthExtension(base, db);
+  const schema = applyPermissions(withAuth, permissions, {
     // A refusal names the field, so a client can tell which call to stop making.
     fallbackError: (_original, _parent, _args, _context, info) =>
       codedError(ErrorCode.Forbidden, `Not allowed to call ${info.parentType.name}.${info.fieldName}.`),

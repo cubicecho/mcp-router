@@ -75,7 +75,7 @@ export function systemQueries(): GraphQLFieldConfigMap<unknown, Context> {
   return {
     routerStatus: handField<Record<string, never>>({
       type: new GraphQLNonNull(RouterStatusType),
-      description: "The router's version, uptime, server counts, and whether auth and LAN discovery are on.",
+      description: "The router's version, uptime, server counts, and whether LAN discovery is on.",
       resolve: (_args, ctx) => routerStatus(ctx.store, ctx.manager, ctx.startedAt),
     }),
     lanServers: handField<LanArgs>({

@@ -9,6 +9,8 @@ import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import request from 'supertest';
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { createTestAuthHost, mintTestKey } from '../../auth/__tests__/test-auth.ts';
+import type { AuthHost } from '../../auth/auth-host.ts';
 import type { ConfigStore } from '../../config/store.ts';
 import { createTestDb, createTestStore, resetTestDb } from '../../db/__tests__/test-db.ts';
 import type { Database } from '../../db/client.ts';
@@ -144,6 +146,7 @@ describe('remote OAuth sign-in', () => {
   let manager: GatewayManager;
   let upstream: Upstream;
   let token: string;
+  let authHost: AuthHost;
   let app: ReturnType<typeof createApp>;
 
   beforeAll(async () => {
@@ -159,13 +162,21 @@ describe('remote OAuth sign-in', () => {
     dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-oauth-'));
     await resetTestDb(database);
     store = await createTestStore(database, dataDir);
-    token = store.getSettings().authToken as string;
+    authHost = await createTestAuthHost(database.db);
+    token = await mintTestKey(database.db, authHost);
     upstream = await startUpstream();
     oauth = new OAuthService(store);
     manager = new GatewayManager(() => store.getSettings(), oauth);
     oauth.setOnChange((name) => manager.resetServer(name));
     await manager.reconcile(store.getServers());
-    app = createApp({ db: database.db, store, manager, oauth, appDistDir: path.join(dataDir, 'no-such-dist') });
+    app = createApp({
+      db: database.db,
+      authHost,
+      store,
+      manager,
+      oauth,
+      appDistDir: path.join(dataDir, 'no-such-dist'),
+    });
   });
 
   afterEach(async () => {

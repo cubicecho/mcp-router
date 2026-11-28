@@ -26,7 +26,8 @@ Monorepo (npm workspaces): `shared/` (zod schemas + types — the contract),
 | `config/` | env flags and the config store (cached over the config tables; first-boot import of old config files) |
 | `db/` | the Drizzle tables, the node-postgres client (`requiresSsl` for remote hosts), `waitForDatabase` |
 | `http/` | the Express app (`createApp`), the JSON error middleware, server timeouts, graceful shutdown |
-| `auth/` | bearer-token and origin guards |
+| `auth/` | better-auth sign-in, API keys, the caller, the credential and origin guards |
+| `sso/` | pairing an OIDC provider from a setup URL |
 | `gateway/` | downstream MCP connections, the `/mcp*` endpoints, sessions, activity log, the UI's try-it calls, reconciling to the config |
 | `installer/` | turns an install request into a server config (npm, PyPI, remote) |
 | `registry/` | client for MCP registries |
@@ -73,7 +74,7 @@ docker compose up        # the container beside its Postgres (postgres:17); name
 | **Drizzle 1.0.0-rc.5 + Postgres** | Tables in `server/src/db/tables/`; `npm run db:generate` writes a migration into `server/drizzle/` (committed), run on boot. Boot refuses to start unless `DATABASE_URL` is a `postgres://` URL, then waits for it (`waitForDatabase`). PGlite is a dev dependency, for tests only. `ConfigStore` emits `change` after its writes; other writers call `store.reload()`. Secrets plaintext in the database |
 | **Node 26 type stripping** | Node 26 everywhere (`engines`, CI, `node:26-slim`). The server runs its `.ts` sources directly in dev, prod and Docker (`node server/src/index.ts`); there is no server build and `tsc` only checks (`noEmit`). `shared/` is imported as raw `.ts` through its workspace link — so **use `.ts` extensions in all relative imports** in `server/` and `shared/`, and erasable syntax only |
 | **Vite + React 19 + shadcn/ui + TanStack Router/Query** | Same frontend stack as sibling repos (philotes); the UI talks GraphQL through typed documents from codegen's client preset (`app/codegen.ts`) |
-| **Single bearer token auth** | `MCP_ROUTER_TOKEN` env or generated into the settings row; guards `/graphql`, `/admin/mcp` and `/mcp*`; `SECURE_LOCAL_NET=true` disables auth entirely (trusted-network escape hatch) |
+| **better-auth (sessions) + API keys** | The operator signs in to the UI through OIDC (`OIDC_ISSUER`, or a provider paired from a setup URL) or, with `SECURE_LOCAL_NET=true`, as the local admin; sessions in Postgres, `BETTER_AUTH_SECRET` required in production. Machines send an `@better-auth/api-key` key (`Authorization: Bearer` or `x-api-key`); the proxied `/mcp*` take keys only. The caller role (`operator`/`agent`) comes from the credential in `createContextFactory`, and graphql-casl permissions key on it. better-auth's endpoints are GraphQL fields via `@cubicecho/graphql-better-auth`, never its REST routes. The old router token is imported on boot as a key |
 
 ## Key Conventions
 

@@ -1,5 +1,4 @@
 import { MS_PER_SECOND, type RouterStatus, type ServerConfig, type SettingsFile } from '@mcp-router/shared';
-import { effectiveAuth } from '../auth/middleware.ts';
 import { SERVER_VERSION } from '../core/version.ts';
 import type { GatewayManager } from './manager.ts';
 
@@ -30,7 +29,6 @@ export function routerStatus(
     uptimeSeconds: Math.floor((now - startedAt) / MS_PER_SECOND),
     serverCount: store.getServers().length,
     runningCount: manager.runningCount(),
-    authEnabled: effectiveAuth(settings).enabled,
     idleTimeoutMs: settings.idleTimeoutMs,
     ...(settings.publicUrl ? { publicUrl: settings.publicUrl } : {}),
     instanceId: settings.instanceId ?? '',

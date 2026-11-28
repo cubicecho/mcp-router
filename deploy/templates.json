@@ -6,7 +6,7 @@
       "type": 3,
       "title": "MCP Router",
       "description": "MCP gateway beside its own Postgres: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one.",
-      "note": "Open the web UI on port 3000 and sign in with the token you set. Leave the token empty to have one generated and printed once to the container log.",
+      "note": "Set BETTER_AUTH_SECRET. Open the web UI on port 3000 and sign in, then make API keys for MCP clients in Settings.",
       "categories": ["ai", "development", "tools"],
       "platform": "linux",
       "logo": "https://raw.githubusercontent.com/cubicecho/mcp-router/main/deploy/logo.svg",
@@ -16,9 +16,9 @@
       },
       "env": [
         {
-          "name": "MCP_ROUTER_TOKEN",
-          "label": "Access token",
-          "description": "Bearer token for the web UI, the API and every MCP endpoint. Generate one with: openssl rand -hex 32"
+          "name": "BETTER_AUTH_SECRET",
+          "label": "Session secret",
+          "description": "Required: signs web UI sessions. Generate one with: openssl rand -hex 32"
         },
         {
           "name": "POSTGRES_PASSWORD",
@@ -39,12 +39,17 @@
         },
         {
           "name": "SECURE_LOCAL_NET",
-          "label": "Turn auth off",
-          "description": "Only on a network you trust: no token is asked for anywhere.",
+          "label": "Trusted network sign-in",
+          "description": "Only on a network you trust: whoever opens the web UI is signed in as the local admin. MCP clients still need an API key, made in Settings.",
           "select": [
-            { "text": "No, require the token", "value": "false", "default": true },
-            { "text": "Yes, no token", "value": "true" }
+            { "text": "No, sign in through an OIDC provider", "value": "false", "default": true },
+            { "text": "Yes, sign in as the local admin", "value": "true" }
           ]
+        },
+        {
+          "name": "MCP_ROUTER_TOKEN",
+          "label": "Old router token (optional)",
+          "description": "Upgrading: the token your MCP clients already use. It is imported as an API key with the same value."
         }
       ]
     },
@@ -53,7 +58,7 @@
       "type": 1,
       "title": "MCP Router (single container)",
       "description": "MCP gateway: install MCP servers from registries or npm and serve them all over streamable HTTP, one endpoint each plus a merged one. Uses a Postgres you already run.",
-      "note": "Needs a Postgres you already run: set DATABASE_URL to it. Open the web UI on port 3000 and sign in with the token you set. Leave the token empty to have one generated and printed once to the container log.",
+      "note": "Needs a Postgres you already run: set DATABASE_URL to it. Set BETTER_AUTH_SECRET. Open the web UI on port 3000 and sign in, then make API keys for MCP clients in Settings.",
       "categories": ["ai", "development", "tools"],
       "platform": "linux",
       "logo": "https://raw.githubusercontent.com/cubicecho/mcp-router/main/deploy/logo.svg",
@@ -67,15 +72,20 @@
           "description": "Required: the Postgres that keeps the router's config, e.g. postgres://mcp_router:secret@192.168.1.20:5432/mcp_router. The router refuses to start without it."
         },
         {
-          "name": "MCP_ROUTER_TOKEN",
-          "label": "Access token",
-          "description": "Bearer token for the web UI, the API and every MCP endpoint. Generate one with: openssl rand -hex 32"
+          "name": "BETTER_AUTH_SECRET",
+          "label": "Session secret",
+          "description": "Required: signs web UI sessions. Generate one with: openssl rand -hex 32"
         },
         {
           "name": "SECURE_LOCAL_NET",
-          "label": "Turn auth off (true/false)",
-          "description": "Only on a network you trust: no token is asked for anywhere.",
+          "label": "Trusted network sign-in (true/false)",
+          "description": "Only on a network you trust: whoever opens the web UI is signed in as the local admin. MCP clients still need an API key.",
           "default": "false"
+        },
+        {
+          "name": "MCP_ROUTER_TOKEN",
+          "label": "Old router token (optional)",
+          "description": "Upgrading: the token your MCP clients already use. It is imported as an API key with the same value."
         }
       ],
       "restart_policy": "unless-stopped"
