@@ -16,6 +16,7 @@ import {
   type ServerRuntimeFieldsFragment,
   ServerRuntimeState,
   type ServersQuery,
+  SsoSource,
   type WorkspaceFieldsFragment,
   type WorkspaceMemberFieldsFragment,
   type WorkspaceQuery,
@@ -23,6 +24,8 @@ import {
 } from '@/__generated__/graphql';
 import type {
   ActivityEntry,
+  ApiKey,
+  AuthConfig,
   InstalledServer,
   LanDiscovery,
   LanServer,
@@ -36,6 +39,7 @@ import type {
   ResourceReadResult,
   RouterStatus,
   SavedSettings,
+  SsoSetup,
   ToolCallResult,
   WorkspaceView,
 } from '@/lib/api';
@@ -281,6 +285,78 @@ export function routerStatus(overrides: Partial<RouterStatus> = {}): RouterStatu
     instanceId: 'nas',
     lanAdvertise: false,
     lanDiscovery: true,
+    ...overrides,
+  };
+}
+
+/** What the sign-in page's query answers. */
+interface AuthConfigParts {
+  /** Whether the router is on a trusted network (`SECURE_LOCAL_NET`). */
+  trustedNetwork: boolean;
+  /** The provider's name, or null for none. */
+  provider: string | null;
+  /** Whether a provider may be paired from the sign-in page. */
+  canPair: boolean;
+}
+
+/**
+ * Builds the answer to the sign-in page's query.
+ *
+ * @param [parts] - What to change: by default a router with a provider called Heautou, not on a trusted network.
+ * @returns The `AuthConfig` answer.
+ */
+export function authConfig(parts: Partial<AuthConfigParts> = {}): AuthConfig {
+  const { trustedNetwork, provider, canPair } = {
+    trustedNetwork: false,
+    provider: 'Heautou',
+    canPair: false,
+    ...parts,
+  };
+  return {
+    authConfig: {
+      trustedNetwork,
+      sso: provider === null ? null : { name: provider, signInUrl: 'about:blank#sign-in' },
+    },
+    ssoSetup: {
+      source: provider === null ? SsoSource.None : SsoSource.Paired,
+      canPair,
+      redirectUri: 'http://router.example.test/api/auth/oauth2/callback/oidc',
+    },
+  };
+}
+
+/**
+ * Builds how sign-in through a provider is set up.
+ *
+ * @param [overrides] - Any part to replace; by default a provider paired from a setup URL, which the operator may
+ * disconnect.
+ * @returns The setup.
+ */
+export function ssoSetup(overrides: Partial<SsoSetup> = {}): SsoSetup {
+  return {
+    source: SsoSource.Paired,
+    issuer: 'https://id.example.test',
+    name: 'Heautou',
+    canPair: true,
+    redirectUri: 'http://router.example.test/api/auth/oauth2/callback/oidc',
+    ...overrides,
+  };
+}
+
+/**
+ * Builds an API key, as the key list answers it.
+ *
+ * @param [overrides] - Any part of the key to replace.
+ * @returns A key called "Claude Code", used once.
+ */
+export function apiKey(overrides: Partial<ApiKey> = {}): ApiKey {
+  return {
+    id: '00000000-0000-4000-8000-0000000000a1',
+    name: 'Claude Code',
+    start: 'mcpr_7f3a',
+    createdAt: '2026-11-01T09:00:00.000Z',
+    lastUsedAt: '2026-11-26T15:30:00.000Z',
+    expiresAt: null,
     ...overrides,
   };
 }
@@ -622,6 +698,10 @@ export function appRoutes(): ApiRoutes {
     Registries: { registries: [registry()] },
     RegistryServers: { registryServers: registryPage() },
     LanServers: { lanServers: discovery({ servers: [] }) },
+    AuthConfig: authConfig(),
+    SsoSetup: { ssoSetup: ssoSetup() },
+    ApiKeys: { apiKeys: [apiKey()] },
+    SignOut: { signOut: { success: true } },
     ...serverCapabilityAnswers(),
     ...workspaceCapabilityAnswers(),
   };

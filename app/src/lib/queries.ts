@@ -9,6 +9,7 @@ import {
   type WorkspaceSave,
 } from './api.ts';
 import { PAGE_DEFAULTS, POLLING_DEFAULTS } from './defaults.ts';
+import { forgetSession, keepSession } from './session.ts';
 
 /**
  * Builds the root query key of a capability scope; capability keys hang off it.
@@ -34,6 +35,10 @@ export const queryKeys = {
   workspaces: ['workspaces'] as const,
   workspace: (slug: string) => ['workspaces', slug] as const,
   discovery: ['discovery'] as const,
+  auth: ['auth'] as const,
+  authConfig: ['auth', 'config'] as const,
+  ssoSetup: ['auth', 'sso'] as const,
+  apiKeys: ['api-keys'] as const,
 };
 
 /**
@@ -506,5 +511,125 @@ export function useReloadConfig() {
   return useMutation({
     mutationFn: () => api.reloadConfig(),
     onSuccess: () => queryClient.invalidateQueries(),
+  });
+}
+
+/**
+ * Reads how the sign-in page may sign someone in. Answered signed out.
+ *
+ * @returns The query; `data` holds `authConfig` and the pairing part of `ssoSetup`.
+ */
+export function useAuthConfig() {
+  return useQuery({ queryKey: queryKeys.authConfig, queryFn: api.getAuthConfig });
+}
+
+/**
+ * Signs in on a trusted network and keeps the session.
+ *
+ * @returns The mutation; takes nothing, and keeps the session token it yields.
+ */
+export function useSignInOnTrustedNetwork() {
+  return useMutation({
+    mutationFn: () => api.signInOnTrustedNetwork(),
+    onSuccess: (token) => keepSession(token),
+  });
+}
+
+/**
+ * Spends a provider sign-in's one-time token and keeps the session.
+ *
+ * @returns The mutation; takes the one-time token, and keeps the session token it yields.
+ */
+export function useVerifyOneTimeToken() {
+  return useMutation({
+    mutationFn: (token: string) => api.verifyOneTimeToken(token),
+    onSuccess: (session) => keepSession(session),
+  });
+}
+
+/**
+ * Signs the UI out.
+ *
+ * @returns The mutation; takes nothing, ends the session on the server, then forgets it and every cached answer
+ * whatever the server said: the token is the UI's to drop.
+ */
+export function useSignOut() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: () => api.signOut(),
+    onSettled: () => {
+      forgetSession();
+      queryClient.clear();
+    },
+  });
+}
+
+/**
+ * Reads how sign-in through an OIDC provider is set up.
+ *
+ * @returns The query; `data` is the setup.
+ */
+export function useSsoSetup() {
+  return useQuery({ queryKey: queryKeys.ssoSetup, queryFn: api.getSsoSetup });
+}
+
+/**
+ * Pairs the router with an OIDC provider from its setup URL.
+ *
+ * @returns The mutation; takes the setup URL, yields the new setup, and invalidates every sign-in query.
+ */
+export function usePairSso() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (setupUrl: string) => api.pairSso(setupUrl),
+    onSuccess: () => invalidate(queryKeys.auth),
+  });
+}
+
+/**
+ * Disconnects the paired OIDC provider.
+ *
+ * @returns The mutation; takes nothing, yields the new setup, and invalidates every sign-in query.
+ */
+export function useUnpairSso() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: () => api.unpairSso(),
+    onSuccess: () => invalidate(queryKeys.auth),
+  });
+}
+
+/**
+ * Lists the operator's API keys.
+ *
+ * @returns The query; `data` is every key, without its secret.
+ */
+export function useApiKeys() {
+  return useQuery({ queryKey: queryKeys.apiKeys, queryFn: api.listApiKeys });
+}
+
+/**
+ * Makes an API key.
+ *
+ * @returns The mutation; takes the key's name, yields the key with its secret, and invalidates the key list.
+ */
+export function useCreateApiKey() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (name: string) => api.createApiKey(name),
+    onSuccess: () => invalidate(queryKeys.apiKeys),
+  });
+}
+
+/**
+ * Revokes an API key.
+ *
+ * @returns The mutation; takes the key's id and invalidates the key list.
+ */
+export function useRevokeApiKey() {
+  const invalidate = useInvalidate();
+  return useMutation({
+    mutationFn: (id: string) => api.revokeApiKey(id),
+    onSuccess: () => invalidate(queryKeys.apiKeys),
   });
 }

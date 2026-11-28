@@ -3,14 +3,16 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   ApiRequestError,
   callTool,
+  createApiKey,
   deleteServer,
   getServer,
   getStatus,
   isCallerError,
   listServers,
   updateServer,
+  verifyOneTimeToken,
 } from '@/lib/api';
-import { getNeedsAuth, setToken, TOKEN_STORAGE_KEY } from '@/lib/auth';
+import { keepSession, SESSION_STORAGE_KEY, sessionToken } from '@/lib/session';
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -71,9 +73,6 @@ describe('api client', () => {
   beforeEach(() => {
     vi.stubGlobal('fetch', fetchMock);
     window.localStorage.clear();
-    // reset the needsAuth flag from previous tests
-    setToken('reset');
-    window.localStorage.clear();
   });
 
   afterEach(() => {
@@ -81,8 +80,8 @@ describe('api client', () => {
     fetchMock.mockReset();
   });
 
-  it('posts the operation to /graphql with the bearer token from localStorage', async () => {
-    window.localStorage.setItem(TOKEN_STORAGE_KEY, 'secret-token');
+  it('posts the operation to /graphql with the session as a bearer token', async () => {
+    keepSession('secret-token');
     fetchMock.mockResolvedValue(jsonResponse(200, { data: { routerStatus } }));
 
     await expect(getStatus()).resolves.toEqual(routerStatus);
@@ -96,7 +95,7 @@ describe('api client', () => {
     expect(body.query).toContain('routerStatus');
   });
 
-  it('sends no Authorization header without a token', async () => {
+  it('sends no Authorization header while signed out', async () => {
     fetchMock.mockResolvedValue(jsonResponse(200, { data: { servers: [], serverRuntimes: [] } }));
 
     await listServers();
@@ -125,25 +124,57 @@ describe('api client', () => {
     expect(sentBody(fetchMock).variables).toMatchObject({ name: 'missing' });
   });
 
-  it('flags needsAuth and throws an ApiRequestError on 401', async () => {
+  it('drops the session and throws an ApiRequestError on 401', async () => {
+    keepSession('expired');
     fetchMock.mockResolvedValue(jsonResponse(401, { error: 'unauthorized', code: ErrorCode.Unauthenticated }));
 
     await expect(getStatus()).rejects.toMatchObject({ status: 401, message: 'unauthorized' });
-    expect(getNeedsAuth()).toBe(true);
-
-    // entering a token clears the flag again
-    setToken('new-token');
-    expect(getNeedsAuth()).toBe(false);
-    expect(window.localStorage.getItem(TOKEN_STORAGE_KEY)).toBe('new-token');
+    expect(sessionToken()).toBeNull();
+    expect(window.localStorage.getItem(SESSION_STORAGE_KEY)).toBeNull();
   });
 
-  it('flags needsAuth on an UNAUTHENTICATED GraphQL error', async () => {
+  it('drops the session on an UNAUTHENTICATED GraphQL error', async () => {
+    keepSession('expired');
     fetchMock.mockResolvedValue(
       jsonResponse(200, { errors: [{ message: 'Sign in first.', extensions: { code: ErrorCode.Unauthenticated } }] }),
     );
 
     await expect(getStatus()).rejects.toMatchObject({ code: ErrorCode.Unauthenticated });
-    expect(getNeedsAuth()).toBe(true);
+    expect(sessionToken()).toBeNull();
+  });
+
+  it('keeps the session on any other error', async () => {
+    keepSession('fine');
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { errors: [{ message: 'No.', extensions: { code: ErrorCode.Forbidden } }] }),
+    );
+
+    await expect(getStatus()).rejects.toMatchObject({ code: ErrorCode.Forbidden });
+    expect(sessionToken()).toBe('fine');
+  });
+
+  it('sends the one-time token and answers the session it is spent for', async () => {
+    fetchMock.mockResolvedValue(
+      jsonResponse(200, { data: { verifyOneTimeToken: { token: 'session-1', userId: 'u1' } } }),
+    );
+
+    await expect(verifyOneTimeToken('ott')).resolves.toBe('session-1');
+    expect(sentBody(fetchMock)).toMatchObject({ operationName: 'VerifyOneTimeToken', variables: { token: 'ott' } });
+  });
+
+  it('answers the new API key with its secret', async () => {
+    const apiKey = {
+      id: '00000000-0000-4000-8000-0000000000a1',
+      name: 'ci',
+      start: 'mcpr_ab',
+      createdAt: '2026-11-01T00:00:00.000Z',
+      lastUsedAt: null,
+      expiresAt: null,
+    };
+    fetchMock.mockResolvedValue(jsonResponse(200, { data: { createApiKey: { apiKey, key: 'mcpr_secret' } } }));
+
+    await expect(createApiKey('ci')).resolves.toEqual({ apiKey, key: 'mcpr_secret' });
+    expect(sentBody(fetchMock)).toMatchObject({ operationName: 'CreateApiKey', variables: { name: 'ci' } });
   });
 
   it('reads the first GraphQL error into a typed error, with its code and detail', async () => {

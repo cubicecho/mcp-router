@@ -1,34 +1,13 @@
-import { useState } from 'react';
 import { CardLayout } from '@/components/card-layout';
-import { Button } from '@/components/ui/button';
 import { CodeBlock } from '@/components/ui/code';
 import { CopyButton } from '@/components/ui/copy-button';
-import { Eye, EyeOff } from '@/components/ui/icons';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { getToken } from '@/lib/auth';
 import { claudeCodeSnippet, curlSnippet, mcpJsonSnippet, opencodeSnippet } from '@/lib/connect-snippets';
 import { useRouterStatus } from '@/lib/queries';
 import { toastCopyError } from '@/lib/toast';
 
-const TOKEN_PLACEHOLDER = '<YOUR_TOKEN>';
-const TOKEN_MASK = '••••••••••••';
-
-/**
- * Code block whose copy button copies different text from what it shows.
- *
- * @param props.display - What is shown, with the token masked or a placeholder.
- * @param props.copyText - What the copy button copies, with the real token when there is one.
- * @returns The code block.
- */
-function Snippet({ display, copyText }: { display: string; copyText: string }) {
-  return (
-    <CodeBlock
-      wrap
-      content={display}
-      actionSlot={<CopyButton variant="ghost" value={copyText} label="Copy snippet" onError={toastCopyError} />}
-    />
-  );
-}
+/** What the snippets carry where the client's API key goes. */
+const API_KEY_PLACEHOLDER = '<YOUR_API_KEY>';
 
 /**
  * Ready-to-paste client configuration for an MCP endpoint.
@@ -40,8 +19,8 @@ function Snippet({ display, copyText }: { display: string; copyText: string }) {
  * @returns The card.
  *
  * @remarks
- * Copying embeds the real bearer token; on screen it stays masked unless revealed. With auth on and no stored token,
- * both carry a placeholder.
+ * With auth on, the snippets send a placeholder API key for the reader to replace with one of theirs from Settings.
+ * The UI's own session is never put in them: it is the operator's sign-in, and it expires.
  */
 export function ConnectCard({
   endpoint,
@@ -56,14 +35,10 @@ export function ConnectCard({
   level?: 2 | 3;
 }) {
   const { data: status } = useRouterStatus();
-  const [revealed, setRevealed] = useState(false);
-
   // Assume auth until status says otherwise — a placeholder header is easier
   // to delete than a missing one is to diagnose.
   const authEnabled = status?.authEnabled ?? true;
-  const token = getToken() ?? undefined;
-  const copyToken = authEnabled ? (token ?? TOKEN_PLACEHOLDER) : undefined;
-  const displayToken = authEnabled ? (token ? (revealed ? token : TOKEN_MASK) : TOKEN_PLACEHOLDER) : undefined;
+  const token = authEnabled ? API_KEY_PLACEHOLDER : undefined;
 
   const snippets = [
     { value: 'claude-code', title: 'Claude Code', build: claudeCodeSnippet },
@@ -77,18 +52,6 @@ export function ConnectCard({
       level={level}
       title="Connect a client"
       description={description}
-      actionSlot={
-        authEnabled &&
-        Boolean(token) && (
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={() => setRevealed((v) => !v)}
-            iconSlot={revealed ? <EyeOff /> : <Eye />}
-            content={revealed ? 'Hide token' : 'Reveal token'}
-          />
-        )
-      }
       contentSlot={
         <>
           <Tabs defaultValue="claude-code">
@@ -99,18 +62,24 @@ export function ConnectCard({
                 </TabsTrigger>
               ))}
             </TabsList>
-            {snippets.map(({ value, build }) => (
-              <TabsContent key={value} value={value} className="pt-2">
-                <Snippet
-                  display={build({ endpoint, label, token: displayToken })}
-                  copyText={build({ endpoint, label, token: copyToken })}
-                />
-              </TabsContent>
-            ))}
+            {snippets.map(({ value, build }) => {
+              const snippet = build({ endpoint, label, token });
+              return (
+                <TabsContent key={value} value={value} className="pt-2">
+                  <CodeBlock
+                    wrap
+                    content={snippet}
+                    actionSlot={
+                      <CopyButton variant="ghost" value={snippet} label="Copy snippet" onError={toastCopyError} />
+                    }
+                  />
+                </TabsContent>
+              );
+            })}
           </Tabs>
           {authEnabled && (
             <p className="mt-2 text-xs text-foreground/60">
-              Copied snippets include your bearer token{token ? '' : ' placeholder'} — treat them as secrets.
+              Replace {API_KEY_PLACEHOLDER} with an API key from Settings, under Access.
             </p>
           )}
         </>

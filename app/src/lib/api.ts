@@ -19,6 +19,9 @@ import { type DocumentNode, print } from 'graphql';
 import { graphql } from '@/__generated__/gql';
 import type {
   ActivityEntryFieldsFragment,
+  ApiKeyFieldsFragment,
+  AuthConfigQuery,
+  CreateApiKeyMutation,
   EditServerInput,
   InstallServerInput,
   LanDiscoveryFieldsFragment,
@@ -33,13 +36,14 @@ import type {
   SaveWorkspaceInput,
   ServerRowFieldsFragment,
   ServerRuntimeFieldsFragment,
+  SsoSetupFieldsFragment,
   StartServerOAuthMutation,
   UpdateSettingInput,
   WorkspaceFieldsFragment,
 } from '@/__generated__/graphql';
 import { ServerRuntimeState } from '@/__generated__/graphql';
-import { getToken, requireAuth } from './auth.ts';
 import { PAGE_DEFAULTS } from './defaults.ts';
+import { forgetSession, sessionToken } from './session.ts';
 
 // The UI's one client: every read and write goes through /graphql with a typed document.
 
@@ -109,19 +113,19 @@ function codeOf(value: unknown): ErrorCode | undefined {
 }
 
 /**
- * Sends a request with the stored bearer token and hands back the response once it is known to have succeeded.
+ * Sends a request with the session as a bearer token and hands back the response once it is known to have succeeded.
  *
  * @param path - Same-origin path.
  * @param init - Method and JSON body.
  * @returns The 2xx response, body unread. Throws `ApiRequestError` on any other status.
  *
  * @remarks
- * A 401 raises the needs-auth flag before it throws.
+ * A 401 drops the session before it throws, which sends the UI to sign-in.
  */
 async function send(path: string, init: { method: 'GET' | 'POST'; body?: unknown }): Promise<Response> {
   const headers: Record<string, string> = {};
-  const token = getToken();
-  if (token) {
+  const token = sessionToken();
+  if (token !== null) {
     headers.Authorization = `Bearer ${token}`;
   }
   if (init.body !== undefined) {
@@ -133,7 +137,7 @@ async function send(path: string, init: { method: 'GET' | 'POST'; body?: unknown
     body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   if (response.status === HttpStatus.Unauthorized) {
-    requireAuth();
+    forgetSession();
   }
   if (response.ok === false) {
     const envelope = apiErrorSchema.safeParse(await response.json().catch(() => undefined));
@@ -180,7 +184,7 @@ function operationNameOf(document: DocumentNode): string | undefined {
  *
  * @remarks
  * Throws `ApiRequestError` with the first error's message, `extensions.code` and `extensions.detail`. An
- * UNAUTHENTICATED error raises the needs-auth flag, as a 401 does.
+ * UNAUTHENTICATED error drops the session, as a 401 does.
  */
 async function request<TResult, TVariables>(
   document: TypedDocumentNode<TResult, TVariables>,
@@ -196,7 +200,7 @@ async function request<TResult, TVariables>(
   if (first !== undefined) {
     const code = codeOf(first.extensions?.code);
     if (code === ErrorCode.Unauthenticated) {
-      requireAuth();
+      forgetSession();
     }
     const detail = typeof first.extensions?.detail === 'string' ? first.extensions.detail : undefined;
     throw new ApiRequestError(response.status, first.message, { code, detail });
@@ -1253,4 +1257,223 @@ const SetLanServerDismissedMutationDocument = graphql(`
 export async function setDismissed(change: { key: string; dismissed: boolean }): Promise<LanDiscovery> {
   return (await request(SetLanServerDismissedMutationDocument, { ...change, limit: PAGE_DEFAULTS.lanServers }))
     .setLanServerDismissed;
+}
+
+// Sign-in and API keys. The sign-in operations are answered signed out; the rest are the operator's.
+
+graphql(`
+  fragment SsoSetupFields on SsoSetup {
+    source
+    issuer
+    name
+    canPair
+    redirectUri
+  }
+
+  fragment ApiKeyFields on ApiKey {
+    id
+    name
+    start
+    createdAt
+    lastUsedAt
+    expiresAt
+  }
+`);
+
+/** How the sign-in page may sign someone in: the trusted network, the provider, and whether pairing is allowed. */
+export type AuthConfig = AuthConfigQuery;
+
+/** How sign-in through an OIDC provider is set up, and whether the operator may change it. */
+export type SsoSetup = SsoSetupFieldsFragment;
+
+/** An API key, without its secret. */
+export type ApiKey = ApiKeyFieldsFragment;
+
+/** An API key as it is made, with its secret: the only time the secret is seen. */
+export type CreatedApiKey = CreateApiKeyMutation['createApiKey'];
+
+const AuthConfigQueryDocument = graphql(`
+  query AuthConfig {
+    authConfig {
+      trustedNetwork
+      sso {
+        name
+        signInUrl
+      }
+    }
+    ssoSetup {
+      source
+      canPair
+      redirectUri
+    }
+  }
+`);
+
+/**
+ * Reads how the sign-in page may sign someone in. Answered signed out.
+ *
+ * @returns The trusted-network flag, the provider to offer, and whether a provider may be paired.
+ */
+export async function getAuthConfig(): Promise<AuthConfig> {
+  return request(AuthConfigQueryDocument, {});
+}
+
+const SignInOnTrustedNetworkMutationDocument = graphql(`
+  mutation SignInOnTrustedNetwork {
+    signInOnTrustedNetwork {
+      token
+      userId
+    }
+  }
+`);
+
+/**
+ * Signs whoever opened the UI in as the local admin. Only on a trusted network (`SECURE_LOCAL_NET`).
+ *
+ * @returns The session token to keep.
+ */
+export async function signInOnTrustedNetwork(): Promise<string> {
+  return (await request(SignInOnTrustedNetworkMutationDocument, {})).signInOnTrustedNetwork.token;
+}
+
+const VerifyOneTimeTokenMutationDocument = graphql(`
+  mutation VerifyOneTimeToken($token: String!) {
+    verifyOneTimeToken(token: $token) {
+      token
+      userId
+    }
+  }
+`);
+
+/**
+ * Spends the one-time token a provider sign-in came back with, for a session.
+ *
+ * @param token - The one-time token from the callback's URL.
+ * @returns The session token to keep.
+ */
+export async function verifyOneTimeToken(token: string): Promise<string> {
+  return (await request(VerifyOneTimeTokenMutationDocument, { token })).verifyOneTimeToken.token;
+}
+
+const SignOutMutationDocument = graphql(`
+  mutation SignOut {
+    signOut {
+      success
+    }
+  }
+`);
+
+/**
+ * Ends the session on the server.
+ *
+ * @returns Nothing; the caller forgets the token whatever the server said.
+ */
+export async function signOut(): Promise<void> {
+  await request(SignOutMutationDocument, {});
+}
+
+const SsoSetupQueryDocument = graphql(`
+  query SsoSetup {
+    ssoSetup {
+      ...SsoSetupFields
+    }
+  }
+`);
+
+/**
+ * Reads how sign-in through an OIDC provider is set up.
+ *
+ * @returns Where the provider comes from, its name, whether it may be changed, and the redirect URI.
+ */
+export async function getSsoSetup(): Promise<SsoSetup> {
+  return (await request(SsoSetupQueryDocument, {})).ssoSetup;
+}
+
+const PairSsoMutationDocument = graphql(`
+  mutation PairSso($setupUrl: String!) {
+    pairSso(setupUrl: $setupUrl) {
+      ...SsoSetupFields
+    }
+  }
+`);
+
+/**
+ * Pairs the router with the provider a setup URL names.
+ *
+ * @param setupUrl - The URL the provider gave, trimmed.
+ * @returns How sign-in is set up afterwards.
+ */
+export async function pairSso(setupUrl: string): Promise<SsoSetup> {
+  return (await request(PairSsoMutationDocument, { setupUrl })).pairSso;
+}
+
+const UnpairSsoMutationDocument = graphql(`
+  mutation UnpairSso {
+    unpairSso {
+      ...SsoSetupFields
+    }
+  }
+`);
+
+/**
+ * Disconnects the paired provider, so the sign-in page stops offering it.
+ *
+ * @returns How sign-in is set up afterwards.
+ */
+export async function unpairSso(): Promise<SsoSetup> {
+  return (await request(UnpairSsoMutationDocument, {})).unpairSso;
+}
+
+const ApiKeysQueryDocument = graphql(`
+  query ApiKeys {
+    apiKeys {
+      ...ApiKeyFields
+    }
+  }
+`);
+
+/**
+ * Lists the operator's API keys.
+ *
+ * @returns Every key, without its secret.
+ */
+export async function listApiKeys(): Promise<ApiKey[]> {
+  return (await request(ApiKeysQueryDocument, {})).apiKeys;
+}
+
+const CreateApiKeyMutationDocument = graphql(`
+  mutation CreateApiKey($name: String!) {
+    createApiKey(name: $name) {
+      apiKey {
+        ...ApiKeyFields
+      }
+      key
+    }
+  }
+`);
+
+/**
+ * Makes an API key.
+ *
+ * @param name - What the key is called, trimmed.
+ * @returns The key, with its secret.
+ */
+export async function createApiKey(name: string): Promise<CreatedApiKey> {
+  return (await request(CreateApiKeyMutationDocument, { name })).createApiKey;
+}
+
+const RevokeApiKeyMutationDocument = graphql(`
+  mutation RevokeApiKey($id: UUID!) {
+    revokeApiKey(id: $id)
+  }
+`);
+
+/**
+ * Revokes an API key, so a client sending it is refused.
+ *
+ * @param id - The key's id.
+ * @returns Nothing.
+ */
+export async function revokeApiKey(id: string): Promise<void> {
+  await request(RevokeApiKeyMutationDocument, { id });
 }

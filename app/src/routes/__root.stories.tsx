@@ -1,26 +1,26 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { getToken, setToken } from '@/lib/auth';
-import { appRoutes, routerStatus } from '@/storybook/fixtures';
-import { type ApiRoutes, apiError, apiRequest } from '@/storybook/mock-api';
+import { forgetSession, sessionToken } from '@/lib/session';
+import { appRoutes, authConfig } from '@/storybook/fixtures';
+import { apiError, apiRequest, STORY_SESSION } from '@/storybook/mock-api';
 
-const TOKEN = 'correct-token';
-const LOCK_LABEL = 'Lock (forget the stored token)';
+const SIGN_IN_HEADING = 'Sign in to MCP Router';
+const OPERATOR_ID = '00000000-0000-4000-8000-0000000000c1';
 
-/** A router with auth on: every route answers 401 until the stored token is the right one. */
-function lockedRoutes(): ApiRoutes {
-  const open: ApiRoutes = { ...appRoutes(), RouterStatus: { routerStatus: routerStatus({ authEnabled: true }) } };
-  const locked: ApiRoutes = {};
-  for (const [key, answer] of Object.entries(open)) {
-    locked[key] = (request: unknown) => {
-      if (getToken() !== TOKEN) {
-        return apiError(HttpStatus.Unauthorized, ErrorCode.Unauthenticated, 'Token required');
-      }
-      return typeof answer === 'function' ? answer(request) : answer;
-    };
+/**
+ * Finds the Sign out button on screen: the sidebar draws one and the narrow-screen bar another.
+ *
+ * @param canvasElement - The story's root.
+ * @returns The one that is visible.
+ */
+async function visibleSignOut(canvasElement: HTMLElement): Promise<HTMLElement> {
+  const buttons = await within(canvasElement).findAllByRole('button', { name: 'Sign out' });
+  const visible = buttons.find((button) => button.checkVisibility());
+  if (visible === undefined) {
+    throw new Error('No Sign out button is visible');
   }
-  return locked;
+  return visible;
 }
 
 const meta = {
@@ -41,8 +41,9 @@ export const ShowsTheAppFrame: Story = {
     await waitFor(() =>
       expect(canvas.getAllByText('1/2 servers running').some((line) => line.checkVisibility())).toBe(true),
     );
-    // With auth off there is no token to forget.
-    await expect(canvas.queryByRole('button', { name: LOCK_LABEL })).not.toBeInTheDocument();
+    await expect(canvas.getAllByRole('button', { name: 'Sign out' }).some((button) => button.checkVisibility())).toBe(
+      true,
+    );
     await expect(canvasElement.ownerDocument.documentElement.scrollWidth).toBeLessThanOrEqual(window.innerWidth);
   },
 };
@@ -93,60 +94,79 @@ export const KeepsServersCurrentOnAServerPage: Story = {
   },
 };
 
-export const AsksForTheTokenWhenTheApiAnswers401: Story = {
-  parameters: { api: lockedRoutes() },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(await canvas.findByRole('heading', { name: 'Authentication required' })).toBeVisible();
-    await expect(canvas.getByLabelText('Token')).toBeVisible();
-    await expect(canvas.getByRole('button', { name: 'Unlock' })).toBeDisabled();
-    // The app behind the screen is gone, not just covered.
-    await expect(canvas.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
-  },
-};
-
-export const UnlocksWithTheToken: Story = {
-  parameters: { api: lockedRoutes() },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByLabelText('Token'), `  ${TOKEN} `);
-    await userEvent.click(canvas.getByRole('button', { name: 'Unlock' }));
-
-    await expect(await canvas.findByRole('link', { name: 'Filesystem' })).toBeVisible();
-    await expect(canvas.queryByRole('heading', { name: 'Authentication required' })).not.toBeInTheDocument();
-    await expect(getToken()).toBe(TOKEN);
-  },
-};
-
-export const AsksAgainWhenTheTokenIsWrong: Story = {
-  parameters: { api: lockedRoutes() },
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await userEvent.type(await canvas.findByLabelText('Token'), 'wrong-token');
-    apiRequest.mockClear();
-    await userEvent.click(canvas.getByRole('button', { name: 'Unlock' }));
-
-    // The app comes back, asks the server again with the new token, and is turned away again.
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('RouterStatus', {}));
-    await expect(await canvas.findByRole('heading', { name: 'Authentication required' })).toBeVisible();
-    await waitFor(() => expect(canvas.getByLabelText('Token')).toHaveValue(''));
-  },
-};
-
-export const LocksAndForgetsTheToken: Story = {
-  parameters: { api: lockedRoutes() },
+export const SendsASignedOutBrowserToSignIn: Story = {
   beforeEach: () => {
-    setToken(TOKEN);
+    forgetSession();
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await userEvent.click(await canvas.findByRole('button', { name: LOCK_LABEL }));
+    await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
+    // The app is not drawn behind it, and asked the server for nothing of the operator's.
+    await expect(canvas.queryByRole('navigation', { name: 'Main' })).not.toBeInTheDocument();
+    await expect(apiRequest).not.toHaveBeenCalledWith('Servers', expect.anything());
+  },
+};
 
-    await expect(await canvas.findByRole('heading', { name: 'Authentication required' })).toBeVisible();
-    await expect(getToken()).toBeNull();
+export const ComesBackToThePageAskedForAfterSigningIn: Story = {
+  parameters: {
+    route: '/servers/filesystem',
+    api: {
+      ...appRoutes(),
+      AuthConfig: authConfig({ trustedNetwork: true }),
+      SignInOnTrustedNetwork: { signInOnTrustedNetwork: { token: 'local-session', userId: OPERATOR_ID } },
+    },
+  },
+  beforeEach: () => {
+    forgetSession();
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Filesystem' })).toBeVisible();
+    await expect(sessionToken()).toBe('local-session');
+  },
+};
+
+export const SignsInAgainWhenTheSessionIsRefused: Story = {
+  parameters: {
+    api: {
+      ...appRoutes(),
+      Servers: apiError(HttpStatus.Ok, ErrorCode.Unauthenticated, 'Sign in first.'),
+    },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
+    await expect(canvas.getByRole('link', { name: 'Sign in with Heautou' })).toBeVisible();
+    await expect(sessionToken()).toBeNull();
+  },
+};
+
+export const SignsOut: Story = {
+  globals: { viewport: { value: 'desktop' } },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(sessionToken()).toBe(STORY_SESSION);
+    await userEvent.click(await visibleSignOut(canvasElement));
+
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('SignOut', {}));
+    await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
+    await expect(sessionToken()).toBeNull();
     // The tooltip of the button that was pressed is gone with it.
     await waitFor(() =>
       expect(within(canvasElement.ownerDocument.body).queryByRole('tooltip')).not.toBeInTheDocument(),
     );
+  },
+};
+
+export const SignsOutEvenWhenTheServerFails: Story = {
+  globals: { viewport: { value: 'desktop' } },
+  parameters: {
+    api: { ...appRoutes(), SignOut: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'database down') },
+  },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await userEvent.click(await visibleSignOut(canvasElement));
+    await expect(await canvas.findByRole('heading', { name: SIGN_IN_HEADING })).toBeVisible();
+    await expect(sessionToken()).toBeNull();
   },
 };

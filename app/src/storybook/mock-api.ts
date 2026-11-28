@@ -2,13 +2,16 @@ import { type ApiError, ErrorCode, HttpStatus } from '@mcp-router/shared';
 import { buildSchema, graphql } from 'graphql';
 import { fn } from 'storybook/test';
 import schemaSdl from '@/__generated__/schema.graphql?raw';
-import { clearToken, setToken } from '@/lib/auth';
+import { forgetSession, keepSession } from '@/lib/session';
 
 /** The schema /graphql serves, as codegen printed it. Every mocked answer is run through it. */
 const schema = buildSchema(schemaSdl);
 
 /** Where the UI sends its GraphQL operations. */
 const GRAPHQL_PATH = '/graphql';
+
+/** The session every story starts signed in with. A story about being signed out forgets it in its `beforeEach`. */
+export const STORY_SESSION = 'story-session';
 
 /** What a mocked answer was asked: the operation's variables, as `body`, and the URL. */
 interface MockRequest {
@@ -126,15 +129,17 @@ async function answerOperation(body: GraphQLRequestBody, answer: unknown): Promi
  * Replaces `fetch` with a story's server for the length of one story.
  *
  * @param [routes] - The story's `parameters.api`.
- * @returns The cleanup that puts the real `fetch` back and forgets any auth state.
+ * @returns The cleanup that puts the real `fetch` back and forgets the session.
  *
  * @remarks
  * An operation with no answer fails and is logged, so a story that forgot one fails where it is read. A request to any
- * other path than /graphql fails too: the UI has no other API. Also clears the calls recorded on `apiRequest`.
+ * other path than /graphql fails too: the UI has no other API. Also clears the calls recorded on `apiRequest`, and
+ * signs the story in with {@link STORY_SESSION}, so a page renders inside the app frame rather than at sign-in.
  */
 export function installApiMock(routes: ApiRoutes = {}): () => void {
   const realFetch = window.fetch;
   apiRequest.mockClear();
+  keepSession(STORY_SESSION);
 
   window.fetch = async (input, init) => {
     const request = new Request(input, init);
@@ -166,8 +171,7 @@ export function installApiMock(routes: ApiRoutes = {}): () => void {
 
   return () => {
     window.fetch = realFetch;
-    // A 401 in one story must not leave the next one behind the token screen.
-    setToken('story');
-    clearToken();
+    // Every story starts from the session it is given, not the one the story before it left.
+    forgetSession();
   };
 }

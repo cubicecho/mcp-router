@@ -1,19 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, within } from 'storybook/test';
-import { clearToken, setToken } from '@/lib/auth';
 import { routerStatus } from '@/storybook/fixtures';
-import { pending } from '@/storybook/mock-api';
+import { pending, STORY_SESSION } from '@/storybook/mock-api';
 import { ConnectCard } from './connect-card.tsx';
 
 const STATUS = 'RouterStatus';
 const ENDPOINT = 'http://router.example.test/mcp/filesystem';
-const TOKEN = 'story-token-123';
-
-/** Signs the story in before it renders, as a browser that already holds the token. */
-function withStoredToken(): () => void {
-  setToken(TOKEN);
-  return clearToken;
-}
 
 const meta = {
   component: ConnectCard,
@@ -41,40 +33,24 @@ export const WithAuthOffLeavesOutTheHeader: Story = {
     await expect(canvas.getByRole('heading', { name: 'Connect a client', level: 2 })).toBeVisible();
     await expect(canvas.getByText(/Point an MCP client directly at filesystem/)).toBeVisible();
     await expect(await canvas.findByText(`claude mcp add --transport http filesystem ${ENDPOINT}`)).toBeVisible();
-    await expect(canvas.queryByText(/treat them as secrets/)).not.toBeInTheDocument();
-    await expect(canvas.queryByRole('button', { name: 'Reveal token' })).not.toBeInTheDocument();
+    await expect(canvas.queryByText(/Replace <YOUR_API_KEY>/)).not.toBeInTheDocument();
   },
 };
 
-export const WithoutAStoredTokenShowsAPlaceholder: Story = {
+export const WithAuthOnAsksForAnApiKey: Story = {
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
-    await expect(canvas.getByText(/--header "Authorization: Bearer <YOUR_TOKEN>"/)).toBeVisible();
-    await expect(canvas.getByText(/include your bearer token placeholder/)).toBeVisible();
-    await expect(canvas.queryByRole('button', { name: 'Reveal token' })).not.toBeInTheDocument();
+    await expect(await canvas.findByText(/--header "Authorization: Bearer <YOUR_API_KEY>"/)).toBeVisible();
+    await expect(canvas.getByText('Replace <YOUR_API_KEY> with an API key from Settings, under Access.')).toBeVisible();
+    // The operator's own session is never handed to a client.
+    await expect(canvas.queryByText(new RegExp(STORY_SESSION))).not.toBeInTheDocument();
   },
 };
 
 export const AssumesAuthUntilTheRouterAnswers: Story = {
   parameters: { api: { [STATUS]: pending() } },
   play: async ({ canvasElement }) => {
-    await expect(within(canvasElement).getByText(/Authorization: Bearer <YOUR_TOKEN>/)).toBeVisible();
-  },
-};
-
-export const MasksTheTokenUntilRevealed: Story = {
-  beforeEach: withStoredToken,
-  play: async ({ canvasElement }) => {
-    const canvas = within(canvasElement);
-    await expect(canvas.getByText(/Authorization: Bearer ••••••••••••/)).toBeVisible();
-    await expect(canvas.queryByText(new RegExp(TOKEN))).not.toBeInTheDocument();
-    await expect(canvas.getByText(/include your bearer token — treat them as secrets/)).toBeVisible();
-
-    await userEvent.click(canvas.getByRole('button', { name: 'Reveal token' }));
-    await expect(canvas.getByText(new RegExp(`Authorization: Bearer ${TOKEN}`))).toBeVisible();
-
-    await userEvent.click(canvas.getByRole('button', { name: 'Hide token' }));
-    await expect(canvas.queryByText(new RegExp(TOKEN))).not.toBeInTheDocument();
+    await expect(within(canvasElement).getByText(/Authorization: Bearer <YOUR_API_KEY>/)).toBeVisible();
   },
 };
 
