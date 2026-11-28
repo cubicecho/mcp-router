@@ -1,5 +1,9 @@
-import type { ApiDeps } from '../api/deps.ts';
+import type { ConfigStore } from '../config/store.ts';
 import type { DB } from '../db/client.ts';
+import type { LanServers } from '../discovery/lan-servers.ts';
+import type { GatewayManager } from '../gateway/manager.ts';
+import type { OAuthService } from '../oauth/service.ts';
+import type { RegistryClient } from '../registry/client.ts';
 
 /** What `Context.ip` holds when the socket reports no address. */
 export const UNKNOWN_IP = 'unknown';
@@ -10,8 +14,17 @@ export const CALLER_OPERATOR = 'operator' as const;
 /** Kind of caller. Permissions are keyed on it; a later auth step adds API-key callers beside the operator. */
 export type Caller = typeof CALLER_OPERATOR;
 
-/** What every request's context carries, whoever the caller is. The REST routes are built over the same set. */
-export interface ContextDeps extends ApiDeps {
+/** What every request's context carries, whoever the caller is. */
+export interface ContextDeps {
+  store: ConfigStore;
+  manager: GatewayManager;
+  registryClient: RegistryClient;
+  /** The data directory; installed packages live under it. */
+  dataDir: string;
+  /** OAuth sign-in for remote servers. */
+  oauth: OAuthService;
+  /** The servers found on the local network. */
+  lanServers: LanServers;
   /** The tables the generated schema and the hand-written writes read and write. */
   db: DB;
   /** When the router started, in ms since the epoch; `routerStatus` counts uptime from it. */
@@ -44,7 +57,7 @@ export type ContextFactory = (headers: Headers, ip?: string) => Promise<Context>
  * @returns The factory.
  *
  * @remarks
- * Both doors sit behind the bearer-token guard (`auth/middleware.ts`), the same one as /api, so a request that reaches
+ * Both doors sit behind the bearer-token guard (`auth/middleware.ts`), the same one as /mcp, so a request that reaches
  * the factory is the operator's: the token, or `SECURE_LOCAL_NET`, already said so. A later auth step reads a
  * better-auth session or an API key from `headers` here and returns null for neither.
  */

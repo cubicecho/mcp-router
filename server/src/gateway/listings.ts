@@ -17,7 +17,7 @@ import { McpMethod } from './mcp-method.ts';
 import { enabledMembers, existingMembers, type ServerLookup } from './members.ts';
 import { namespaceName } from './naming.ts';
 
-// What the management doors (/api and /graphql) list from a server or a workspace, written once for both.
+// What the management doors (/graphql and /admin/mcp) list from a server or a workspace, written once for both.
 
 /** A server's or workspace's resources and resource templates. */
 export type ResourceListing = ServerResourcesResponse;

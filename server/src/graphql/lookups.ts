@@ -6,7 +6,7 @@ import type { Context } from '../core/context.ts';
 import { codedError } from '../core/errors.ts';
 import { type ServerRow, servers } from '../db/tables/servers.ts';
 
-// What the hand-written fields look up before they act, refused as NOT_FOUND the way the REST routes refuse it.
+// What the hand-written fields look up before they act, refused as NOT_FOUND.
 
 /** A server's live state, with the name it is reached by. */
 export type ServerRuntime = Omit<ServerStatus, 'config'> & { name: string };

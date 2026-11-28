@@ -54,7 +54,7 @@ export interface HandFieldConfig<TArgs> {
   /** A list: takes `limit`, and is priced at a page of what it selects. */
   paged?: boolean;
   /**
-   * Answers the field. A coded REST error it throws keeps its code.
+   * Answers the field. A coded HttpError it throws keeps its code.
    *
    * @param args - The field's arguments.
    * @param ctx - The request.

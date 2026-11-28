@@ -4,6 +4,7 @@ import { createServer, type IncomingMessage, type Server, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { ErrorCode } from '@mcp-router/shared';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
 import request from 'supertest';
@@ -176,40 +177,69 @@ describe('remote OAuth sign-in', () => {
 
   const authed = (req: request.Test) => req.set('Authorization', `Bearer ${token}`);
 
-  const addRemote = async () => {
-    const res = await authed(request(app).post('/api/servers')).send({
-      name: 'ha',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: upstream.url, headers: {} },
+  /**
+   * Posts one operation to /graphql with the token.
+   *
+   * @param query - The operation.
+   * @param [variables] - Its variables.
+   * @returns The answer's body: `data`, and `errors` when it was refused.
+   */
+  const gql = async (query: string, variables?: Record<string, unknown>) =>
+    (await authed(request(app).post('/graphql')).send({ query, variables })).body;
+
+  /** What the sign-in mutations answer with: the server's live state. */
+  const RUNTIME = 'state oauth { signedIn refreshable }';
+
+  /**
+   * Installs a remote server.
+   *
+   * @param name - Its local name.
+   * @param url - Its endpoint.
+   */
+  const install = async (name: string, url: string) => {
+    const { errors } = await gql('mutation($input: InstallServerInput!) { installServer(input: $input) { id } }', {
+      input: { name, source: { type: 'remote' }, transport: { type: 'streamable-http', url, headers: {} } },
     });
-    expect(res.status).toBe(201);
+    expect(errors).toBeUndefined();
   };
 
+  const addRemote = () => install('ha', upstream.url);
+
+  /**
+   * Starts a sign-in through `startServerOAuth`.
+   *
+   * @param name - The server's name.
+   * @param origin - The UI's origin.
+   * @returns The answer's body.
+   */
+  const startSignIn = (name: string, origin: string) =>
+    gql(
+      'mutation($name: String!, $origin: String!) { startServerOAuth(name: $name, origin: $origin) { authorizationUrl signedIn } }',
+      {
+        name,
+        origin,
+      },
+    );
+
   const signIn = async () => {
-    const started = await authed(request(app).post('/api/servers/ha/oauth/start')).send({
-      origin: 'http://router.test',
-    });
-    expect(started.status).toBe(200);
-    const { code, state } = login(upstream, started.body.authorizationUrl);
+    const started = await startSignIn('ha', 'http://router.test');
+    const { code, state } = login(upstream, started.data.startServerOAuth.authorizationUrl);
     return request(app).get('/oauth/callback').query({ code, state });
   };
 
   it('adds a server that wants a login, signs in through the callback, and reaches its tools', async () => {
     await addRemote();
 
-    const checked = await authed(request(app).post('/api/servers/ha/oauth/check'));
-    expect(checked.body.state).toBe('needs-auth');
-    expect(checked.body.oauth).toMatchObject({ signedIn: false });
+    const checked = await gql(`mutation { checkServerOAuth(name: "ha") { ${RUNTIME} } }`);
+    expect(checked.data.checkServerOAuth).toMatchObject({ state: 'NEEDS_AUTH', oauth: { signedIn: false } });
 
-    const refused = await authed(request(app).get('/api/servers/ha/tools'));
-    expect(refused.status).toBe(502);
-    expect(refused.body.error).toBe('Server "ha" needs you to sign in');
+    const refused = await gql('{ serverTools(name: "ha") { name } }');
+    expect(refused.errors[0].extensions.code).toBe(ErrorCode.UpstreamFailed);
+    expect(refused.errors[0].message).toBe('Server "ha" needs you to sign in');
 
-    const started = await authed(request(app).post('/api/servers/ha/oauth/start')).send({
-      origin: 'http://router.test',
-    });
-    expect(started.body.signedIn).toBe(false);
-    const { code, state, params } = login(upstream, started.body.authorizationUrl);
+    const started = await startSignIn('ha', 'http://router.test');
+    expect(started.data.startServerOAuth.signedIn).toBe(false);
+    const { code, state, params } = login(upstream, started.data.startServerOAuth.authorizationUrl);
     // A plain-HTTP router still names itself by its metadata URL, which a Home Assistant-style login takes as the id.
     expect(params.get('client_id')).toBe('http://router.test/oauth/client-metadata.json');
     expect(params.get('redirect_uri')).toBe('http://router.test/oauth/callback');
@@ -225,15 +255,15 @@ describe('remote OAuth sign-in', () => {
     expect(stored?.tokens).toMatchObject({ access_token: 'at-1', refresh_token: 'rt-1' });
     expect(stored?.redirectUri).toBe('http://router.test/oauth/callback');
 
-    const status = await authed(request(app).get('/api/servers/ha'));
-    expect(status.body.config.oauth).toBeUndefined();
-    expect(status.body.oauth).toMatchObject({ signedIn: true, refreshable: true });
-    expect(JSON.stringify(status.body)).not.toContain('at-1');
+    const status = await gql(
+      `{ server(where: { name: { eq: "ha" } }) { name } serverRuntime(name: "ha") { ${RUNTIME} } }`,
+    );
+    expect(status.data.serverRuntime.oauth).toMatchObject({ signedIn: true, refreshable: true });
+    expect(JSON.stringify(status)).not.toContain('at-1');
 
-    const tools = await authed(request(app).get('/api/servers/ha/tools'));
-    expect(tools.status).toBe(200);
-    expect(tools.body.tools.map((t: { name: string }) => t.name)).toEqual(['hello']);
-    expect((await authed(request(app).get('/api/servers/ha'))).body.state).toBe('running');
+    const tools = await gql('{ serverTools(name: "ha") { name } }');
+    expect(tools.data.serverTools).toEqual([{ name: 'hello' }]);
+    expect((await gql('{ serverRuntime(name: "ha") { state } }')).data.serverRuntime.state).toBe('RUNNING');
   });
 
   it('refreshes an access token the server stopped accepting', async () => {
@@ -241,9 +271,9 @@ describe('remote OAuth sign-in', () => {
     await signIn();
     upstream.valid.delete('at-1');
 
-    const tools = await authed(request(app).get('/api/servers/ha/tools'));
+    const tools = await gql('{ serverTools(name: "ha") { name } }');
 
-    expect(tools.status).toBe(200);
+    expect(tools.errors).toBeUndefined();
     expect(upstream.tokenRequests.at(-1)).toMatchObject({ grant_type: 'refresh_token', refresh_token: 'rt-1' });
     expect(store.getServer('ha')?.oauth?.tokens).toMatchObject({
       access_token: 'at-refreshed-1',
@@ -253,10 +283,8 @@ describe('remote OAuth sign-in', () => {
 
   it('uses a callback state once, and refuses one it did not issue', async () => {
     await addRemote();
-    const started = await authed(request(app).post('/api/servers/ha/oauth/start')).send({
-      origin: 'http://router.test',
-    });
-    const { code, state } = login(upstream, started.body.authorizationUrl);
+    const started = await startSignIn('ha', 'http://router.test');
+    const { code, state } = login(upstream, started.data.startServerOAuth.authorizationUrl);
 
     expect((await request(app).get('/oauth/callback').query({ code, state: 'forged' })).status).toBe(400);
     expect((await request(app).get('/oauth/callback').query({ code, state })).status).toBe(200);
@@ -265,10 +293,8 @@ describe('remote OAuth sign-in', () => {
 
   it('reports a login the user cancelled to the window that opened it', async () => {
     await addRemote();
-    const started = await authed(request(app).post('/api/servers/ha/oauth/start')).send({
-      origin: 'http://router.test',
-    });
-    const { state } = login(upstream, started.body.authorizationUrl);
+    const started = await startSignIn('ha', 'http://router.test');
+    const { state } = login(upstream, started.data.startServerOAuth.authorizationUrl);
 
     const res = await request(app).get('/oauth/callback').query({ state, error: 'access_denied' });
 
@@ -282,10 +308,9 @@ describe('remote OAuth sign-in', () => {
     await addRemote();
     await signIn();
 
-    const res = await authed(request(app).delete('/api/servers/ha/oauth'));
+    const res = await gql(`mutation { signOutServerOAuth(name: "ha") { ${RUNTIME} } }`);
 
-    expect(res.body.oauth).toMatchObject({ signedIn: false });
-    expect(res.body.state).toBe('needs-auth');
+    expect(res.data.signOutServerOAuth).toMatchObject({ state: 'NEEDS_AUTH', oauth: { signedIn: false } });
     expect(store.getServer('ha')?.oauth?.tokens).toBeUndefined();
   });
 
@@ -306,10 +331,8 @@ describe('remote OAuth sign-in', () => {
     await store.updateSettings({ publicUrl: 'https://router.example.com' });
     await addRemote();
 
-    const started = await authed(request(app).post('/api/servers/ha/oauth/start')).send({
-      origin: 'http://localhost:3000',
-    });
-    const { params } = login(upstream, started.body.authorizationUrl);
+    const started = await startSignIn('ha', 'http://localhost:3000');
+    const { params } = login(upstream, started.data.startServerOAuth.authorizationUrl);
 
     // Over HTTPS the SDK offers the metadata URL itself.
     expect(params.get('client_id')).toBe('https://router.example.com/oauth/client-metadata.json');
@@ -317,16 +340,12 @@ describe('remote OAuth sign-in', () => {
   });
 
   it('refuses to start a sign-in for a server that does not ask for one', async () => {
-    await authed(request(app).post('/api/servers')).send({
-      name: 'open',
-      source: { type: 'remote' },
-      transport: { type: 'streamable-http', url: `${new URL(upstream.url).origin}/nothing`, headers: {} },
-    });
+    await install('open', `${new URL(upstream.url).origin}/nothing`);
 
-    const res = await authed(request(app).post('/api/servers/open/oauth/start')).send({ origin: 'http://router.test' });
+    const res = await startSignIn('open', 'http://router.test');
 
-    expect(res.status).toBe(400);
-    expect(res.body.error).toBe('Server "open" did not ask for a sign-in');
+    expect(res.errors[0].extensions.code).toBe(ErrorCode.BadUserInput);
+    expect(res.errors[0].message).toBe('Server "open" did not ask for a sign-in');
   });
 });
 

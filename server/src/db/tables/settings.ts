@@ -15,7 +15,7 @@ export const settings = pgTable(
     /** Always {@link SETTINGS_ROW_ID}; the check keeps it to one row. */
     id: integer('id').primaryKey().default(SETTINGS_ROW_ID),
     port: integer('port').notNull().default(SETTINGS_DEFAULTS.port),
-    /** The bearer token for /api and /mcp*. Null until first run generates one. */
+    /** The bearer token for /graphql, /admin/mcp and /mcp*. Null until first run generates one. */
     authToken: text('auth_token'),
     authEnabled: boolean('auth_enabled').notNull().default(true),
     /** Interface to bind. Null binds all interfaces. */

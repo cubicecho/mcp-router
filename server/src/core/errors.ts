@@ -143,7 +143,7 @@ export function codedError(code: ErrorCode, message: string, detail?: string): G
 }
 
 /**
- * Carries an HttpError's code over to GraphQL, so a failure the REST routes report with a code keeps it there.
+ * Carries an HttpError's code over to GraphQL, so a failure the gateway or the installer reports with a code keeps it there.
  *
  * @param error - What a resolver threw.
  * @returns A coded GraphQLError for an HttpError; anything else unchanged, for Yoga to mask.

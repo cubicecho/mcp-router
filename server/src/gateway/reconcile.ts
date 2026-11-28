@@ -1,22 +1,6 @@
 import type { ConfigState, ConfigStore } from '../config/store.ts';
 import { errorMessage } from '../core/errors.ts';
-import type { LanServers } from '../discovery/lan-servers.ts';
-import type { GatewayManager } from '../gateway/manager.ts';
-import type { OAuthService } from '../oauth/service.ts';
-import type { RegistryClient } from '../registry/client.ts';
-
-/** Everything the REST routes are built over; each route module takes the whole set. */
-export interface ApiDeps {
-  store: ConfigStore;
-  manager: GatewayManager;
-  registryClient: RegistryClient;
-  /** The data directory; installed packages live under it. */
-  dataDir: string;
-  /** OAuth sign-in for remote servers. */
-  oauth: OAuthService;
-  /** The servers found on the local network. */
-  lanServers: LanServers;
-}
+import type { GatewayManager } from './manager.ts';
 
 /** What a reconcile reads the desired state from, and the gateway it reconciles. */
 export interface ConfigToApply {
@@ -32,7 +16,7 @@ export interface ConfigToApply {
  *
  * @remarks
  * After a store write this is a barrier, not a second reconcile: the write's `change` already started one (see
- * `reconcileOnChange`), the pool runs reconciles one after another, and this one finds nothing left to change. A route
+ * `reconcileOnChange`), the pool runs reconciles one after another, and this one finds nothing left to change. A resolver
  * awaits it when what it answers, or does next, needs the gateway settled: a server's status after an install, a
  * closed child before its install directory is removed.
  */

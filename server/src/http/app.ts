@@ -3,8 +3,6 @@ import path from 'node:path';
 import { discoveryMiddleware } from '@cubicecho/mcp-discovery';
 import type { Health } from '@mcp-router/shared';
 import express from 'express';
-import { errorMiddleware } from '../api/error-middleware.ts';
-import { createApiRouter } from '../api/router.ts';
 import { createAuthMiddleware, createOriginMiddleware, effectiveAuth } from '../auth/middleware.ts';
 import type { ConfigStore } from '../config/store.ts';
 import { createContextFactory } from '../core/context.ts';
@@ -21,6 +19,7 @@ import { createGraphQLHandler, GRAPHQL_PATH } from '../graphql/handler.ts';
 import { createOAuthRoutes } from '../oauth/routes.ts';
 import { OAuthService } from '../oauth/service.ts';
 import { RegistryClient } from '../registry/client.ts';
+import { errorMiddleware } from './error-middleware.ts';
 
 /** What the Express app is built over. */
 export interface AppDeps {
@@ -41,12 +40,26 @@ export interface AppDeps {
 /** The path the router's own management schema is served at as MCP tools. Beside /mcp, which proxies servers. */
 export const ADMIN_MCP_PATH = '/admin/mcp';
 
+/** The paths the backend answers under, which the SPA fallback never serves the UI's page for. */
+const BACKEND_PATH_PREFIXES: readonly string[] = Object.freeze([GRAPHQL_PATH, ADMIN_MCP_PATH, '/mcp', '/oauth']);
+
+/**
+ * Says whether a request path is a prefix's own path or one below it.
+ *
+ * @param requestPath - The request's path.
+ * @param prefix - A backend path such as `/mcp`.
+ * @returns true for `/mcp` and `/mcp/x`, false for `/mcpx`.
+ */
+function isUnder(requestPath: string, prefix: string): boolean {
+  return requestPath === prefix || requestPath.startsWith(`${prefix}/`);
+}
+
 /**
  * Build the Express app (separate from listen() so tests can drive it with supertest).
  *
  * @param deps - The store and gateway, plus the test overrides.
- * @returns The app: /healthz, the discovery documents, /api, /mcp, /graphql, /admin/mcp, and the built web UI when its
- * directory exists.
+ * @returns The app: /healthz, the discovery documents, /oauth, /mcp, /graphql, /admin/mcp, and the built web UI when
+ * its directory exists.
  */
 export function createApp(deps: AppDeps): express.Express {
   const { store, manager } = deps;
@@ -74,28 +87,27 @@ export function createApp(deps: AppDeps): express.Express {
   app.use(discoveryMiddleware(() => discoveryEndpoints(store)));
 
   // Also before it: a server's login fetches the client metadata and sends the browser back with no token. The
-  // callback is held to the `state` of a sign-in started through /api instead.
+  // callback is held to the `state` of a sign-in started through `startServerOAuth` instead.
   app.use(createOAuthRoutes({ store, oauth }));
 
   const lanServers = deps.lanServers ?? idleLanServers();
-  const apiDeps = { store, manager, registryClient, dataDir: store.dataDir, oauth, lanServers };
-  app.use('/api', auth, createApiRouter(apiDeps));
   app.use('/mcp', originGuard, auth, createMcpRouter({ store, manager }));
 
-  // The same management API as GraphQL, for the UI, and as MCP tools, for agents. Behind the same guards as /api and
-  // /mcp, and the same body cap (the express.json above).
+  // The management API, as GraphQL for the UI and as MCP tools for agents. Behind the same guards as /mcp, and the
+  // same body cap (the express.json above).
   const { schema } = createSchema(deps.db);
-  const contextFor = createContextFactory({ ...apiDeps, db: deps.db, startedAt: Date.now() });
+  const contextDeps = { store, manager, registryClient, dataDir: store.dataDir, oauth, lanServers };
+  const contextFor = createContextFactory({ ...contextDeps, db: deps.db, startedAt: Date.now() });
   const yoga = createGraphQLHandler(schema, contextFor);
   app.all(GRAPHQL_PATH, auth, (req, res) => yoga(req, res));
   app.all(ADMIN_MCP_PATH, originGuard, auth, createAdminMcpHandler(schema, contextFor));
 
-  // Production: serve the built web UI with an SPA fallback for non-API GETs.
+  // Production: serve the built web UI, with an SPA fallback for every GET the backend does not answer.
   const appDist = deps.appDistDir ?? path.resolve(import.meta.dirname, '../../../app/dist');
   if (existsSync(appDist)) {
     app.use(express.static(appDist));
     app.use((req, res, next) => {
-      const isBackendPath = req.path.startsWith('/api') || req.path.startsWith('/mcp') || req.path.startsWith('/oauth');
+      const isBackendPath = BACKEND_PATH_PREFIXES.some((prefix) => isUnder(req.path, prefix));
       if (req.method === 'GET' && isBackendPath === false) {
         res.sendFile(path.join(appDist, 'index.html'));
         return;

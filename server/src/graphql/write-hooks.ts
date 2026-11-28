@@ -8,10 +8,10 @@ import {
 } from '@mcp-router/shared';
 import type { OnWriteConfig, TableWriteHooks, WriteHookPayload } from '@vantreeseba/drizzle-graphql';
 import type { z } from 'zod';
-import { applyConfig } from '../api/deps.ts';
 import type { Context } from '../core/context.ts';
 import { codedError, errorMessage } from '../core/errors.ts';
 import { parseOrThrow } from '../core/validation.ts';
+import { applyConfig } from '../gateway/reconcile.ts';
 
 /** One written row: column values by TS key. */
 export type Row = Record<string, unknown>;

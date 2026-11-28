@@ -13,7 +13,7 @@ export interface HttpSettings {
    * allow. `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` overrides it.
    */
   outboundKeepAliveTimeoutMs: number;
-  /** Largest JSON body /api and /mcp accept, as `express.json` reads it. */
+  /** Largest JSON body /graphql, /admin/mcp and /mcp accept, as `express.json` reads it. */
   bodyLimit: string;
   /** How long in-flight requests get to finish after a stop signal, in seconds. Open streams are cut after it. */
   drainSeconds: number;
