@@ -2,11 +2,7 @@ import type { CodegenConfig } from '@graphql-codegen/cli';
 
 /** Typed documents for the UI, from the schema `server/src/graphql/write-schema.ts` prints. */
 const config: CodegenConfig = {
-  schema: [
-    '../server/__generated__/schema.graphql',
-    // TEMPORARY: sign-in and API keys, until the better-auth server branch serves them. Remove with the file.
-    './src/auth-contract.graphql',
-  ],
+  schema: '../server/__generated__/schema.graphql',
   documents: ['./src/**/*.ts', './src/**/*.tsx', '!./src/__generated__/**'],
   ignoreNoDocuments: true,
   generates: {

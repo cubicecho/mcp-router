@@ -268,7 +268,7 @@ export function oauthStart(overrides: Partial<OAuthStartResult> = {}): OAuthStar
 }
 
 /**
- * Builds the router's own status, with auth off.
+ * Builds the router's own status.
  *
  * @param [overrides] - Any part of the status to replace.
  * @returns The status of a router with two servers, one running.
@@ -279,7 +279,6 @@ export function routerStatus(overrides: Partial<RouterStatus> = {}): RouterStatu
     uptimeSeconds: 3600,
     serverCount: 2,
     runningCount: 1,
-    authEnabled: false,
     idleTimeoutMs: 300_000,
     publicUrl: null,
     instanceId: 'nas',

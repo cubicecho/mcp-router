@@ -227,7 +227,6 @@ graphql(`
     uptimeSeconds
     serverCount
     runningCount
-    authEnabled
     idleTimeoutMs
     publicUrl
     instanceId

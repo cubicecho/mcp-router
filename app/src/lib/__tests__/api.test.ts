@@ -26,7 +26,6 @@ const routerStatus = {
   uptimeSeconds: 1,
   serverCount: 0,
   runningCount: 0,
-  authEnabled: true,
   idleTimeoutMs: 300_000,
   publicUrl: null,
   instanceId: 'nas',
