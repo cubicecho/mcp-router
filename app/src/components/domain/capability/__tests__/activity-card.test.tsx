@@ -1,20 +1,23 @@
-import type { ActivityEntry } from '@mcp-router/shared';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { TooltipProvider } from '@/components/ui/tooltip';
+import type { ActivityEntry } from '@/lib/api';
 import * as api from '@/lib/api';
 import { ActivityCard } from '../activity-card.tsx';
 
 const entry: ActivityEntry = {
   id: 1,
   at: '2026-10-06T12:00:00.000Z',
-  via: 'direct',
+  via: 'DIRECT',
   method: 'tools/call',
   target: 'echo',
   ok: true,
   durationMs: 12,
+  params: null,
+  result: null,
+  error: null,
 };
 
 function renderCard() {

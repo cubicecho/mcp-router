@@ -1,10 +1,4 @@
-import {
-  type InstallRequest,
-  type RegistryServer,
-  SourceType,
-  serverNameSchema,
-  suggestServerName,
-} from '@mcp-router/shared';
+import { type RegistryServer, SourceType, serverNameSchema, suggestServerName } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
 import { toast } from 'sonner';
@@ -14,6 +8,7 @@ import { DialogLayout } from '@/components/dialog-layout';
 import { KeyValueRows } from '@/components/domain/key-value/rows';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
+import type { InstallInput } from '@/lib/api';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { buildOptions, defaultEnvValues, defaultSelector } from '@/lib/registry-options';
@@ -66,7 +61,7 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
         }
       });
       Object.assign(env, rowsToRecord(value.customRows, { skipEmptyValues: true }));
-      const body: InstallRequest = {
+      const body: InstallInput = {
         name: serverNameSchema.parse(value.name),
         source: { type: SourceType.Registry, registry, serverName: server.name, version: server.version },
         packageSelector: value.selector || undefined,

@@ -1,10 +1,22 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
-import { appRoutes, workspace } from '@/storybook/fixtures';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
+import {
+  appRoutes,
+  DOCS_ID,
+  FILESYSTEM_ID,
+  RESEARCH_ID,
+  serverId,
+  variable,
+  workspace,
+  workspaceAnswer,
+  workspaceRecord,
+} from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 
-const WORKSPACE_ROUTE = '/api/workspaces/research';
+/** The members page size every workspace read and save asks for. */
+const MEMBER_LIMIT = PAGE_DEFAULTS.workspaceMembers;
 
 const meta = {
   title: 'routes/workspaces-slug',
@@ -31,7 +43,7 @@ export const ShowsTheWorkspace: Story = {
 };
 
 export const WhileLoading: Story = {
-  parameters: { api: { ...appRoutes(), [`GET ${WORKSPACE_ROUTE}`]: pending() } },
+  parameters: { api: { ...appRoutes(), Workspace: pending() } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     // The title's bar is the only loading state: the body draws no placeholder rows under it.
@@ -43,19 +55,28 @@ export const WhileLoading: Story = {
 };
 
 export const WhenTheWorkspaceDoesNotExist: Story = {
+  // The default answers know only `research`, so `missing` comes back null.
+  parameters: { route: '/workspaces/missing' },
+  play: async ({ canvasElement }) => {
+    const canvas = within(canvasElement);
+    await expect(await canvas.findByRole('heading', { name: 'Workspace not found' })).toBeVisible();
+    await expect(canvas.getByRole('heading', { name: 'missing' })).toBeVisible();
+    await expect(canvas.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
+  },
+};
+
+export const WhenTheWorkspaceFailsToLoad: Story = {
   parameters: {
-    route: '/workspaces/missing',
     api: {
       ...appRoutes(),
-      'GET /api/workspaces/missing': apiError(HttpStatus.NotFound, ErrorCode.NotFound, 'Workspace "missing" not found'),
+      Workspace: apiError(HttpStatus.InternalServerError, ErrorCode.Internal, 'The config store is unreadable'),
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const alert = within(await canvas.findByRole('alert'));
     await expect(alert.getByText('Could not load workspace')).toBeVisible();
-    await expect(alert.getByText('Workspace "missing" not found')).toBeVisible();
-    await expect(canvas.getByRole('heading', { name: 'missing' })).toBeVisible();
+    await expect(alert.getByText('The config store is unreadable')).toBeVisible();
     await expect(canvas.queryByRole('heading', { name: 'Overview' })).not.toBeInTheDocument();
   },
 };
@@ -63,7 +84,7 @@ export const WhenTheWorkspaceDoesNotExist: Story = {
 export const WithNoMembers: Story = {
   // A function, because Storybook merges a story's parameters into the meta's key by key: a plain
   // object here would be merged with the two members of the default workspace and not replace them.
-  parameters: { api: { ...appRoutes(), [`GET ${WORKSPACE_ROUTE}`]: () => workspace({ members: {} }) } },
+  parameters: { api: { ...appRoutes(), Workspace: () => workspaceAnswer(workspace({ members: {} })) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('heading', { name: 'Servers' })).toBeVisible();
@@ -75,7 +96,10 @@ export const WithNoMembers: Story = {
 export const ShowsAMemberThatIsNoLongerInstalled: Story = {
   parameters: {
     // A function, so the members replace the default workspace's and are not merged into them.
-    api: { ...appRoutes(), [`GET ${WORKSPACE_ROUTE}`]: () => workspace({ members: { gone: { enabled: true } } }) },
+    api: {
+      ...appRoutes(),
+      Workspace: () => workspaceAnswer(workspace({ members: { gone: { enabled: true, serverId: serverId('gone') } } })),
+    },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
@@ -86,18 +110,36 @@ export const ShowsAMemberThatIsNoLongerInstalled: Story = {
 };
 
 export const DisablesTheWorkspace: Story = {
-  parameters: { api: { ...appRoutes(), [`PATCH ${WORKSPACE_ROUTE}`]: workspace({ enabled: false }) } },
+  parameters: {
+    api: { ...appRoutes(), SaveWorkspace: { saveWorkspace: workspaceRecord(workspace({ enabled: false })) } },
+  },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('switch', { name: 'Enabled' }));
 
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`PATCH ${WORKSPACE_ROUTE}`, { enabled: false }));
+    // Saving replaces the workspace, so everything else about it is sent as it was.
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith('SaveWorkspace', {
+        input: {
+          id: RESEARCH_ID,
+          name: 'Research',
+          slug: 'research',
+          enabled: false,
+          description: 'Files and docs for the research agent.',
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: false },
+          ],
+        },
+        memberLimit: MEMBER_LIMIT,
+      }),
+    );
     await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Disabled Research')).toBeVisible());
   },
 };
 
 export const ShowsADisabledWorkspace: Story = {
-  parameters: { api: { ...appRoutes(), [`GET ${WORKSPACE_ROUTE}`]: workspace({ enabled: false }) } },
+  parameters: { api: { ...appRoutes(), Workspace: workspaceAnswer(workspace({ enabled: false })) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByRole('switch', { name: 'Enabled' })).not.toBeChecked();
@@ -109,22 +151,28 @@ export const SwitchesAMemberOnKeepingTheOthers: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`PATCH ${WORKSPACE_ROUTE}`]: workspace({
-        members: { ...workspace().members, docs: { enabled: true } },
-      }),
+      SaveWorkspace: {
+        saveWorkspace: workspaceRecord(
+          workspace({ members: { ...workspace().members, docs: { enabled: true, serverId: DOCS_ID } } }),
+        ),
+      },
     },
   },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await userEvent.click(await canvas.findByRole('switch', { name: 'Enable docs in workspace' }));
 
-    // The whole map is sent again, so the other member's override survives.
+    // The whole member list is sent again, so the other member's override survives.
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(`PATCH ${WORKSPACE_ROUTE}`, {
-        members: {
-          filesystem: { enabled: true, env: { ROOT_DIR: '/srv/research' } },
-          docs: { enabled: true },
-        },
+      expect(apiRequest).toHaveBeenCalledWith('SaveWorkspace', {
+        input: expect.objectContaining({
+          id: RESEARCH_ID,
+          members: [
+            { serverId: FILESYSTEM_ID, enabled: true, env: { ROOT_DIR: '/srv/research' } },
+            { serverId: DOCS_ID, enabled: true },
+          ],
+        }),
+        memberLimit: MEMBER_LIMIT,
       }),
     );
     await waitFor(() =>
@@ -150,12 +198,13 @@ export const FollowsARenameToTheNewUrl: Story = {
   parameters: {
     api: {
       ...appRoutes(),
-      [`PATCH ${WORKSPACE_ROUTE}`]: workspace({ name: 'Lab', slug: 'lab', path: '/mcp/w/lab' }),
-      'GET /api/workspaces/lab': workspace({ name: 'Lab', slug: 'lab', path: '/mcp/w/lab' }),
-      'GET /api/workspaces/lab/tools': { tools: [] },
-      'GET /api/workspaces/lab/resources': { resources: [], resourceTemplates: [] },
-      'GET /api/workspaces/lab/prompts': { prompts: [] },
-      'GET /api/workspaces/lab/activity': { entries: [] },
+      SaveWorkspace: { saveWorkspace: workspaceRecord(workspace({ name: 'Lab', slug: 'lab' })) },
+      Workspace: (request: { body: unknown }) =>
+        workspaceAnswer(variable(request, 'slug') === 'lab' ? workspace({ name: 'Lab', slug: 'lab' }) : workspace()),
+      WorkspaceTools: { workspaceTools: [] },
+      WorkspaceResources: { workspaceResources: { resources: [], resourceTemplates: [] } },
+      WorkspacePrompts: { workspacePrompts: [] },
+      WorkspaceActivity: { workspaceActivity: [] },
     },
   },
   play: async ({ canvasElement }) => {
@@ -178,16 +227,16 @@ export const FollowsARenameToTheNewUrl: Story = {
 };
 
 export const DeletesOnlyAfterConfirming: Story = {
-  parameters: { api: { ...appRoutes(), [`DELETE ${WORKSPACE_ROUTE}`]: null } },
+  parameters: { api: { ...appRoutes(), DeleteWorkspace: { deleteWorkspace: { id: RESEARCH_ID } } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.click(await canvas.findByRole('button', { name: 'Delete Research' }));
     const dialog = within(await body.findByRole('alertdialog', { name: 'Delete workspace Research?' }));
-    await expect(apiRequest).not.toHaveBeenCalledWith(`DELETE ${WORKSPACE_ROUTE}`, undefined);
+    await expect(apiRequest).not.toHaveBeenCalledWith('DeleteWorkspace', { slug: 'research' });
 
     await userEvent.click(dialog.getByRole('button', { name: 'Delete' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(`DELETE ${WORKSPACE_ROUTE}`, undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('DeleteWorkspace', { slug: 'research' }));
     await waitFor(() => expect(body.getByText('Deleted workspace Research')).toBeVisible());
     // A deleted workspace has no page: the app goes back to the list.
     await expect(await canvas.findByRole('heading', { name: 'Workspaces' })).toBeVisible();

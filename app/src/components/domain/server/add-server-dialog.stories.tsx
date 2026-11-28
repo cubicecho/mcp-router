@@ -1,13 +1,13 @@
 import { ErrorCode, HttpStatus } from '@mcp-router/shared';
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { needsSignInServer, remoteServer, stdioServer } from '@/storybook/fixtures';
+import { needsSignInServer, remoteServer, serverRow, serverRuntime, stdioServer } from '@/storybook/fixtures';
 import { apiError, apiRequest, pending } from '@/storybook/mock-api';
 import { AddServerDialog } from './add-server-dialog.tsx';
 
-const ADD_ROUTE = 'POST /api/servers';
-const UPDATE_STDIO_ROUTE = 'PATCH /api/servers/filesystem';
-const UPDATE_REMOTE_ROUTE = 'PATCH /api/servers/docs';
+const ADD_ROUTE = 'InstallServer';
+const UPDATE_ROUTE = 'UpdateServer';
+const CHECK_ROUTE = 'CheckServerOAuth';
 const PASTED_CONFIG = JSON.stringify({
   mcpServers: {
     thinking: { command: 'npx', args: ['-y', 'thinking-mcp'], env: { DEPTH: '3' } },
@@ -18,7 +18,7 @@ const PASTED_CONFIG = JSON.stringify({
 const meta = {
   component: AddServerDialog,
   args: { open: true, onOpenChange: fn() },
-  parameters: { api: { [ADD_ROUTE]: stdioServer({ name: 'echo' }) } },
+  parameters: { api: { [ADD_ROUTE]: { installServer: serverRow(stdioServer({ name: 'echo' })) } } },
 } satisfies Meta<typeof AddServerDialog>;
 export default meta;
 type Story = StoryObj<typeof meta>;
@@ -52,11 +52,13 @@ export const AddsACommandServer: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(ADD_ROUTE, {
-        name: 'echo',
-        source: { type: 'remote' },
-        transport: { type: 'stdio', command: 'npx', args: ['-y', 'echo-mcp'], cwd: '/srv/echo' },
-        env: { API_KEY: 'abc123' },
-        enabled: true,
+        input: {
+          name: 'echo',
+          source: { type: 'remote' },
+          transport: { type: 'stdio', command: 'npx', args: ['-y', 'echo-mcp'], cwd: '/srv/echo' },
+          env: { API_KEY: 'abc123' },
+          enabled: true,
+        },
       }),
     );
     await waitFor(() => expect(body.getByText('Added echo')).toBeVisible());
@@ -67,8 +69,8 @@ export const AddsACommandServer: Story = {
 export const AddsAnHttpServer: Story = {
   parameters: {
     api: {
-      [ADD_ROUTE]: remoteServer({ name: 'notes' }),
-      'POST /api/servers/notes/oauth/check': remoteServer({ name: 'notes' }),
+      [ADD_ROUTE]: { installServer: serverRow(remoteServer({ name: 'notes' })) },
+      [CHECK_ROUTE]: { checkServerOAuth: serverRuntime(remoteServer({ name: 'notes' })) },
     },
   },
   play: async ({ args, canvasElement }) => {
@@ -84,15 +86,17 @@ export const AddsAnHttpServer: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(ADD_ROUTE, {
-        name: 'notes',
-        source: { type: 'remote' },
-        transport: {
-          type: 'streamable-http',
-          url: 'https://notes.example.test/mcp',
-          headers: { Authorization: 'Bearer abc' },
+        input: {
+          name: 'notes',
+          source: { type: 'remote' },
+          transport: {
+            type: 'streamable-http',
+            url: 'https://notes.example.test/mcp',
+            headers: { Authorization: 'Bearer abc' },
+          },
+          env: {},
+          enabled: true,
         },
-        env: {},
-        enabled: true,
       }),
     );
     await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledWith(false));
@@ -223,7 +227,7 @@ export const WhileAdding: Story = {
 
 export const EditsACommandServer: Story = {
   args: { server: stdioServer() },
-  parameters: { api: { [UPDATE_STDIO_ROUTE]: stdioServer() } },
+  parameters: { api: { [UPDATE_ROUTE]: { updateServer: serverRow(stdioServer()) } } },
   play: async ({ args, canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('dialog', { name: 'Edit filesystem' }));
@@ -241,9 +245,12 @@ export const EditsACommandServer: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_STDIO_ROUTE, {
-        transport: { type: 'stdio', command: 'bun', args: ['index.js', '/tmp'] },
-        env: { ROOT_DIR: '/tmp' },
+      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
+        name: 'filesystem',
+        input: {
+          transport: { type: 'stdio', command: 'bun', args: ['index.js', '/tmp'] },
+          env: { ROOT_DIR: '/tmp' },
+        },
       }),
     );
     await waitFor(() => expect(body.getByText('Updated filesystem')).toBeVisible());
@@ -253,7 +260,7 @@ export const EditsACommandServer: Story = {
 
 export const EditsAnHttpServer: Story = {
   args: { server: remoteServer() },
-  parameters: { api: { [UPDATE_REMOTE_ROUTE]: remoteServer() } },
+  parameters: { api: { [UPDATE_ROUTE]: { updateServer: serverRow(remoteServer()) } } },
   play: async ({ args, canvasElement }) => {
     const body = within(canvasElement.ownerDocument.body);
     const dialog = within(await body.findByRole('dialog', { name: 'Edit docs' }));
@@ -265,8 +272,11 @@ export const EditsAnHttpServer: Story = {
 
     // A proxied server has no child process, so no env is sent.
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(UPDATE_REMOTE_ROUTE, {
-        transport: { type: 'streamable-http', url: 'https://docs.example.test/mcp/v2', headers: {} },
+      expect(apiRequest).toHaveBeenCalledWith(UPDATE_ROUTE, {
+        name: 'docs',
+        input: {
+          transport: { type: 'streamable-http', url: 'https://docs.example.test/mcp/v2', headers: {} },
+        },
       }),
     );
     await waitFor(() => expect(args.onOpenChange).toHaveBeenCalledWith(false));
@@ -277,7 +287,7 @@ export const ShowsWhyTheEditWasRefused: Story = {
   args: { server: stdioServer() },
   parameters: {
     api: {
-      [UPDATE_STDIO_ROUTE]: apiError(
+      [UPDATE_ROUTE]: apiError(
         HttpStatus.BadRequest,
         ErrorCode.BadUserInput,
         'Invalid transport',
@@ -309,8 +319,8 @@ async function fillHomeAssistant(dialog: ReturnType<typeof within>) {
 export const AsksToSignInWhenTheNewServerWantsALogin: Story = {
   parameters: {
     api: {
-      [ADD_ROUTE]: remoteServer({ name: 'ha' }),
-      'POST /api/servers/ha/oauth/check': needsSignInServer({ name: 'ha' }),
+      [ADD_ROUTE]: { installServer: serverRow(remoteServer({ name: 'ha' })) },
+      [CHECK_ROUTE]: { checkServerOAuth: serverRuntime(needsSignInServer({ name: 'ha' })) },
     },
   },
   play: async ({ args, canvasElement }) => {
@@ -331,8 +341,8 @@ export const AsksToSignInWhenTheNewServerWantsALogin: Story = {
 export const SendsAPreRegisteredOAuthClient: Story = {
   parameters: {
     api: {
-      [ADD_ROUTE]: remoteServer({ name: 'ha' }),
-      'POST /api/servers/ha/oauth/check': remoteServer({ name: 'ha' }),
+      [ADD_ROUTE]: { installServer: serverRow(remoteServer({ name: 'ha' })) },
+      [CHECK_ROUTE]: { checkServerOAuth: serverRuntime(remoteServer({ name: 'ha' })) },
     },
   },
   play: async ({ canvasElement }) => {
@@ -346,12 +356,14 @@ export const SendsAPreRegisteredOAuthClient: Story = {
 
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith(ADD_ROUTE, {
-        name: 'ha',
-        source: { type: 'remote' },
-        transport: { type: 'streamable-http', url: 'http://homeassistant.local:8123/api/mcp', headers: {} },
-        env: {},
-        enabled: true,
-        oauthClient: { clientId: 'router', clientSecret: 's3cret' },
+        input: {
+          name: 'ha',
+          source: { type: 'remote' },
+          transport: { type: 'streamable-http', url: 'http://homeassistant.local:8123/api/mcp', headers: {} },
+          env: {},
+          enabled: true,
+          oauthClient: { clientId: 'router', clientSecret: 's3cret' },
+        },
       }),
     );
   },

@@ -1,8 +1,9 @@
-import { ServerRuntimeState, TRANSPORT_STDIO } from '@mcp-router/shared';
+import { TRANSPORT_STDIO } from '@mcp-router/shared';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
 import { toast } from 'sonner';
+import { ServerRuntimeState } from '@/__generated__/graphql';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
@@ -209,7 +210,7 @@ function ServerDetailPage() {
                               }
                             />
                           )}
-                          {server.pid !== undefined && (
+                          {server.pid !== null && (
                             <PropertyRow label="PID" value={server.pid} valueClassName="tabular-nums" />
                           )}
                           {server.startedAt && (

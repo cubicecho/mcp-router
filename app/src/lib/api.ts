@@ -1,123 +1,146 @@
+import type { TypedDocumentNode } from '@graphql-typed-document-node/core';
 import {
-  type ActivityResponse,
-  activityResponseSchema,
   apiErrorSchema,
-  type CreateRegistryRequest,
-  type CreateWorkspaceRequest,
-  type DiscoveryResponse,
-  discoveryResponseSchema,
-  type ErrorCode,
+  ErrorCode,
   HttpStatus,
-  type InstallRequest,
-  type OAuthStartResponse,
-  oauthStartResponseSchema,
   type PromptGetRequest,
   type PromptGetResponse,
   promptGetResponseSchema,
-  type Registry,
-  type RegistryListResponse,
-  type RegistrySearchParams,
-  type ReloadResponse,
+  type RegistryServerEntry,
   type ResourceReadRequest,
   type ResourceReadResponse,
-  type RouterStatus,
-  registryListResponseSchema,
-  registrySchema,
-  reloadResponseSchema,
+  registryServerEntrySchema,
   resourceReadResponseSchema,
-  routerStatusSchema,
-  type ServerPromptsResponse,
-  type ServerResourcesResponse,
-  type ServerStatus,
-  type ServerToolsResponse,
-  type SetDismissedRequest,
-  serverPromptsResponseSchema,
-  serverResourcesResponseSchema,
-  serverStatusSchema,
-  serverToolsResponseSchema,
+  type ServerConfig,
+  type ServerSource,
+  type ServerTransport,
+  serverConfigSchema,
   type ToolCallRequest,
   type ToolCallResponse,
   toolCallResponseSchema,
-  type UpdateServerRequest,
-  type UpdateSettingsRequest,
-  type UpdateSettingsResponse,
-  type UpdateWorkspaceRequest,
-  updateSettingsResponseSchema,
-  type WorkspaceStatus,
-  workspaceStatusSchema,
+  type WorkspaceMember,
+  workspaceMemberSchema,
 } from '@mcp-router/shared';
-import { z } from 'zod';
+import { type DocumentNode, print } from 'graphql';
+import type { z } from 'zod';
+import { graphql } from '@/__generated__/gql';
+import type {
+  ActivityEntryFieldsFragment,
+  EditServerInput,
+  InstallServerInput,
+  LanDiscoveryFieldsFragment,
+  McpPromptFieldsFragment,
+  McpResourceListingFieldsFragment,
+  McpToolFieldsFragment,
+  ReloadConfigMutation,
+  RouterStatusFieldsFragment,
+  SaveWorkspaceInput,
+  ServerRowFieldsFragment,
+  ServerRuntimeFieldsFragment,
+  StartServerOAuthMutation,
+  UpdateSettingInput,
+  WorkspaceFieldsFragment,
+} from '@/__generated__/graphql';
+import { ServerRuntimeState } from '@/__generated__/graphql';
 import { getToken, requireAuth } from './auth.ts';
+import { PAGE_DEFAULTS } from './defaults.ts';
 
-/** A non-2xx answer from the API, carrying the HTTP status and the server's `{ error, code, detail? }` envelope. */
+// The UI's one client. Everything but the three test calls (tools/call, resources/read, prompts/get) goes through
+// /graphql with a typed document; those three have no GraphQL field yet and stay on /api.
+
+/** Where the UI sends its GraphQL operations; Vite proxies it to the server in development. */
+const GRAPHQL_ENDPOINT = '/graphql';
+
+/** A failed request: the HTTP status, and the server's code and detail when it sent them. */
 export class ApiRequestError extends Error {
-  /** HTTP status of the answer. */
+  /** HTTP status of the answer. A refused GraphQL operation answers 200 and carries its reason in `code`. */
   readonly status: number;
-  /** Undefined when the answer was not an envelope (a proxy's own error page). */
+  /** Undefined when the answer said no code (a proxy's own error page, a masked GraphQL error). */
   readonly code?: ErrorCode;
-  /** The envelope's longer explanation, when the server sent one. */
+  /** The longer explanation, when the server sent one. */
   readonly detail?: string;
 
   /**
    * Builds the error from a failed answer.
    *
    * @param status - HTTP status of the answer.
-   * @param message - The envelope's `error`, or the status text when there was no envelope.
-   * @param [envelope] - The envelope's `code` and `detail`; omit when the answer was not an envelope.
+   * @param message - What the server said, or the status text when it said nothing.
+   * @param [reason] - The server's `code` and `detail`; omit when it sent neither.
    */
-  constructor(status: number, message: string, envelope: { code?: ErrorCode; detail?: string } = {}) {
+  constructor(status: number, message: string, reason: { code?: ErrorCode; detail?: string } = {}) {
     super(message);
     this.name = 'ApiRequestError';
     this.status = status;
-    this.code = envelope.code;
-    this.detail = envelope.detail;
+    this.code = reason.code;
+    this.detail = reason.detail;
   }
 }
 
-/** What a request sends besides its path. */
-interface RequestOptions {
-  /**
-   * HTTP method.
-   *
-   * @defaultValue `'GET'`
-   */
-  method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
-  /** Sent as JSON; `undefined` sends no body and no Content-Type. */
-  body?: unknown;
+/** The codes of a request the caller got wrong, which asking again will not fix. */
+const CALLER_ERROR_CODES: ReadonlySet<string> = new Set([
+  ErrorCode.BadUserInput,
+  ErrorCode.Unauthenticated,
+  ErrorCode.Forbidden,
+  ErrorCode.NotFound,
+  ErrorCode.Conflict,
+  ErrorCode.QueryTooComplex,
+]);
+
+/**
+ * Whether a failure is one a retry would only repeat.
+ *
+ * @param error - What a request threw.
+ * @returns true for a 4xx answer, or an error coded as the caller's mistake.
+ */
+export function isCallerError(error: unknown): boolean {
+  if (error instanceof ApiRequestError === false) {
+    return false;
+  }
+  const isClientStatus = error.status >= HttpStatus.BadRequest && error.status < HttpStatus.InternalServerError;
+  return isClientStatus || (error.code !== undefined && CALLER_ERROR_CODES.has(error.code));
+}
+
+/** The `code` values the UI knows, for reading one out of an answer. */
+const KNOWN_CODES: ReadonlySet<string> = new Set(Object.values(ErrorCode));
+
+/**
+ * Reads an error code the server sent.
+ *
+ * @param value - The answer's `code` or `extensions.code`.
+ * @returns The code, or undefined when it is not one the UI knows.
+ */
+function codeOf(value: unknown): ErrorCode | undefined {
+  return typeof value === 'string' && KNOWN_CODES.has(value) ? (value as ErrorCode) : undefined;
 }
 
 /**
- * Sends a request and hands back the response once it is known to have succeeded.
+ * Sends a request with the stored bearer token and hands back the response once it is known to have succeeded.
  *
- * @param path - Same-origin path, query included.
- * @param [options] - Method and JSON body.
+ * @param path - Same-origin path.
+ * @param init - Method and JSON body.
  * @returns The 2xx response, body unread. Throws `ApiRequestError` on any other status.
  *
  * @remarks
- * Adds the stored bearer token when there is one. A 401 raises the needs-auth flag before it throws.
+ * A 401 raises the needs-auth flag before it throws.
  */
-async function send(path: string, options: RequestOptions = {}): Promise<Response> {
+async function send(path: string, init: { method: 'GET' | 'POST'; body?: unknown }): Promise<Response> {
   const headers: Record<string, string> = {};
   const token = getToken();
   if (token) {
     headers.Authorization = `Bearer ${token}`;
   }
-  if (options.body !== undefined) {
+  if (init.body !== undefined) {
     headers['Content-Type'] = 'application/json';
   }
-
   const response = await fetch(path, {
-    method: options.method ?? 'GET',
+    method: init.method,
     headers,
-    body: options.body !== undefined ? JSON.stringify(options.body) : undefined,
+    body: init.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
-
   if (response.status === HttpStatus.Unauthorized) {
     requireAuth();
   }
-
-  const requestFailed = response.ok === false;
-  if (requestFailed) {
+  if (response.ok === false) {
     const envelope = apiErrorSchema.safeParse(await response.json().catch(() => undefined));
     const statusMessage = response.statusText || `Request failed (${response.status})`;
     throw new ApiRequestError(response.status, envelope.data?.error || statusMessage, {
@@ -128,144 +151,561 @@ async function send(path: string, options: RequestOptions = {}): Promise<Respons
   return response;
 }
 
+/** One error of a GraphQL answer, as far as the UI reads it. */
+interface GraphQLErrorBody {
+  message: string;
+  extensions?: { code?: unknown; detail?: unknown };
+}
+
+/** A GraphQL answer. */
+interface GraphQLAnswer<TResult> {
+  data?: TResult | null;
+  errors?: GraphQLErrorBody[];
+}
+
 /**
- * Sends a request and reads its JSON answer through the shared schema for that route.
+ * Finds the name of the one operation a document holds.
  *
- * @typeParam Schema - The zod schema the answer must match.
- * @param path - Same-origin path, query included.
- * @param schema - Parses the answer.
- * @param [options] - Method and JSON body.
- * @returns The parsed answer. Throws `ApiRequestError` on a non-2xx status, an `Error` when the answer does not match.
+ * @param document - A document from codegen.
+ * @returns Its operation's name; sent beside the query so logs and the story mocks can tell operations apart.
+ */
+function operationNameOf(document: DocumentNode): string | undefined {
+  const operation = document.definitions.find((definition) => definition.kind === 'OperationDefinition');
+  return operation?.kind === 'OperationDefinition' ? operation.name?.value : undefined;
+}
+
+/**
+ * Sends one GraphQL operation, typed by its document.
+ *
+ * @typeParam TResult - What the operation answers.
+ * @typeParam TVariables - What it takes.
+ * @param document - The operation, from codegen.
+ * @param variables - Its variables.
+ * @returns The answer's `data`.
  *
  * @remarks
- * A server and an app that disagree about a shape fail here and not somewhere in a component.
+ * Throws `ApiRequestError` with the first error's message, `extensions.code` and `extensions.detail`. An
+ * UNAUTHENTICATED error raises the needs-auth flag, as a 401 does.
  */
-async function request<Schema extends z.ZodType>(
+async function request<TResult, TVariables>(
+  document: TypedDocumentNode<TResult, TVariables>,
+  variables: TVariables,
+): Promise<TResult> {
+  const operationName = operationNameOf(document);
+  const response = await send(GRAPHQL_ENDPOINT, {
+    method: 'POST',
+    body: { query: print(document), variables, operationName },
+  });
+  const answer: GraphQLAnswer<TResult> = await response.json();
+  const [first] = answer.errors ?? [];
+  if (first !== undefined) {
+    const code = codeOf(first.extensions?.code);
+    if (code === ErrorCode.Unauthenticated) {
+      requireAuth();
+    }
+    const detail = typeof first.extensions?.detail === 'string' ? first.extensions.detail : undefined;
+    throw new ApiRequestError(response.status, first.message, { code, detail });
+  }
+  if (answer.data === undefined || answer.data === null) {
+    throw new ApiRequestError(response.status, `${operationName ?? 'The request'} answered with no data`);
+  }
+  return answer.data;
+}
+
+/**
+ * Posts to one of the REST routes the UI still calls, and reads the answer through the shared schema for it.
+ *
+ * @typeParam Schema - The zod schema the answer must match.
+ * @param path - Same-origin path.
+ * @param schema - Parses the answer.
+ * @param body - Sent as JSON.
+ * @returns The parsed answer. Throws `ApiRequestError` on a non-2xx status, an `Error` when the answer does not match.
+ */
+async function postRest<Schema extends z.ZodType>(
   path: string,
   schema: Schema,
-  options: RequestOptions = {},
+  body: unknown,
 ): Promise<z.infer<Schema>> {
-  const response = await send(path, options);
+  const response = await send(path, { method: 'POST', body });
   const result = schema.safeParse(await response.json());
   if (result.success === false) {
-    throw new Error(`Unexpected response from ${options.method ?? 'GET'} ${path}`, { cause: result.error });
+    throw new Error(`Unexpected response from POST ${path}`, { cause: result.error });
   }
   return result.data;
 }
 
 /**
- * Sends a request whose answer has no body.
+ * Drops an object's nulls, so a nullable column reads as the absent field the shared config schemas expect.
  *
- * @param path - Same-origin path, query included.
- * @param [options] - Method and JSON body.
- *
- * @remarks
- * Throws `ApiRequestError` on a non-2xx status.
+ * @param row - A row as GraphQL answered it.
+ * @returns The row without its null fields.
  */
-async function requestNoContent(path: string, options: RequestOptions = {}): Promise<void> {
-  await send(path, options);
+function withoutNulls(row: object): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(row).filter(([, value]) => value !== null));
+}
+
+graphql(`
+  fragment RouterStatusFields on RouterStatus {
+    version
+    uptimeSeconds
+    serverCount
+    runningCount
+    authEnabled
+    idleTimeoutMs
+    publicUrl
+    instanceId
+    lanAdvertise
+    lanDiscovery
+  }
+
+  fragment ServerRowFields on Server {
+    id
+    name
+    displayName
+    description
+    enabled
+    source
+    transport
+    env
+    envMeta
+    idleTimeoutMs
+    callTimeoutMs
+    discovered
+  }
+
+  fragment ServerRuntimeFields on ServerRuntime {
+    name
+    state
+    pid
+    startedAt
+    lastError
+    toolCount
+    callCount
+    lastCalledAt
+    oauth {
+      signedIn
+      expiresAt
+      refreshable
+      clientId
+      hasClientSecret
+    }
+  }
+
+  fragment WorkspaceFields on Workspace {
+    id
+    name
+    slug
+    enabled
+    description
+  }
+
+  fragment WorkspaceMemberFields on WorkspaceMember {
+    id
+    workspaceId
+    serverId
+    enabled
+    env
+    args
+    headers
+    url
+    server {
+      name
+    }
+  }
+
+  fragment McpToolFields on McpTool {
+    name
+    title
+    description
+    inputSchema
+    outputSchema
+    annotations
+  }
+
+  fragment McpResourceListingFields on McpResourceListing {
+    resources {
+      uri
+      name
+      title
+      description
+      mimeType
+    }
+    resourceTemplates {
+      uriTemplate
+      name
+      title
+      description
+      mimeType
+    }
+  }
+
+  fragment McpPromptFields on McpPrompt {
+    name
+    title
+    description
+    arguments {
+      name
+      description
+      required
+    }
+  }
+
+  fragment ActivityEntryFields on ActivityEntry {
+    id
+    at
+    via
+    method
+    target
+    ok
+    durationMs
+    params
+    result
+    error
+  }
+
+  fragment LanDiscoveryFields on LanDiscovery {
+    enabled
+    servers {
+      key
+      cardName
+      title
+      description
+      version
+      host
+      url
+      requiredHeaders
+      suggestedName
+      state
+      serverName
+    }
+  }
+`);
+
+/** The router's own status. */
+export type RouterStatus = RouterStatusFieldsFragment;
+/** A server's live state, as `serverRuntimes` answers it. */
+export type ServerRuntime = ServerRuntimeFieldsFragment;
+/** One tool a server or workspace offers. */
+export type McpTool = McpToolFieldsFragment;
+/** A server's or workspace's resources and resource templates. */
+export type McpResourceListing = McpResourceListingFieldsFragment;
+/** One resource a server offers. */
+export type McpResource = McpResourceListing['resources'][number];
+/** One resource template a server offers. */
+export type McpResourceTemplate = McpResourceListing['resourceTemplates'][number];
+/** One prompt a server or workspace offers. */
+export type McpPrompt = McpPromptFieldsFragment;
+/** One recorded proxied call. */
+export type ActivityEntry = ActivityEntryFieldsFragment;
+/** The servers found on the local network. */
+export type LanDiscovery = LanDiscoveryFieldsFragment;
+/** A server another host on the local network advertises. */
+export type LanServer = LanDiscovery['servers'][number];
+/** Where to send the operator to sign a remote server in. */
+export type OAuthStartResult = StartServerOAuthMutation['startServerOAuth'];
+/** What a config reload found. */
+export type ReloadOutcome = ReloadConfigMutation['reloadConfig'];
+
+/** A server's stored config, its JSON columns read through the shared config schema. */
+export interface ServerRecord {
+  /** The row's id; workspaces name their members by it. */
+  id: string;
+  config: ServerConfig;
+}
+
+/** An installed server: its stored config and its live state. */
+export type InstalledServer = ServerRecord & Omit<ServerRuntime, 'name'>;
+
+/**
+ * Reads a server row's config.
+ *
+ * @param row - The row as GraphQL answered it.
+ * @returns Its id and config. Throws when a JSON column does not match the shared config schema.
+ */
+function serverRecordOf(row: ServerRowFieldsFragment): ServerRecord {
+  const { id, ...columns } = row;
+  return { id, config: serverConfigSchema.parse(withoutNulls(columns)) };
+}
+
+/** A server the gateway has not reported on yet: what its runtime reads as until it does. */
+const UNREPORTED_RUNTIME: Omit<ServerRuntime, 'name'> = {
+  state: ServerRuntimeState.Stopped,
+  pid: null,
+  startedAt: null,
+  lastError: null,
+  toolCount: null,
+  callCount: null,
+  lastCalledAt: null,
+  oauth: null,
+};
+
+/**
+ * Pairs a server row with its live state.
+ *
+ * @param row - The server's row.
+ * @param runtimes - Every server's live state.
+ * @returns The installed server; stopped when the gateway has not reported on it.
+ */
+function installedServerOf(row: ServerRowFieldsFragment, runtimes: ServerRuntime[]): InstalledServer {
+  const { name: _name, ...runtime } = runtimes.find((candidate) => candidate.name === row.name) ?? {
+    name: row.name,
+    ...UNREPORTED_RUNTIME,
+  };
+  return { ...serverRecordOf(row), ...runtime };
+}
+
+/** One server in a workspace: its overrides, and the id of the server it is. */
+export type WorkspaceMemberView = WorkspaceMember & { serverId: string };
+
+/** A workspace: its row, its members by server name, and the path it is served at. */
+export type WorkspaceView = WorkspaceFieldsFragment & {
+  /** Endpoint path of the workspace aggregate, e.g. "/mcp/w/my-workspace". */
+  path: string;
+  members: Record<string, WorkspaceMemberView>;
+};
+
+/** A workspace member as GraphQL answers it. */
+type WorkspaceMemberRow = {
+  workspaceId: string;
+  serverId: string;
+  server: { name: string } | null;
+} & Record<string, unknown>;
+
+/**
+ * Reads a workspace and its members.
+ *
+ * @param row - The workspace's row.
+ * @param members - Its member rows; rows of other workspaces are skipped.
+ * @returns The workspace, its members keyed by server name and read through the shared member schema.
+ */
+function workspaceViewOf(row: WorkspaceFieldsFragment, members: WorkspaceMemberRow[]): WorkspaceView {
+  const byName: Record<string, WorkspaceMemberView> = {};
+  for (const member of members) {
+    if (member.workspaceId !== row.id || member.server === null) {
+      continue;
+    }
+    const { id: _id, workspaceId: _workspaceId, server, serverId, ...overrides } = member;
+    byName[server.name] = { ...workspaceMemberSchema.parse(withoutNulls(overrides)), serverId };
+  }
+  return { ...row, path: `/mcp/w/${row.slug}`, members: byName };
 }
 
 /**
- * Reads the router's own status from `GET /api/status`.
+ * Builds the member list `saveWorkspace` takes from members keyed by server name.
+ *
+ * @param members - Each member's overrides and server id.
+ * @returns One input per member.
+ */
+export function memberInputs(members: Record<string, WorkspaceMemberView>): WorkspaceSave['members'] {
+  return Object.values(members).map(({ serverId, enabled, env, args, headers, url }) => ({
+    serverId,
+    enabled,
+    ...(env === undefined ? {} : { env }),
+    ...(args === undefined ? {} : { args }),
+    ...(headers === undefined ? {} : { headers }),
+    ...(url === undefined ? {} : { url }),
+  }));
+}
+
+const RouterStatusQueryDocument = graphql(`
+  query RouterStatus {
+    routerStatus {
+      ...RouterStatusFields
+    }
+  }
+`);
+
+/**
+ * Reads the router's own status.
  *
  * @returns Version, uptime, server counts, and whether auth is on.
  */
-export function getStatus(): Promise<RouterStatus> {
-  return request('/api/status', routerStatusSchema);
+export async function getStatus(): Promise<RouterStatus> {
+  return (await request(RouterStatusQueryDocument, {})).routerStatus;
 }
 
+const ServersQueryDocument = graphql(`
+  query Servers($limit: Int) {
+    servers(limit: $limit, orderBy: { name: { direction: asc, priority: 0 } }) {
+      ...ServerRowFields
+    }
+    serverRuntimes(limit: $limit) {
+      ...ServerRuntimeFields
+    }
+  }
+`);
+
 /**
- * Lists every installed server from `GET /api/servers`.
+ * Lists every installed server.
  *
- * @returns Each server's config and live status.
+ * @returns Each server's config and live state, by name.
  */
-export function listServers(): Promise<ServerStatus[]> {
-  return request('/api/servers', z.array(serverStatusSchema));
+export async function listServers(): Promise<InstalledServer[]> {
+  const { servers, serverRuntimes } = await request(ServersQueryDocument, { limit: PAGE_DEFAULTS.servers });
+  return servers.map((row) => installedServerOf(row, serverRuntimes));
 }
 
-/**
- * Reads one server from `GET /api/servers/:name`.
- *
- * @param name - The server's local name.
- * @returns Its config and live status.
- */
-export function getServer(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}`, serverStatusSchema);
-}
+const ServerQueryDocument = graphql(`
+  query Server($name: String!, $limit: Int) {
+    server(where: { name: { eq: $name } }) {
+      ...ServerRowFields
+    }
+    serverRuntimes(limit: $limit) {
+      ...ServerRuntimeFields
+    }
+  }
+`);
 
 /**
- * Installs a server with `POST /api/servers`.
- *
- * @param body - What to install and how to configure it.
- * @returns The new server's status.
- */
-export function installServer(body: InstallRequest): Promise<ServerStatus> {
-  return request('/api/servers', serverStatusSchema, { method: 'POST', body });
-}
-
-/**
- * Changes a server's config with `PATCH /api/servers/:name`.
- *
- * @param name - The server's local name.
- * @param body - Only the fields to change.
- * @returns The server's status after the change.
- */
-export function updateServer(name: string, body: UpdateServerRequest): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}`, serverStatusSchema, { method: 'PATCH', body });
-}
-
-/**
- * Uninstalls a server with `DELETE /api/servers/:name`.
+ * Reads one server.
  *
  * @param name - The server's local name.
+ * @returns Its config and live state, or null when there is no such server.
  */
-export function deleteServer(name: string): Promise<void> {
-  return requestNoContent(`/api/servers/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export async function getServer(name: string): Promise<InstalledServer | null> {
+  const { server, serverRuntimes } = await request(ServerQueryDocument, { name, limit: PAGE_DEFAULTS.servers });
+  return server === null ? null : installedServerOf(server, serverRuntimes);
 }
 
+/** What the install form sends: the generated input, with its JSON fields held to the shared config shapes. */
+export type InstallInput = InstallServerInput & {
+  source: ServerSource;
+  transport?: ServerTransport | null;
+  env?: Record<string, string> | null;
+};
+
+const InstallServerMutationDocument = graphql(`
+  mutation InstallServer($input: InstallServerInput!) {
+    installServer(input: $input) {
+      ...ServerRowFields
+    }
+  }
+`);
+
 /**
- * Restarts a server with `POST /api/servers/:name/restart`.
+ * Installs a server.
+ *
+ * @param input - What to install and how to configure it.
+ * @returns The new server's config.
+ */
+export async function installServer(input: InstallInput): Promise<ServerRecord> {
+  return serverRecordOf((await request(InstallServerMutationDocument, { input })).installServer);
+}
+
+/** What the edit form sends: the generated input, with its JSON fields held to the shared config shapes. */
+export type EditServerChanges = EditServerInput & {
+  env?: Record<string, string> | null;
+  transport?: ServerTransport | null;
+};
+
+const UpdateServerMutationDocument = graphql(`
+  mutation UpdateServer($name: String!, $input: EditServerInput!) {
+    updateServer(name: $name, input: $input) {
+      ...ServerRowFields
+    }
+  }
+`);
+
+/**
+ * Changes a server's config.
  *
  * @param name - The server's local name.
- * @returns The server's status after the restart.
+ * @param input - Only the fields to change.
+ * @returns The server's config after the change.
  */
-export function restartServer(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}/restart`, serverStatusSchema, { method: 'POST' });
+export async function updateServer(name: string, input: EditServerChanges): Promise<ServerRecord> {
+  return serverRecordOf((await request(UpdateServerMutationDocument, { name, input })).updateServer);
 }
 
+const DeleteServerMutationDocument = graphql(`
+  mutation DeleteServer($name: String!) {
+    deleteServer(name: $name) {
+      id
+    }
+  }
+`);
+
 /**
- * Asks a remote server whether it wants a sign-in, with `POST /api/servers/:name/oauth/check`.
+ * Uninstalls a server.
  *
  * @param name - The server's local name.
- * @returns Its status; `needs-auth` when it asked for a login.
  */
-export function checkServerOAuth(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}/oauth/check`, serverStatusSchema, { method: 'POST' });
+export async function deleteServer(name: string): Promise<void> {
+  await request(DeleteServerMutationDocument, { name });
 }
 
+const RestartServerMutationDocument = graphql(`
+  mutation RestartServer($name: String!) {
+    restartServer(name: $name) {
+      ...ServerRuntimeFields
+    }
+  }
+`);
+
 /**
- * Starts a remote server's sign-in with `POST /api/servers/:name/oauth/start`.
+ * Restarts a server.
+ *
+ * @param name - The server's local name.
+ * @returns The server's live state after the restart.
+ */
+export async function restartServer(name: string): Promise<ServerRuntime> {
+  return (await request(RestartServerMutationDocument, { name })).restartServer;
+}
+
+const CheckServerOAuthMutationDocument = graphql(`
+  mutation CheckServerOAuth($name: String!) {
+    checkServerOAuth(name: $name) {
+      ...ServerRuntimeFields
+    }
+  }
+`);
+
+/**
+ * Asks a remote server whether it wants a sign-in.
+ *
+ * @param name - The server's local name.
+ * @returns Its live state; `NEEDS_AUTH` when it asked for a login.
+ */
+export async function checkServerOAuth(name: string): Promise<ServerRuntime> {
+  return (await request(CheckServerOAuthMutationDocument, { name })).checkServerOAuth;
+}
+
+const StartServerOAuthMutationDocument = graphql(`
+  mutation StartServerOAuth($name: String!, $origin: String!) {
+    startServerOAuth(name: $name, origin: $origin) {
+      authorizationUrl
+      signedIn
+    }
+  }
+`);
+
+/**
+ * Starts a remote server's sign-in.
  *
  * @param name - The server's local name.
  * @param origin - This window's origin, which the sign-in window reports back to.
  * @returns The login page to open, or `signedIn` when none is needed.
  */
-export function startServerOAuth(name: string, origin: string): Promise<OAuthStartResponse> {
-  return request(`/api/servers/${encodeURIComponent(name)}/oauth/start`, oauthStartResponseSchema, {
-    method: 'POST',
-    body: { origin },
-  });
+export async function startServerOAuth(name: string, origin: string): Promise<OAuthStartResult> {
+  return (await request(StartServerOAuthMutationDocument, { name, origin })).startServerOAuth;
 }
 
+const SignOutServerOAuthMutationDocument = graphql(`
+  mutation SignOutServerOAuth($name: String!) {
+    signOutServerOAuth(name: $name) {
+      ...ServerRuntimeFields
+    }
+  }
+`);
+
 /**
- * Signs a remote server out with `DELETE /api/servers/:name/oauth`.
+ * Signs a remote server out.
  *
  * @param name - The server's local name.
- * @returns Its status after the sign-out.
+ * @returns Its live state after the sign-out.
  */
-export function signOutServerOAuth(name: string): Promise<ServerStatus> {
-  return request(`/api/servers/${encodeURIComponent(name)}/oauth`, serverStatusSchema, { method: 'DELETE' });
+export async function signOutServerOAuth(name: string): Promise<ServerRuntime> {
+  return (await request(SignOutServerOAuthMutationDocument, { name })).signOutServerOAuth;
 }
 
 /** The `kind` of a capability scope that is one server. */
@@ -277,15 +717,14 @@ export const SCOPE_WORKSPACE = 'workspace' as const;
  * Whose capability surface (tools, resources, prompts, activity, test calls) a call is about.
  *
  * @remarks
- * A single server (`/api/servers/:name/…`) and a workspace (`/api/workspaces/:slug/…`) share request and response
- * shapes, so one set of functions, hooks and components serves both.
+ * A single server and a workspace answer the same shapes, so one set of functions, hooks and components serves both.
  */
 export type CapabilityScope =
   | { kind: typeof SCOPE_SERVER; name: string }
   | { kind: typeof SCOPE_WORKSPACE; slug: string };
 
 /**
- * Picks the API base path of a capability scope.
+ * Picks the REST base path of a capability scope, for the test calls that are still REST.
  *
  * @param scope - The server or workspace.
  * @returns `/api/servers/:name` or `/api/workspaces/:slug`, the name or slug URL-encoded.
@@ -296,224 +735,484 @@ function scopeBase(scope: CapabilityScope): string {
     : `/api/workspaces/${encodeURIComponent(scope.slug)}`;
 }
 
+const ServerToolsQueryDocument = graphql(`
+  query ServerTools($name: String!, $limit: Int) {
+    serverTools(name: $name, limit: $limit) {
+      ...McpToolFields
+    }
+  }
+`);
+
+const WorkspaceToolsQueryDocument = graphql(`
+  query WorkspaceTools($slug: String!, $limit: Int) {
+    workspaceTools(slug: $slug, limit: $limit) {
+      ...McpToolFields
+    }
+  }
+`);
+
 /**
- * Lists a scope's tools from `GET …/tools`.
+ * Lists a scope's tools.
  *
  * @param scope - The server or workspace; listing may spawn its downstream server(s).
  * @returns The tools.
  */
-export function getTools(scope: CapabilityScope): Promise<ServerToolsResponse> {
-  return request(`${scopeBase(scope)}/tools`, serverToolsResponseSchema);
+export async function getTools(scope: CapabilityScope): Promise<{ tools: McpTool[] }> {
+  const limit = PAGE_DEFAULTS.capabilities;
+  const tools =
+    scope.kind === SCOPE_SERVER
+      ? (await request(ServerToolsQueryDocument, { name: scope.name, limit })).serverTools
+      : (await request(WorkspaceToolsQueryDocument, { slug: scope.slug, limit })).workspaceTools;
+  return { tools };
 }
 
+const ServerResourcesQueryDocument = graphql(`
+  query ServerResources($name: String!, $limit: Int) {
+    serverResources(name: $name, limit: $limit) {
+      ...McpResourceListingFields
+    }
+  }
+`);
+
+const WorkspaceResourcesQueryDocument = graphql(`
+  query WorkspaceResources($slug: String!, $limit: Int) {
+    workspaceResources(slug: $slug, limit: $limit) {
+      ...McpResourceListingFields
+    }
+  }
+`);
+
 /**
- * Lists a scope's resources from `GET …/resources`.
+ * Lists a scope's resources.
  *
  * @param scope - The server or workspace; listing may spawn its downstream server(s).
  * @returns The resources and resource templates.
  */
-export function getResources(scope: CapabilityScope): Promise<ServerResourcesResponse> {
-  return request(`${scopeBase(scope)}/resources`, serverResourcesResponseSchema);
+export async function getResources(scope: CapabilityScope): Promise<McpResourceListing> {
+  const limit = PAGE_DEFAULTS.capabilities;
+  return scope.kind === SCOPE_SERVER
+    ? (await request(ServerResourcesQueryDocument, { name: scope.name, limit })).serverResources
+    : (await request(WorkspaceResourcesQueryDocument, { slug: scope.slug, limit })).workspaceResources;
+}
+
+const ServerPromptsQueryDocument = graphql(`
+  query ServerPrompts($name: String!, $limit: Int) {
+    serverPrompts(name: $name, limit: $limit) {
+      ...McpPromptFields
+    }
+  }
+`);
+
+const WorkspacePromptsQueryDocument = graphql(`
+  query WorkspacePrompts($slug: String!, $limit: Int) {
+    workspacePrompts(slug: $slug, limit: $limit) {
+      ...McpPromptFields
+    }
+  }
+`);
+
+/**
+ * Lists a scope's prompts.
+ *
+ * @param scope - The server or workspace; listing may spawn its downstream server(s).
+ * @returns The prompts.
+ */
+export async function getPrompts(scope: CapabilityScope): Promise<{ prompts: McpPrompt[] }> {
+  const limit = PAGE_DEFAULTS.capabilities;
+  const prompts =
+    scope.kind === SCOPE_SERVER
+      ? (await request(ServerPromptsQueryDocument, { name: scope.name, limit })).serverPrompts
+      : (await request(WorkspacePromptsQueryDocument, { slug: scope.slug, limit })).workspacePrompts;
+  return { prompts };
 }
 
 /**
- * Reads one resource through `POST …/resources/read`.
+ * Reads one resource through `POST …/resources/read`. REST: the schema has no field for it yet.
  *
  * @param scope - The server or workspace that serves it.
  * @param body - Which resource to read.
  * @returns The resource's contents.
  */
 export function readResource(scope: CapabilityScope, body: ResourceReadRequest): Promise<ResourceReadResponse> {
-  return request(`${scopeBase(scope)}/resources/read`, resourceReadResponseSchema, { method: 'POST', body });
+  return postRest(`${scopeBase(scope)}/resources/read`, resourceReadResponseSchema, body);
 }
 
 /**
- * Lists a scope's prompts from `GET …/prompts`.
- *
- * @param scope - The server or workspace; listing may spawn its downstream server(s).
- * @returns The prompts.
- */
-export function getPrompts(scope: CapabilityScope): Promise<ServerPromptsResponse> {
-  return request(`${scopeBase(scope)}/prompts`, serverPromptsResponseSchema);
-}
-
-/**
- * Renders one prompt through `POST …/prompts/get`.
+ * Renders one prompt through `POST …/prompts/get`. REST: the schema has no field for it yet.
  *
  * @param scope - The server or workspace that serves it.
  * @param body - The prompt and its arguments.
  * @returns The prompt's messages.
  */
 export function getPrompt(scope: CapabilityScope, body: PromptGetRequest): Promise<PromptGetResponse> {
-  return request(`${scopeBase(scope)}/prompts/get`, promptGetResponseSchema, { method: 'POST', body });
+  return postRest(`${scopeBase(scope)}/prompts/get`, promptGetResponseSchema, body);
 }
 
 /**
- * Calls one tool through `POST …/tools/call`.
+ * Calls one tool through `POST …/tools/call`. REST: the schema has no field for it yet.
  *
  * @param scope - The server or workspace that serves it.
  * @param body - The tool and its arguments.
  * @returns The tool's result; `isError` marks a tool that reported its own failure.
  */
 export function callTool(scope: CapabilityScope, body: ToolCallRequest): Promise<ToolCallResponse> {
-  return request(`${scopeBase(scope)}/tools/call`, toolCallResponseSchema, { method: 'POST', body });
+  return postRest(`${scopeBase(scope)}/tools/call`, toolCallResponseSchema, body);
 }
 
+const ServerActivityQueryDocument = graphql(`
+  query ServerActivity($name: String!, $limit: Int) {
+    serverActivity(name: $name, limit: $limit) {
+      ...ActivityEntryFields
+    }
+  }
+`);
+
+const WorkspaceActivityQueryDocument = graphql(`
+  query WorkspaceActivity($slug: String!, $limit: Int) {
+    workspaceActivity(slug: $slug, limit: $limit) {
+      ...ActivityEntryFields
+    }
+  }
+`);
+
 /**
- * Reads a scope's proxied-call log from `GET …/activity`.
+ * Reads a scope's proxied-call log.
  *
  * @param scope - The server or workspace.
  * @returns The recorded calls.
  */
-export function getActivity(scope: CapabilityScope): Promise<ActivityResponse> {
-  return request(`${scopeBase(scope)}/activity`, activityResponseSchema);
+export async function getActivity(scope: CapabilityScope): Promise<{ entries: ActivityEntry[] }> {
+  const limit = PAGE_DEFAULTS.activity;
+  const entries =
+    scope.kind === SCOPE_SERVER
+      ? (await request(ServerActivityQueryDocument, { name: scope.name, limit })).serverActivity
+      : (await request(WorkspaceActivityQueryDocument, { slug: scope.slug, limit })).workspaceActivity;
+  return { entries };
 }
 
+const ClearServerActivityMutationDocument = graphql(`
+  mutation ClearServerActivity($name: String!) {
+    clearServerActivity(name: $name)
+  }
+`);
+
+const ClearWorkspaceActivityMutationDocument = graphql(`
+  mutation ClearWorkspaceActivity($slug: String!) {
+    clearWorkspaceActivity(slug: $slug)
+  }
+`);
+
 /**
- * Empties a scope's proxied-call log with `DELETE …/activity`.
+ * Empties a scope's proxied-call log.
  *
  * @param scope - The server or workspace.
  */
-export function clearActivity(scope: CapabilityScope): Promise<void> {
-  return requestNoContent(`${scopeBase(scope)}/activity`, { method: 'DELETE' });
+export async function clearActivity(scope: CapabilityScope): Promise<void> {
+  if (scope.kind === SCOPE_SERVER) {
+    await request(ClearServerActivityMutationDocument, { name: scope.name });
+    return;
+  }
+  await request(ClearWorkspaceActivityMutationDocument, { slug: scope.slug });
+}
+
+const RegistriesQueryDocument = graphql(`
+  query Registries($limit: Int) {
+    registries(limit: $limit, orderBy: { name: { direction: asc, priority: 0 } }) {
+      id
+      name
+      url
+    }
+  }
+`);
+
+/** A configured registry. */
+export interface RegistryView {
+  id: string;
+  name: string;
+  url: string;
 }
 
 /**
- * Lists the configured registries from `GET /api/registries`.
+ * Lists the configured registries.
  *
  * @returns Each registry's name and URL.
  */
-export function listRegistries(): Promise<Registry[]> {
-  return request('/api/registries', z.array(registrySchema));
+export async function listRegistries(): Promise<RegistryView[]> {
+  return (await request(RegistriesQueryDocument, { limit: PAGE_DEFAULTS.registries })).registries;
 }
 
+const CreateRegistryMutationDocument = graphql(`
+  mutation CreateRegistry($name: String!, $url: String!) {
+    createRegistry(values: { name: $name, url: $url }) {
+      id
+      name
+      url
+    }
+  }
+`);
+
 /**
- * Adds a registry with `POST /api/registries`.
+ * Adds a registry.
  *
- * @param body - The registry to add.
+ * @param registry - Its name and URL.
  * @returns The registry as saved.
  */
-export function createRegistry(body: CreateRegistryRequest): Promise<Registry> {
-  return request('/api/registries', registrySchema, { method: 'POST', body });
+export async function createRegistry(registry: { name: string; url: string }): Promise<RegistryView> {
+  return (await request(CreateRegistryMutationDocument, registry)).createRegistry;
 }
 
+const DeleteRegistryMutationDocument = graphql(`
+  mutation DeleteRegistry($name: String!) {
+    deleteRegistry(where: { name: { eq: $name } }) {
+      id
+    }
+  }
+`);
+
 /**
- * Removes a registry with `DELETE /api/registries/:name`.
+ * Removes a registry.
  *
  * @param name - The registry's name.
  */
-export function deleteRegistry(name: string): Promise<void> {
-  return requestNoContent(`/api/registries/${encodeURIComponent(name)}`, { method: 'DELETE' });
+export async function deleteRegistry(name: string): Promise<void> {
+  await request(DeleteRegistryMutationDocument, { name });
+}
+
+const RegistryServersQueryDocument = graphql(`
+  query RegistryServers($registry: String!, $search: String, $cursor: String, $limit: Int) {
+    registryServers(registry: $registry, search: $search, cursor: $cursor, limit: $limit) {
+      servers
+      nextCursor
+    }
+  }
+`);
+
+/** One page of a registry search. */
+export interface RegistryPage {
+  /** The entries, read through the shared registry schema. */
+  servers: RegistryServerEntry[];
+  /** Pass it back for the next page; null on the last. */
+  nextCursor: string | null;
 }
 
 /**
- * Searches one registry's servers through `GET /api/registries/:name/servers`.
+ * Searches one registry's servers.
  *
  * @param registry - The registry's name.
- * @param [params] - Search text, page cursor and page size; an empty or absent one is left off the query.
- * @returns One page of entries; `metadata.nextCursor` is set while more remain.
+ * @param [params] - Search text, page cursor and page size; an empty one is left out.
+ * @returns One page of entries.
  */
-export function searchRegistryServers(
+export async function searchRegistryServers(
   registry: string,
-  params: RegistrySearchParams = {},
-): Promise<RegistryListResponse> {
-  const query = new URLSearchParams();
-  if (params.search) {
-    query.set('search', params.search);
-  }
-  if (params.cursor) {
-    query.set('cursor', params.cursor);
-  }
-  if (params.limit !== undefined) {
-    query.set('limit', String(params.limit));
-  }
-  const suffix = query.size > 0 ? `?${query.toString()}` : '';
-  return request(`/api/registries/${encodeURIComponent(registry)}/servers${suffix}`, registryListResponseSchema);
+  params: { search?: string; cursor?: string; limit?: number } = {},
+): Promise<RegistryPage> {
+  const { registryServers } = await request(RegistryServersQueryDocument, {
+    registry,
+    search: params.search || null,
+    cursor: params.cursor || null,
+    limit: params.limit ?? null,
+  });
+  return {
+    servers: registryServers.servers.map((entry) => registryServerEntrySchema.parse(entry)),
+    nextCursor: registryServers.nextCursor,
+  };
 }
 
+const WorkspacesQueryDocument = graphql(`
+  query Workspaces($limit: Int, $memberLimit: Int) {
+    workspaces(limit: $limit, orderBy: { name: { direction: asc, priority: 0 } }) {
+      ...WorkspaceFields
+    }
+    workspaceMembers(limit: $memberLimit) {
+      ...WorkspaceMemberFields
+    }
+  }
+`);
+
 /**
- * Lists every workspace from `GET /api/workspaces`.
+ * Lists every workspace.
  *
- * @returns Each workspace's config and endpoint path.
+ * @returns Each workspace with its members and endpoint path.
  */
-export function listWorkspaces(): Promise<WorkspaceStatus[]> {
-  return request('/api/workspaces', z.array(workspaceStatusSchema));
+export async function listWorkspaces(): Promise<WorkspaceView[]> {
+  const { workspaces, workspaceMembers } = await request(WorkspacesQueryDocument, {
+    limit: PAGE_DEFAULTS.workspaces,
+    memberLimit: PAGE_DEFAULTS.workspaceMembers,
+  });
+  return workspaces.map((row) => workspaceViewOf(row, workspaceMembers));
 }
 
+const WorkspaceQueryDocument = graphql(`
+  query Workspace($slug: String!, $memberLimit: Int) {
+    workspace(where: { slug: { eq: $slug } }) {
+      ...WorkspaceFields
+      members(limit: $memberLimit) {
+        ...WorkspaceMemberFields
+      }
+    }
+  }
+`);
+
 /**
- * Reads one workspace from `GET /api/workspaces/:slug`.
+ * Reads one workspace.
  *
  * @param slug - The workspace's slug.
- * @returns Its config and endpoint path.
+ * @returns It with its members and endpoint path, or null when there is no such workspace.
  */
-export function getWorkspace(slug: string): Promise<WorkspaceStatus> {
-  return request(`/api/workspaces/${encodeURIComponent(slug)}`, workspaceStatusSchema);
+export async function getWorkspace(slug: string): Promise<WorkspaceView | null> {
+  const { workspace } = await request(WorkspaceQueryDocument, { slug, memberLimit: PAGE_DEFAULTS.workspaceMembers });
+  if (workspace === null) {
+    return null;
+  }
+  const { members, ...row } = workspace;
+  return workspaceViewOf(row, members);
+}
+
+const SaveWorkspaceMutationDocument = graphql(`
+  mutation SaveWorkspace($input: SaveWorkspaceInput!, $memberLimit: Int) {
+    saveWorkspace(input: $input) {
+      ...WorkspaceFields
+      members(limit: $memberLimit) {
+        ...WorkspaceMemberFields
+      }
+    }
+  }
+`);
+
+/** What saving a workspace sends: the generated input, with each member's JSON overrides held to the shared shape. */
+export type WorkspaceSave = Omit<SaveWorkspaceInput, 'members'> & {
+  members: Array<SaveWorkspaceInput['members'][number] & Pick<WorkspaceMember, 'env' | 'headers'>>;
+};
+
+/**
+ * Builds the save that writes a workspace back as it is, for a change to one part of it.
+ *
+ * @param workspace - The workspace as read.
+ * @returns The input that replaces it with itself; spread a change over it.
+ */
+export function workspaceSaveOf(workspace: WorkspaceView): WorkspaceSave {
+  const { id, name, slug, enabled, description, members } = workspace;
+  return { id, name, slug, enabled, description, members: memberInputs(members) };
 }
 
 /**
- * Creates a workspace with `POST /api/workspaces`.
+ * Creates a workspace, or replaces one (with `id`), with its whole member list.
  *
- * @param body - The workspace to create.
+ * @param input - The workspace and every member it keeps.
  * @returns The workspace as saved.
  */
-export function createWorkspace(body: CreateWorkspaceRequest): Promise<WorkspaceStatus> {
-  return request('/api/workspaces', workspaceStatusSchema, { method: 'POST', body });
+export async function saveWorkspace(input: WorkspaceSave): Promise<WorkspaceView> {
+  const { saveWorkspace: saved } = await request(SaveWorkspaceMutationDocument, {
+    input,
+    memberLimit: PAGE_DEFAULTS.workspaceMembers,
+  });
+  const { members, ...row } = saved;
+  return workspaceViewOf(row, members);
 }
 
+const DeleteWorkspaceMutationDocument = graphql(`
+  mutation DeleteWorkspace($slug: String!) {
+    deleteWorkspace(where: { slug: { eq: $slug } }) {
+      id
+    }
+  }
+`);
+
 /**
- * Changes a workspace with `PATCH /api/workspaces/:slug`.
+ * Deletes a workspace.
  *
  * @param slug - The workspace's slug.
- * @param body - Only the fields to change.
- * @returns The workspace after the change.
  */
-export function updateWorkspace(slug: string, body: UpdateWorkspaceRequest): Promise<WorkspaceStatus> {
-  return request(`/api/workspaces/${encodeURIComponent(slug)}`, workspaceStatusSchema, { method: 'PATCH', body });
+export async function deleteWorkspace(slug: string): Promise<void> {
+  await request(DeleteWorkspaceMutationDocument, { slug });
+}
+
+/** The settings the UI edits. */
+export type SettingsChanges = Pick<UpdateSettingInput, 'idleTimeoutMs' | 'publicUrl' | 'lanAdvertise' | 'lanDiscovery'>;
+
+const UpdateSettingMutationDocument = graphql(`
+  mutation UpdateSetting($set: UpdateSettingInput!) {
+    updateSetting(set: $set, where: { id: { eq: 1 } }) {
+      idleTimeoutMs
+      publicUrl
+      lanAdvertise
+      lanDiscovery
+    }
+  }
+`);
+
+/** The editable settings as they stand after a change. */
+export interface SavedSettings {
+  idleTimeoutMs: number;
+  publicUrl: string | null;
+  lanAdvertise: boolean;
+  lanDiscovery: boolean;
 }
 
 /**
- * Deletes a workspace with `DELETE /api/workspaces/:slug`.
+ * Changes router settings.
  *
- * @param slug - The workspace's slug.
- */
-export function deleteWorkspace(slug: string): Promise<void> {
-  return requestNoContent(`/api/workspaces/${encodeURIComponent(slug)}`, { method: 'DELETE' });
-}
-
-/**
- * Changes router settings with `PATCH /api/settings`.
- *
- * @param body - Only the settings to change.
+ * @param set - Only the settings to change; a null `publicUrl` clears it.
  * @returns The settings after the change.
  */
-export function updateSettings(body: UpdateSettingsRequest): Promise<UpdateSettingsResponse> {
-  return request('/api/settings', updateSettingsResponseSchema, { method: 'PATCH', body });
+export async function updateSettings(set: SettingsChanges): Promise<SavedSettings> {
+  const { updateSetting } = await request(UpdateSettingMutationDocument, { set });
+  if (updateSetting === null) {
+    throw new ApiRequestError(HttpStatus.Ok, 'The router has no settings to change', { code: ErrorCode.NotFound });
+  }
+  return updateSetting;
 }
 
+const ReloadConfigMutationDocument = graphql(`
+  mutation ReloadConfig {
+    reloadConfig {
+      reloaded
+      serverCount
+    }
+  }
+`);
+
 /**
- * Makes the router re-read its config files with `POST /api/reload`.
+ * Makes the router re-read its stored config.
  *
  * @returns Whether it reloaded, and the server count afterwards.
  */
-export function reloadConfig(): Promise<ReloadResponse> {
-  return request('/api/reload', reloadResponseSchema, { method: 'POST' });
+export async function reloadConfig(): Promise<ReloadOutcome> {
+  return (await request(ReloadConfigMutationDocument, {})).reloadConfig;
 }
 
+const LanServersQueryDocument = graphql(`
+  query LanServers($limit: Int) {
+    lanServers(limit: $limit) {
+      ...LanDiscoveryFields
+    }
+  }
+`);
+
 /**
- * Lists the servers found on the local network with `GET /api/discovery`.
+ * Lists the servers found on the local network.
  *
  * @returns Whether the router is watching, and each found server with whether it is available, added or dismissed.
  */
-export function getDiscovery(): Promise<DiscoveryResponse> {
-  return request('/api/discovery', discoveryResponseSchema);
+export async function getDiscovery(): Promise<LanDiscovery> {
+  return (await request(LanServersQueryDocument, { limit: PAGE_DEFAULTS.lanServers })).lanServers;
 }
 
+const SetLanServerDismissedMutationDocument = graphql(`
+  mutation SetLanServerDismissed($key: String!, $dismissed: Boolean!, $limit: Int) {
+    setLanServerDismissed(key: $key, dismissed: $dismissed, limit: $limit) {
+      ...LanDiscoveryFields
+    }
+  }
+`);
+
 /**
- * Hides a found server, or offers it again, with `POST /api/discovery/dismissed`.
+ * Hides a found server, or offers it again.
  *
- * @param body - Its discovery key, and whether it is dismissed.
+ * @param change - Its discovery key, and whether it is dismissed.
  * @returns The found servers afterwards.
  */
-export function setDismissed(body: SetDismissedRequest): Promise<DiscoveryResponse> {
-  return request('/api/discovery/dismissed', discoveryResponseSchema, { method: 'POST', body });
+export async function setDismissed(change: { key: string; dismissed: boolean }): Promise<LanDiscovery> {
+  return (await request(SetLanServerDismissedMutationDocument, { ...change, limit: PAGE_DEFAULTS.lanServers }))
+    .setLanServerDismissed;
 }

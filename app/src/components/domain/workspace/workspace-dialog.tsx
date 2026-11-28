@@ -1,12 +1,4 @@
-import {
-  type CreateWorkspaceRequest,
-  type ServerStatus,
-  slugify,
-  TRANSPORT_STDIO,
-  TRANSPORT_STREAMABLE_HTTP,
-  type WorkspaceMember,
-  type WorkspaceStatus,
-} from '@mcp-router/shared';
+import { slugify, TRANSPORT_STDIO, TRANSPORT_STREAMABLE_HTTP, type WorkspaceMember } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { type ReactElement, useMemo, useState } from 'react';
 import { toast } from 'sonner';
@@ -19,10 +11,17 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChevronDown, ChevronRight } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
-import { SCOPE_WORKSPACE } from '@/lib/api';
+import {
+  type InstalledServer,
+  memberInputs,
+  SCOPE_WORKSPACE,
+  type WorkspaceMemberView,
+  type WorkspaceSave,
+  type WorkspaceView,
+} from '@/lib/api';
 import { argsFromLines } from '@/lib/arg-lines';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
-import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
+import { useSaveWorkspace, useServers } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
@@ -103,20 +102,21 @@ const toDrafts = (members: Record<string, WorkspaceMember>): MemberDraft[] =>
  *
  * @param drafts - The edited drafts.
  * @param servers - The installed servers; a draft for any other server is dropped.
- * @returns One member per included draft, by server name, with only the overrides its transport takes.
+ * @returns One member per included draft, by server name, with its server's id and only the overrides its transport
+ * takes.
  *
  * @remarks
  * Empty overrides and a URL equal to the server's own are left out. A member switched off on the workspace page
  * stays a member, and stays off.
  */
-function buildMembers(drafts: MemberDraft[], servers: ServerStatus[]): Record<string, WorkspaceMember> {
-  const result: Record<string, WorkspaceMember> = {};
+function buildMembers(drafts: MemberDraft[], servers: InstalledServer[]): Record<string, WorkspaceMemberView> {
+  const result: Record<string, WorkspaceMemberView> = {};
   for (const server of servers) {
     const draft = drafts.find((candidate) => candidate.name === server.config.name);
     if (draft?.included !== true) {
       continue;
     }
-    const member: WorkspaceMember = { enabled: draft.enabled };
+    const member: WorkspaceMemberView = { enabled: draft.enabled, serverId: server.id };
     if (server.config.transport.type === TRANSPORT_STDIO) {
       const env = linesToRecord(draft.env);
       if (Object.keys(env).length > 0) {
@@ -146,9 +146,9 @@ interface WorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   /** Present when editing an existing workspace; omitted when creating. */
-  workspace?: WorkspaceStatus;
+  workspace?: WorkspaceView;
   /** Called with the saved workspace before the dialog closes. */
-  onSaved?: (workspace: WorkspaceStatus) => void;
+  onSaved?: (workspace: WorkspaceView) => void;
 }
 
 /**
@@ -169,8 +169,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: Work
   // them on save, so until then there is nothing to choose from and nothing safe to send.
   const { data: loadedServers } = useServers();
   const servers = loadedServers ?? [];
-  const create = useCreateWorkspace();
-  const update = useUpdateWorkspace();
+  const save = useSaveWorkspace();
   const [expanded, setExpanded] = useState<string | null>(null);
 
   const form = useAppForm({
@@ -182,25 +181,23 @@ export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: Work
       members: toDrafts(workspace?.members ?? {}),
     },
     onSubmit: async ({ value }) => {
+      const name = value.name.trim();
       const description = value.description.trim();
-      const body: CreateWorkspaceRequest = {
-        name: value.name.trim(),
+      // While the servers are unknown the members can't be rebuilt, so the workspace keeps the ones it has.
+      const members = loadedServers ? buildMembers(value.members, loadedServers) : (workspace?.members ?? {});
+      const input: WorkspaceSave = {
+        // An edit replaces the workspace; its URL only moves when the name does, and the server derives the new one.
+        ...(isEdit ? { id: workspace.id, ...(name === workspace.name ? { slug: workspace.slug } : {}) } : {}),
+        name,
         enabled: value.enabled,
-        description: description || undefined,
-        // Left out while the servers are unknown: the API then keeps the members the workspace already has.
-        ...(loadedServers ? { members: buildMembers(value.members, loadedServers) } : {}),
+        // Null, not left out: saving replaces the workspace, so an emptied description is cleared.
+        description: description || null,
+        members: memberInputs(members),
       };
       try {
-        if (isEdit) {
-          // An edit sends the description even when empty: left out, the server would keep the old one.
-          const updated = await update.mutateAsync({ slug: workspace.slug, ...body, description });
-          toast.success(`Saved workspace ${updated.name}`);
-          onSaved?.(updated);
-        } else {
-          const created = await create.mutateAsync(body);
-          toast.success(`Created workspace ${created.name}`);
-          onSaved?.(created);
-        }
+        const saved = await save.mutateAsync(input);
+        toast.success(isEdit ? `Saved workspace ${saved.name}` : `Created workspace ${saved.name}`);
+        onSaved?.(saved);
         onOpenChange(false);
       } catch (error) {
         toastApiError(error);
@@ -214,7 +211,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: Work
   const slug = isEdit && values.name === workspace.name ? workspace.slug : slugify(values.name);
   const slugValid = slug.length > 0;
 
-  const toggleMember = (server: ServerStatus, on: boolean) => {
+  const toggleMember = (server: InstalledServer, on: boolean) => {
     const serverName = server.config.name;
     // Seed the URL override for remote members with the base URL so "extending"
     // it (e.g. appending a workspace path) is just editing the tail. Unchanged
@@ -406,7 +403,7 @@ export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: Work
 }
 
 interface MemberRowProps {
-  server: ServerStatus;
+  server: InstalledServer;
   included: boolean;
   /** The member's own on/off switch, set on the workspace page. */
   enabled: boolean;

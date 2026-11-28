@@ -1,11 +1,11 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, fn, userEvent, waitFor, within } from 'storybook/test';
-import { registryServer, stdioServer } from '@/storybook/fixtures';
+import { registryServer, serverRow, serversAnswer, stdioServer } from '@/storybook/fixtures';
 import { apiRequest, pending } from '@/storybook/mock-api';
 import { RegistryServerCard } from './server-card.tsx';
 
-const SERVERS_ROUTE = 'GET /api/servers';
-const INSTALL_ROUTE = 'POST /api/servers';
+const SERVERS_ROUTE = 'Servers';
+const INSTALL_ROUTE = 'InstallServer';
 const REGISTRY_NAME = 'io.github.example/weather';
 
 /** The fixture server as an install of the weather registry entry. */
@@ -21,7 +21,7 @@ function installedWeather() {
 const meta = {
   component: RegistryServerCard,
   args: { registry: 'official', server: registryServer(), onInstalled: fn() },
-  parameters: { api: { [SERVERS_ROUTE]: [stdioServer()] } },
+  parameters: { api: { [SERVERS_ROUTE]: serversAnswer([stdioServer()]) } },
   decorators: [
     (Story) => (
       <div className="max-w-md p-6">
@@ -85,7 +85,7 @@ export const ABareEntryWithNothingToLinkTo: Story = {
 };
 
 export const LinksToTheInstalledCopy: Story = {
-  parameters: { api: { [SERVERS_ROUTE]: [stdioServer(), installedWeather()] } },
+  parameters: { api: { [SERVERS_ROUTE]: serversAnswer([stdioServer(), installedWeather()]) } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(await canvas.findByText('Installed')).toBeVisible();
@@ -104,7 +104,12 @@ export const OffersInstallWhileTheInstalledServersLoad: Story = {
 };
 
 export const InstallsThroughTheDialog: Story = {
-  parameters: { api: { [SERVERS_ROUTE]: [stdioServer()], [INSTALL_ROUTE]: installedWeather() } },
+  parameters: {
+    api: {
+      [SERVERS_ROUTE]: serversAnswer([stdioServer()]),
+      [INSTALL_ROUTE]: { installServer: serverRow(installedWeather()) },
+    },
+  },
   play: async ({ args, canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Install' }));
     const body = within(canvasElement.ownerDocument.body);
@@ -113,14 +118,13 @@ export const InstallsThroughTheDialog: Story = {
     await userEvent.click(dialog.getByRole('button', { name: 'Install' }));
 
     await waitFor(() =>
-      expect(apiRequest).toHaveBeenCalledWith(
-        INSTALL_ROUTE,
-        expect.objectContaining({
+      expect(apiRequest).toHaveBeenCalledWith(INSTALL_ROUTE, {
+        input: expect.objectContaining({
           name: 'weather',
           source: { type: 'registry', registry: 'official', serverName: REGISTRY_NAME, version: '1.2.0' },
           env: { WEATHER_API_KEY: 'abc123' },
         }),
-      ),
+      }),
     );
     await waitFor(() => expect(args.onInstalled).toHaveBeenCalledWith('weather'));
     await waitFor(() => expect(body.queryByRole('dialog')).not.toBeInTheDocument());

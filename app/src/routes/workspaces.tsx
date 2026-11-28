@@ -1,4 +1,3 @@
-import type { WorkspaceStatus } from '@mcp-router/shared';
 import { createFileRoute, Link } from '@tanstack/react-router';
 import { useState } from 'react';
 import { toast } from 'sonner';
@@ -12,6 +11,7 @@ import { Button } from '@/components/ui/button';
 import { CopyButton } from '@/components/ui/copy-button';
 import { Layers, Pencil, Plus, Trash2 } from '@/components/ui/icons';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table';
+import type { WorkspaceView } from '@/lib/api';
 import { endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useWorkspaces } from '@/lib/queries';
 import { toastApiError, toastCopyError } from '@/lib/toast';
@@ -22,7 +22,7 @@ export const Route = createFileRoute('/workspaces')({
 });
 
 /** create → the New button; edit → a specific workspace; null → closed. */
-type DialogState = { mode: 'create' } | { mode: 'edit'; workspace: WorkspaceStatus } | null;
+type DialogState = { mode: 'create' } | { mode: 'edit'; workspace: WorkspaceView } | null;
 
 /**
  * The Workspaces page: every workspace with its URL and enabled-member count, and the create/edit dialog.

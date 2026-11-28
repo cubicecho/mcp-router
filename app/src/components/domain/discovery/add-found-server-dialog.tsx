@@ -1,10 +1,10 @@
-import type { DiscoveredServer } from '@mcp-router/shared';
 import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
 import { PasswordField } from '@/components/password-field';
 import { Button } from '@/components/ui/button';
 import { Code } from '@/components/ui/code';
+import type { LanServer } from '@/lib/api';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
@@ -44,7 +44,7 @@ function headerLabel(header: string): string {
 /** What the add-found-server dialog is given. */
 export interface AddFoundServerDialogProps {
   /** The server to add. */
-  server: DiscoveredServer;
+  server: LanServer;
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }

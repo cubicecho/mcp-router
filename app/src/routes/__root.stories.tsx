@@ -10,11 +10,15 @@ const LOCK_LABEL = 'Lock (forget the stored token)';
 
 /** A router with auth on: every route answers 401 until the stored token is the right one. */
 function lockedRoutes(): ApiRoutes {
-  const open: ApiRoutes = { ...appRoutes(), 'GET /api/status': routerStatus({ authEnabled: true }) };
+  const open: ApiRoutes = { ...appRoutes(), RouterStatus: { routerStatus: routerStatus({ authEnabled: true }) } };
   const locked: ApiRoutes = {};
   for (const [key, answer] of Object.entries(open)) {
-    locked[key] = () =>
-      getToken() === TOKEN ? answer : apiError(HttpStatus.Unauthorized, ErrorCode.Unauthenticated, 'Token required');
+    locked[key] = (request: unknown) => {
+      if (getToken() !== TOKEN) {
+        return apiError(HttpStatus.Unauthorized, ErrorCode.Unauthenticated, 'Token required');
+      }
+      return typeof answer === 'function' ? answer(request) : answer;
+    };
   }
   return locked;
 }
@@ -123,7 +127,7 @@ export const AsksAgainWhenTheTokenIsWrong: Story = {
     await userEvent.click(canvas.getByRole('button', { name: 'Unlock' }));
 
     // The app comes back, asks the server again with the new token, and is turned away again.
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('GET /api/status', undefined));
+    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('RouterStatus', {}));
     await expect(await canvas.findByRole('heading', { name: 'Authentication required' })).toBeVisible();
     await waitFor(() => expect(canvas.getByLabelText('Token')).toHaveValue(''));
   },

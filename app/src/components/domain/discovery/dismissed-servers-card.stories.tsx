@@ -1,11 +1,13 @@
 import type { Meta, StoryObj } from '@storybook/react-vite';
 import { expect, userEvent, waitFor, within } from 'storybook/test';
+import { LanServerState } from '@/__generated__/graphql';
+import { PAGE_DEFAULTS } from '@/lib/defaults';
 import { appRoutes, discoveredServer, discovery } from '@/storybook/fixtures';
 import { apiRequest } from '@/storybook/mock-api';
 import { DismissedServersCard } from './dismissed-servers-card.tsx';
 
-const DISMISS_ROUTE = 'POST /api/discovery/dismissed';
-const skills = discoveredServer({ state: 'dismissed' });
+const DISMISS_ROUTE = 'SetLanServerDismissed';
+const skills = discoveredServer({ state: LanServerState.Dismissed });
 const notes = discoveredServer({
   key: 'MCP Notes on desk/io.github.cubicecho.mcp-notes.desk/notes',
   cardName: 'io.github.cubicecho.mcp-notes.desk/notes',
@@ -13,7 +15,7 @@ const notes = discoveredServer({
   host: 'MCP Notes on desk',
   url: 'http://192.168.1.30:3100/mcp',
   suggestedName: 'notes',
-  state: 'dismissed',
+  state: LanServerState.Dismissed,
 });
 
 const meta = {
@@ -21,7 +23,7 @@ const meta = {
   args: { servers: [skills, notes] },
   parameters: {
     a11y: { test: 'error' },
-    api: { ...appRoutes(), [DISMISS_ROUTE]: discovery({ servers: [notes] }) },
+    api: { ...appRoutes(), [DISMISS_ROUTE]: { setLanServerDismissed: discovery({ servers: [notes] }) } },
   },
 } satisfies Meta<typeof DismissedServersCard>;
 export default meta;
@@ -50,7 +52,13 @@ export const WhenNoneAreDismissed: Story = {
 export const OffersADismissedServerAgain: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Offer again: MCP Skills on nas' }));
-    await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(DISMISS_ROUTE, { key: skills.key, dismissed: false }));
+    await waitFor(() =>
+      expect(apiRequest).toHaveBeenCalledWith(DISMISS_ROUTE, {
+        key: skills.key,
+        dismissed: false,
+        limit: PAGE_DEFAULTS.lanServers,
+      }),
+    );
     const body = within(canvasElement.ownerDocument.body);
     await waitFor(() => expect(body.getByText('MCP Skills on nas is offered again')).toBeVisible());
   },

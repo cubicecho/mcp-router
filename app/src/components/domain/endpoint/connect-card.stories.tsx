@@ -5,7 +5,7 @@ import { routerStatus } from '@/storybook/fixtures';
 import { pending } from '@/storybook/mock-api';
 import { ConnectCard } from './connect-card.tsx';
 
-const STATUS = 'GET /api/status';
+const STATUS = 'RouterStatus';
 const ENDPOINT = 'http://router.example.test/mcp/filesystem';
 const TOKEN = 'story-token-123';
 
@@ -22,7 +22,7 @@ const meta = {
     label: 'filesystem',
     description: 'Point an MCP client directly at filesystem (tools keep their original names).',
   },
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: true }) } },
+  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: true }) } } },
   decorators: [
     (Story) => (
       <div className="max-w-3xl p-6">
@@ -35,7 +35,7 @@ export default meta;
 type Story = StoryObj<typeof meta>;
 
 export const WithAuthOffLeavesOutTheHeader: Story = {
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: false }) } },
+  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: false }) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('heading', { name: 'Connect a client', level: 2 })).toBeVisible();
@@ -79,7 +79,7 @@ export const MasksTheTokenUntilRevealed: Story = {
 };
 
 export const ShowsASnippetPerClient: Story = {
-  parameters: { api: { [STATUS]: routerStatus({ authEnabled: false }) } },
+  parameters: { api: { [STATUS]: { routerStatus: routerStatus({ authEnabled: false }) } } },
   play: async ({ canvasElement }) => {
     const canvas = within(canvasElement);
     await expect(canvas.getByRole('tab', { name: 'Claude Code' })).toHaveAttribute('aria-selected', 'true');

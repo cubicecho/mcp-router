@@ -1,4 +1,4 @@
-import { TRANSPORT_STDIO, type WorkspaceMember, type WorkspaceStatus } from '@mcp-router/shared';
+import { TRANSPORT_STDIO, type WorkspaceMember } from '@mcp-router/shared';
 import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
@@ -6,7 +6,8 @@ import { EmptyState } from '@/components/empty-state';
 import { ListItem } from '@/components/list-item';
 import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
-import { useServers, useUpdateWorkspace } from '@/lib/queries';
+import { type WorkspaceMemberView, type WorkspaceView, workspaceSaveOf } from '@/lib/api';
+import { useSaveWorkspace, useServers } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
 import { toastApiError } from '@/lib/toast';
 
@@ -39,26 +40,23 @@ function overrideLabels(member: WorkspaceMember): string[] {
  * @param props.workspace - The workspace; a member whose server is no longer installed is flagged.
  * @returns The card.
  */
-export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
+export function MembersCard({ workspace }: { workspace: WorkspaceView }) {
   const { data: servers } = useServers();
-  const update = useUpdateWorkspace();
+  const update = useSaveWorkspace();
 
   const memberEntries = Object.entries(workspace.members);
 
-  const toggle = (name: string, member: WorkspaceMember, on: boolean) => {
-    // members is a full replacement on update — resend the whole map with this
-    // one member's enabled flag flipped, preserving every override.
-    const members: Record<string, WorkspaceMember> = {
+  const toggle = (name: string, member: WorkspaceMemberView, on: boolean) => {
+    // Saving replaces the whole member list, so resend every member with this one's enabled flag flipped,
+    // preserving every override.
+    const members: Record<string, WorkspaceMemberView> = {
       ...workspace.members,
       [name]: { ...member, enabled: on },
     };
-    update.mutate(
-      { slug: workspace.slug, members },
-      {
-        onSuccess: () => toast.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${workspace.name}`),
-        onError: toastApiError,
-      },
-    );
+    update.mutate(workspaceSaveOf({ ...workspace, members }), {
+      onSuccess: () => toast.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${workspace.name}`),
+      onError: toastApiError,
+    });
   };
 
   return (
