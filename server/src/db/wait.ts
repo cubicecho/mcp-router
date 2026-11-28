@@ -37,8 +37,8 @@ export function errorCode(error: unknown): string | undefined {
 }
 
 /**
- * Resolves once Postgres answers a query, retrying with capped backoff while it is still starting. Only the Postgres
- * branch needs it: PGlite is up once it is constructed.
+ * Resolves once Postgres answers a query, retrying with capped backoff while it is still starting: after a host
+ * reboot, in a compose stack, on a NAS. Boot always calls it; tests do not (PGlite is up once it is constructed).
  *
  * @param db - Anything that can run a query.
  * @param [overrides] - Settings that replace the defaults. Boot passes the connect timeout from the environment.

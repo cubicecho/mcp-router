@@ -1,7 +1,7 @@
 // `npm run codegen`: prints the schema /graphql serves, so the UI's types can be generated from the real thing.
 import { mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
-import { drizzle } from 'drizzle-orm/pglite';
+import { drizzle } from 'drizzle-orm/node-postgres';
 import { printSchema } from 'graphql';
 import { relations } from '../db/relations.ts';
 import { createSchema } from './build-schema.ts';

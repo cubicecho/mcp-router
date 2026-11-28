@@ -1,81 +1,45 @@
-import { spawnSync } from 'node:child_process';
-import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
-import { tmpdir } from 'node:os';
-import path from 'node:path';
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { openDatabase, usesPostgres } from '../client.ts';
+import { describe, expect, it } from 'vitest';
+import { openDatabase, poolConfig } from '../client.ts';
 import { settings } from '../tables/settings.ts';
+import { openTestDatabase } from './test-db.ts';
 
-/** How long a test that creates a PGlite data dir on disk may take, in ms: the first open runs initdb. */
-const PGLITE_DIR_TIMEOUT_MS = 60_000;
+describe('poolConfig', () => {
+  it('forces TLS on in production for a host the internet could reach', () => {
+    const url = 'postgres://router:pw@db.example.com:5432/router';
+    expect(poolConfig(url, { isProduction: true })).toEqual({ connectionString: url, ssl: true });
+  });
 
-describe('usesPostgres', () => {
-  it('tells a Postgres URL from a PGlite store', () => {
-    expect(usesPostgres('postgres://router:pw@db:5432/router')).toBe(true);
-    expect(usesPostgres('postgresql://db/router')).toBe(true);
-    expect(usesPostgres('')).toBe(false);
-    expect(usesPostgres('memory://')).toBe(false);
-    expect(usesPostgres('/data/pg')).toBe(false);
+  it('leaves TLS alone outside production', () => {
+    const url = 'postgres://router:pw@db.example.com:5432/router';
+    expect(poolConfig(url, { isProduction: false })).toEqual({ connectionString: url });
+  });
+
+  it.each([
+    'postgres://router:pw@postgres:5432/router',
+    'postgres://router:pw@192.168.1.20/router',
+    'postgres://router:pw@nas.lan/router',
+    'postgres://router:pw@db.example.com/router?sslmode=disable',
+  ])('does not force TLS for a private host or an explicit sslmode: %s', (url) => {
+    expect(poolConfig(url, { isProduction: true })).toEqual({ connectionString: url });
   });
 });
 
-describe('openDatabase on a PGlite data dir', () => {
-  let dataDir: string;
-  let lockFile: string;
-
-  beforeEach(async () => {
-    dataDir = await mkdtemp(path.join(tmpdir(), 'mcp-router-pg-'));
-    lockFile = path.join(dataDir, 'pg.lock');
+describe('openDatabase', () => {
+  it('names where it is without the password, and connects to nothing until the first query', async () => {
+    const database = openDatabase('postgres://router:secret@postgres:5432/router', { isProduction: true });
+    expect(database.location).toBe('postgres postgres/router');
+    expect(database.location).not.toContain('secret');
+    await database.close();
   });
+});
 
-  afterEach(async () => {
-    await rm(dataDir, { recursive: true, force: true });
-    vi.restoreAllMocks();
+describe('openTestDatabase', () => {
+  it('migrates an in-memory PGlite that the tables can be written to', async () => {
+    const database = openTestDatabase();
+    await database.ensureSchema();
+    await database.db.insert(settings).values({ instanceId: 'kept' });
+    const [row] = await database.db.select().from(settings);
+    expect(row?.instanceId).toBe('kept');
+    await database.close();
   });
-
-  it(
-    'uses DATA_DIR/pg when DATABASE_URL is unset, and keeps what was written across a reopen',
-    async () => {
-      const first = openDatabase('', dataDir);
-      expect(first.isPostgres).toBe(false);
-      await first.ensureSchema();
-      await first.db.insert(settings).values({ instanceId: 'kept' });
-      await first.close();
-
-      const second = openDatabase('', dataDir);
-      await second.ensureSchema();
-      const [row] = await second.db.select().from(settings);
-      expect(row?.instanceId).toBe('kept');
-      await second.close();
-    },
-    PGLITE_DIR_TIMEOUT_MS,
-  );
-
-  it(
-    'refuses a second process on the same data dir, and removes the lockfile on close',
-    async () => {
-      const first = openDatabase('', dataDir);
-      expect(existsSync(lockFile)).toBe(true);
-      // A running process that is not this one: the parent of the test runner's worker.
-      await writeFile(lockFile, `${process.ppid}\n`);
-      expect(() => openDatabase('', dataDir)).toThrow(/Another mcp-router \(pid \d+\) is using/);
-      await first.close();
-      expect(existsSync(lockFile)).toBe(false);
-    },
-    PGLITE_DIR_TIMEOUT_MS,
-  );
-
-  it(
-    'takes over a lockfile left by a process that is gone',
-    async () => {
-      vi.spyOn(console, 'warn').mockImplementation(() => {});
-      const gone = spawnSync(process.execPath, ['-e', '']).pid;
-      await writeFile(lockFile, `${gone}\n`);
-      const database = openDatabase('', dataDir);
-      expect(console.warn).toHaveBeenCalledWith(expect.stringContaining('stale lockfile'));
-      await database.close();
-    },
-    PGLITE_DIR_TIMEOUT_MS,
-  );
 });

@@ -1,6 +1,24 @@
 import path from 'node:path';
 import { describe, expect, it } from 'vitest';
-import { dataDir, envToken, listenHost, listenPort, refusePlaceholderToken } from '../env.ts';
+import { databaseUrl, dataDir, envToken, listenHost, listenPort, refusePlaceholderToken } from '../env.ts';
+
+describe('databaseUrl', () => {
+  it('returns a postgres:// or postgresql:// URL, trimmed', () => {
+    expect(databaseUrl({ DATABASE_URL: ' postgres://u:p@postgres:5432/router ' })).toBe(
+      'postgres://u:p@postgres:5432/router',
+    );
+    expect(databaseUrl({ DATABASE_URL: 'postgresql://db/router' })).toBe('postgresql://db/router');
+  });
+
+  it.each([{}, { DATABASE_URL: '' }, { DATABASE_URL: '   ' }])('refuses a missing DATABASE_URL (%o)', (env) => {
+    expect(() => databaseUrl(env)).toThrow('[db] DATABASE_URL is not set');
+  });
+
+  it.each(['memory://', '/data/pg', 'mysql://u:secret@db/router'])('refuses a non-Postgres URL: %s', (url) => {
+    expect(() => databaseUrl({ DATABASE_URL: url })).toThrow('[db] DATABASE_URL must be a postgres://');
+    expect(() => databaseUrl({ DATABASE_URL: url })).not.toThrow('secret');
+  });
+});
 
 describe('listenPort', () => {
   it('uses the settings port when PORT is unset or empty', () => {

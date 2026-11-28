@@ -9,8 +9,11 @@ const PLACEHOLDER_TOKEN = 'change-me';
 /** The highest TCP port number. */
 const MAX_PORT = 65_535;
 
-/** Where the database and installed packages live when `DATA_DIR` is unset. */
+/** Where installed server packages and caches live when `DATA_DIR` is unset. */
 const DEFAULT_DATA_DIR = './data';
+
+/** A `DATABASE_URL` that names a Postgres server. */
+const POSTGRES_URL = /^postgres(ql)?:\/\//i;
 
 /** The values of a switch variable that turn it on. */
 const TRUTHY_ENV = new Set(['1', 'true', 'yes', 'on']);
@@ -29,7 +32,7 @@ function envMs(value: string | undefined, fallback: number, min: number): number
 }
 
 /**
- * The directory the database and installed packages live in: `DATA_DIR`, or `./data`.
+ * The directory installed server packages and caches live in: `DATA_DIR`, or `./data`.
  *
  * @param [env] - The process environment.
  * @returns The absolute path.
@@ -123,13 +126,29 @@ export function outboundKeepAliveTimeoutMs(env: NodeJS.ProcessEnv = process.env)
 }
 
 /**
- * Where the database is: `DATABASE_URL`, or empty for the PGlite data dir under `DATA_DIR/pg`.
+ * The router's Postgres: `DATABASE_URL`, which must be a postgres:// or postgresql:// URL. Boot reads it first, so a
+ * router with no database fails with a sentence before it opens anything.
  *
  * @param [env] - The process environment.
- * @returns A postgres:// URL, a PGlite location, or an empty string.
+ * @returns The URL, trimmed.
+ * @throws When `DATABASE_URL` is unset, empty, or not a Postgres URL.
  */
 export function databaseUrl(env: NodeJS.ProcessEnv = process.env): string {
-  return env.DATABASE_URL?.trim() ?? '';
+  const url = env.DATABASE_URL?.trim() ?? '';
+  if (url === '') {
+    throw new Error(
+      '[db] DATABASE_URL is not set. The router stores its config in Postgres: set it to a postgres:// URL, such as ' +
+        'postgres://mcp_router:secret@postgres:5432/mcp_router (docker-compose.yml runs one beside the router).',
+    );
+  }
+  if (POSTGRES_URL.test(url) === false) {
+    // The scheme only: the rest may hold a password.
+    const scheme = url.includes('://') ? `${url.split('://')[0]}://` : 'a path';
+    throw new Error(
+      `[db] DATABASE_URL must be a postgres:// or postgresql:// URL, not ${scheme}. The router runs on Postgres only.`,
+    );
+  }
+  return url;
 }
 
 /**

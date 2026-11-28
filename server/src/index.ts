@@ -7,6 +7,7 @@ import {
   dbConnectTimeoutMs,
   dataDir as envDataDir,
   envToken,
+  isProduction,
   listenHost,
   listenPort,
   refusePlaceholderToken,
@@ -29,15 +30,15 @@ const LOOPBACK_HOSTS = new Set(['127.0.0.1', '::1', 'localhost']);
  * stop on SIGTERM or SIGINT.
  */
 async function main(): Promise<void> {
+  // First, so a router with no Postgres fails with a sentence before anything opens.
+  const url = databaseUrl();
   refusePlaceholderToken();
   const dataDir = envDataDir();
-  const database = openDatabase(databaseUrl(), dataDir);
-  if (database.isPostgres) {
-    try {
-      await waitForDatabase(database.db, { connectTimeoutMs: dbConnectTimeoutMs() });
-    } catch (error) {
-      throw new Error(`Could not reach ${database.location}`, { cause: error });
-    }
+  const database = openDatabase(url, { isProduction: isProduction() });
+  try {
+    await waitForDatabase(database.db, { connectTimeoutMs: dbConnectTimeoutMs() });
+  } catch (error) {
+    throw new Error(`[db] Could not reach ${database.location}`, { cause: error });
   }
   await database.ensureSchema();
   console.log(`[db] using ${database.location}`);
