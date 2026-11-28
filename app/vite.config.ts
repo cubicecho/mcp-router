@@ -23,6 +23,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001',
       '/mcp': 'http://localhost:3001',
+      '/graphql': 'http://localhost:3001',
     },
   },
 });
