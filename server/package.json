@@ -23,7 +23,7 @@
     "@vantreeseba/drizzle-graphql": "^19.1.1",
     "@vantreeseba/graphql-casl": "^1.11.0",
     "bonjour-service": "^1.4.4",
-    "drizzle-orm": "^1.0.0-rc.5",
+    "drizzle-orm": "1.0.0-rc.5",
     "express": "^5.0.0",
     "graphql": "16.13.2",
     "graphql-middleware": "^6.1.35",
@@ -37,7 +37,7 @@
     "@types/express": "^5.0.0",
     "@types/pg": "^8.23.1",
     "@types/supertest": "^6.0.0",
-    "drizzle-kit": "^1.0.0-rc.5",
+    "drizzle-kit": "1.0.0-rc.5",
     "supertest": "^7.0.0"
   }
 }
