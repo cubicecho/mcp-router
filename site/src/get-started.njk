@@ -59,7 +59,7 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
 
         <div class="gs-callout">
           <strong>Token.</strong> The router won't start while it is still <code>change-me</code>. Leave
-          <code>MCP_ROUTER_TOKEN</code> out and one is generated into <code>data/config/settings.json</code> and
+          <code>MCP_ROUTER_TOKEN</code> out and one is generated into the router's database and
           printed to the log once at startup. On a trusted local network you can skip auth entirely with
           <code>SECURE_LOCAL_NET=true</code>.
         </div>
@@ -199,8 +199,8 @@ MCP_ROUTER_TOKEN=your-secret-token npm start</code></pre>
           here:</p>
         <ul>
           <li>Install more servers from the registry, npm, or PyPI — or proxy remote HTTP servers.</li>
-          <li>Hand-edit the flat JSON under <code>DATA_DIR/config</code> and reload; unknown keys survive round-trips.</li>
-          <li>Tune session lifetime, allowed origins, and the idle timeout in <strong>Settings</strong>.</li>
+          <li>Script the router through <code>/graphql</code> or the REST API; config lives in its database, not in files.</li>
+          <li>Tune the idle timeout, public URL and network discovery in <strong>Settings</strong>.</li>
         </ul>
         <div class="cta" style="margin-top: 24px;">
           <a class="button" href="{{ '/docs/' | url }}">Read the docs</a>

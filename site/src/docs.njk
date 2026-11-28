@@ -1,7 +1,7 @@
 ---
 layout: base.njk
 title: Docs
-description: MCP Router documentation — configuration files, REST API, MCP endpoints, and security notes.
+description: MCP Router documentation — configuration, REST API, MCP endpoints, and security notes.
 permalink: /docs/
 ---
 
@@ -11,11 +11,12 @@ permalink: /docs/
       <aside class="toc">
         <p class="toc-title">On this page</p>
         <nav>
-          <a href="#config">Configuration files</a>
-          <a href="#settings">settings.json</a>
-          <a href="#registries">registries.json</a>
-          <a href="#servers">servers/&lt;name&gt;.json</a>
-          <a href="#workspaces">workspaces/&lt;slug&gt;.json</a>
+          <a href="#config">Configuration</a>
+          <a href="#settings">Settings</a>
+          <a href="#registries">Registries</a>
+          <a href="#servers">Servers</a>
+          <a href="#workspaces">Workspaces</a>
+          <a href="#upgrading">Upgrading from 2.x</a>
           <a href="#api">REST API</a>
           <a href="#mcp">MCP endpoints</a>
           <a href="#security">Security notes</a>
@@ -32,15 +33,17 @@ permalink: /docs/
           <a href="{{ site.repo }}/blob/main/README.md">README</a>.
         </p>
 
-        <h2 id="config">Configuration files</h2>
-        <p>All config lives as flat, hand-editable JSON under <code>DATA_DIR/config</code>
-          (<code>./data/config</code> locally, <code>/data/config</code> in Docker). Files are written with mode
-          <code>0600</code>; unknown keys are preserved across round-trips. After hand-editing, wait for the file
-          watcher or apply the change explicitly:</p>
+        <h2 id="config">Configuration</h2>
+        <p>All config lives in a database: an embedded PGlite under <code>DATA_DIR/pg</code>
+          (<code>./data/pg</code> locally, <code>/data/pg</code> in Docker), or Postgres when
+          <code>DATABASE_URL</code> is a <code>postgres://</code> URL (<code>DB_CONNECT_TIMEOUT_MS</code> bounds how
+          long boot waits for it). Migrations run on boot. Manage it from the web UI, <code>/graphql</code> or the
+          REST API; there are no config files to edit. The shapes below are what each row holds, written as JSON.
+          If something other than the router writes the tables, have it re-read them:</p>
         <pre class="code"><code>curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
   http://localhost:3000/api/reload</code></pre>
 
-        <h3 id="settings">settings.json</h3>
+        <h3 id="settings">Settings</h3>
         <pre class="code"><code>{
   "port": 3000,                 <span class="cmt">// PORT env wins over this</span>
   "authToken": "a-long-secret", <span class="cmt">// MCP_ROUTER_TOKEN env wins</span>
@@ -50,7 +53,9 @@ permalink: /docs/
   "sessionIdleTimeoutMs": 1800000, <span class="cmt">// reclaim an idle MCP session after this (ms)</span>
   "maxSessions": 1000           <span class="cmt">// cap on live sessions; LRU-evicted past it</span>
 }</code></pre>
-        <p>The optional <code>host</code> key (or <code>HOST</code> env) picks the bind interface. Leave it
+        <p>One row. The Settings page edits the timeouts, <code>publicUrl</code> and network discovery; the port,
+          address, token and auth switch are set through the environment.</p>
+        <p>The optional <code>host</code> setting (or <code>HOST</code> env) picks the bind interface. Leave it
           <strong>unset to bind all interfaces</strong> — that's what Docker and LAN exposure need, so the
           published port stays reachable. Set it to <code>127.0.0.1</code> only for a bare-metal,
           localhost-only install; inside a container that would make the mapped port refuse connections.</p>
@@ -60,17 +65,15 @@ permalink: /docs/
           <code>allowedOrigins</code>) fronts <code>/mcp</code> to block DNS-rebinding — it applies even when auth is
           disabled.</p>
 
-        <h3 id="registries">registries.json</h3>
-        <pre class="code"><code>{
-  "registries": [
-    { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
-  ]
-}</code></pre>
+        <h3 id="registries">Registries</h3>
+        <pre class="code"><code>[
+  { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
+]</code></pre>
         <p>Any MCP-registry-API-compatible service (<code>GET {url}/v0/servers</code>) works. The official
           registry is seeded on first run.</p>
 
-        <h3 id="servers">servers/&lt;name&gt;.json</h3>
-        <p>One file per installed server. The name doubles as the route segment (<code>/mcp/&lt;name&gt;</code>)
+        <h3 id="servers">Servers</h3>
+        <p>One row per installed server. The name doubles as the route segment (<code>/mcp/&lt;name&gt;</code>)
           and the install directory (<code>data/servers/&lt;name&gt;</code>). Names must match
           <code>^[a-z0-9][a-z0-9._-]*$</code> (max 64 chars). A local stdio server installed from a registry:</p>
         <pre class="code"><code>{
@@ -92,10 +95,9 @@ permalink: /docs/
           <code>"source": { "type": "remote" }</code> with a <code>streamable-http</code> transport to proxy a
           remote server without installing anything.</p>
 
-        <h3 id="workspaces">workspaces/&lt;slug&gt;.json</h3>
+        <h3 id="workspaces">Workspaces</h3>
         <p>A <strong>workspace</strong> is a custom aggregate: it exposes a chosen subset of servers at its own
-          <code>/mcp/w/&lt;slug&gt;</code> endpoint. The <code>slug</code> is derived from the name (and doubles as
-          the filename); each member may override the base server's <code>env</code>, <code>args</code>, or
+          <code>/mcp/w/&lt;slug&gt;</code> endpoint. The <code>slug</code> is derived from the name; each member may override the base server's <code>env</code>, <code>args</code>, or
           <code>headers</code> for this workspace only. Each member runs as an isolated downstream instance, so a
           workspace can run a server that's globally disabled — and its overrides never touch the base server.</p>
         <pre class="code"><code>{
@@ -113,8 +115,15 @@ permalink: /docs/
   }
 }</code></pre>
         <p>The effective enabled state of a member is <code>workspace.enabled &amp;&amp; member.enabled</code> — the base
-          server's own <code>enabled</code> flag is ignored inside a workspace. Members referencing a server that
-          doesn't exist are skipped.</p>
+          server's own <code>enabled</code> flag is ignored inside a workspace. A member must name an installed server,
+          and deleting a server removes it from every workspace.</p>
+
+        <h3 id="upgrading">Upgrading from 2.x</h3>
+        <p>Older routers kept their config as JSON files under <code>DATA_DIR/config</code>. On its first boot,
+          while the database is empty, the router imports them in one transaction and renames each one
+          <code>*.imported</code>; after that they are never read again. The image now runs as uid 1000, so a data
+          folder an older (root) image wrote needs <code>sudo chown -R 1000:1000 data</code>. To back up, stop the
+          router and copy the data folder, or use <code>pg_dump</code> when the config is in Postgres.</p>
 
         <h2 id="api">REST API</h2>
         <p>Management API under <code>/api</code>, bearer auth, JSON in/out. Errors are non-2xx with
@@ -137,7 +146,7 @@ permalink: /docs/
               <tr><td><code>POST /api/workspaces</code></td><td>Create a workspace (slug auto-derived from the name)</td></tr>
               <tr><td><code>PATCH /api/workspaces/:slug</code></td><td>Update members / overrides / enabled (renaming re-slugs)</td></tr>
               <tr><td><code>DELETE /api/workspaces/:slug</code></td><td>Remove a workspace (servers untouched)</td></tr>
-              <tr><td><code>POST /api/reload</code></td><td>Re-read config and reconcile processes</td></tr>
+              <tr><td><code>POST /api/reload</code></td><td>Re-read config from the database and reconcile processes</td></tr>
             </tbody>
           </table>
         </div>

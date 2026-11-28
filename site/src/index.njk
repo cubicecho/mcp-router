@@ -40,7 +40,7 @@ title: false
         <div class="feature-icon">🧩</div>
         <h3>Install from anywhere</h3>
         <p>Browse the official MCP registry (or any compatible one), install directly from npm, or proxy a
-          remote streamable-HTTP server. One file per server under <code>DATA_DIR/config</code>.</p>
+          remote streamable-HTTP server. Every install is a row in the router's database.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">🔀</div>
@@ -69,9 +69,9 @@ title: false
       </div>
       <div class="feature">
         <div class="feature-icon">🖥️</div>
-        <h3>Web UI or JSON</h3>
-        <p>Manage registries, installs, and per-server env/API keys from the built-in React UI — or hand-edit
-          the flat JSON config and reload.</p>
+        <h3>Web UI or API</h3>
+        <p>Manage registries, installs, and per-server env/API keys from the built-in React UI — or script it
+          through <code>/graphql</code> or the REST API. Config lives in an embedded PGlite, or your Postgres.</p>
       </div>
       <div class="feature">
         <div class="feature-icon">📦</div>

@@ -1,23 +1,30 @@
 # Configuration
 
-MCP Router is configured through a few environment variables and a set of flat, hand-editable JSON files.
+MCP Router is configured through a few environment variables and a database that it manages itself. Settings,
+registries, installed servers and workspaces are rows in that database, edited from the web UI, `/graphql`
+(and the `/admin/mcp` MCP endpoint over it) or the REST API under `/api`. There are no config files to edit.
 
 - [Environment variables](#environment-variables)
-- [Config files](#config-files)
-  - [`settings.json`](#settingsjson)
-  - [`registries.json`](#registriesjson)
-  - [`servers/<name>.json`](#serversnamejson--one-file-per-installed-server)
-  - [`workspaces/<slug>.json`](#workspacesslugjson--one-file-per-workspace-custom-aggregate)
+- [Where config is stored](#where-config-is-stored)
+- [What the config holds](#what-the-config-holds)
+  - [Settings](#settings)
+  - [Registries](#registries)
+  - [Servers](#servers--one-row-per-installed-server)
+  - [Workspaces](#workspaces--one-row-per-workspace-custom-aggregate)
+- [Upgrading from the config files](#upgrading-from-the-config-files)
+- [Backups](#backups)
 
 ## Environment variables
 
 | Variable | Default | |
 | --- | --- | --- |
-| `MCP_ROUTER_TOKEN` | generated | Bearer token for `/api/*` and `/mcp*`. Wins over `authToken` in settings.json. When neither is set, one is generated into settings.json on first run and logged once. The placeholder `change-me` is refused |
+| `MCP_ROUTER_TOKEN` | generated | Bearer token for `/api/*` and `/mcp*`. Wins over the stored `authToken`. When neither is set, one is generated into the database on first run and logged once. The placeholder `change-me` is refused |
 | `SECURE_LOCAL_NET` | off | `true` (or `1`, `yes`, `on`) turns bearer auth off for `/api` and `/mcp`, and no token is minted. Overrides `authEnabled`. Only on a network you trust |
-| `PORT` | `3000` | HTTP port. Wins over `port` in settings.json |
-| `HOST` | all interfaces | Interface to bind. Wins over `host` in settings.json. `127.0.0.1` restricts it to localhost |
-| `DATA_DIR` | `./data` (`/data` in the image) | Where config, installed server packages and caches live |
+| `PORT` | `3000` | HTTP port. Wins over the stored `port` |
+| `HOST` | all interfaces | Interface to bind. Wins over the stored `host`. `127.0.0.1` restricts it to localhost |
+| `DATA_DIR` | `./data` (`/data` in the image) | Where the PGlite database, installed server packages and caches live |
+| `DATABASE_URL` | unset | A `postgres://` (or `postgresql://`) URL stores the config in that Postgres instead of PGlite. Unset uses PGlite in `DATA_DIR/pg` |
+| `DB_CONNECT_TIMEOUT_MS` | `60000` | How long boot waits for Postgres to answer before giving up, retrying while it is still starting. PGlite ignores it |
 | `HTTP_KEEP_ALIVE_TIMEOUT_MS` | `75000` | How long an idle client connection stays open. `0` never closes one. See below |
 | `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS` | `30000` | How long an idle connection to a remote MCP server stays open when that server sends no `Keep-Alive` timeout of its own |
 
@@ -33,13 +40,17 @@ Node's defaults allow for:
 - `HTTP_OUTBOUND_KEEP_ALIVE_TIMEOUT_MS`: without it, the default would be 4 s, and every proxied call after a
   pause would pay a new TLS handshake.
 
-## Config files
+## Where config is stored
 
-All config lives as flat, hand-editable JSON under `DATA_DIR/config`: `./data/config` locally, `/data/config`
-in Docker, which is `./data/config` on the host with the usual bind mount. The router writes these files with
-mode `0600`. Unknown keys are preserved across round-trips.
+By default the config lives in an embedded [PGlite](https://pglite.dev) database in `DATA_DIR/pg`: `./data/pg`
+locally, `/data/pg` in Docker. PGlite allows one process per data dir, so the router holds a pid lockfile at
+`DATA_DIR/pg.lock` and a second router pointed at the same folder refuses to start. Set `DATABASE_URL` to a
+`postgres://` URL to use an existing Postgres instead, for instance to run the router beside other services
+or to back it up with your usual Postgres tooling.
 
-After hand-editing, either wait for the file watcher to pick the change up or apply it explicitly:
+Either way, migrations run on every boot, so an upgraded router brings its tables up to date by itself. The
+router caches the config in memory and applies its own writes at once. If something else changes the tables
+(a SQL client, another tool against the same Postgres), tell the router to re-read the database:
 
 ```bash
 curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
@@ -48,7 +59,18 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
 
 (or use the **Reload config** button on the Settings page).
 
-### `settings.json`
+## What the config holds
+
+The shapes below are the shared zod schemas (`shared/src/config.ts`) that every stored row is validated
+against, written as JSON: the form the API and GraphQL take, and the form the old config files had.
+
+### Settings
+
+One row. The Settings page and GraphQL's `updateSetting` change the timeouts and session limits, `publicUrl`
+and the network discovery options. The rest (the port, the address, the token, whether auth is on, the router's
+network name, the origins `/mcp` trusts) guards the router itself or needs a restart, so it is set where the
+router is deployed: through the environment variables above, or by editing the `settings` table directly and
+restarting.
 
 ```jsonc
 {
@@ -101,21 +123,21 @@ curl -X POST -H "Authorization: Bearer $MCP_ROUTER_TOKEN" \
 }
 ```
 
-### `registries.json`
+### Registries
+
+Managed from the **Registries** page or `/api/registries`.
 
 ```jsonc
-{
-  "registries": [
-    // Any MCP-registry-API-compatible service (GET {url}/v0/servers).
-    // Seeded with the official registry on first run.
-    { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
-  ]
-}
+[
+  // Any MCP-registry-API-compatible service (GET {url}/v0/servers).
+  // Seeded with the official registry on first run.
+  { "name": "official", "url": "https://registry.modelcontextprotocol.io" }
+]
 ```
 
-### `servers/<name>.json` — one file per installed server
+### Servers — one row per installed server
 
-The file (and server) name doubles as the route segment (`/mcp/<name>`) and the install directory
+The server name doubles as the route segment (`/mcp/<name>`) and the install directory
 (`data/servers/<name>`). Names must match `^[a-z0-9][a-z0-9._-]*$` (max 64 chars).
 
 A local stdio server installed from a registry:
@@ -129,7 +151,7 @@ A local stdio server installed from a registry:
                                             // excluded from the aggregate
   "source": {
     "type": "registry",                     // "registry" | "npm" | "remote"
-    "registry": "official",                 // name from registries.json
+    "registry": "official",                 // name of a configured registry
     "serverName": "io.github.github/github-mcp-server",
     "version": "1.2.3"                      // optional, defaults to latest
   },
@@ -180,17 +202,17 @@ A remote server that is merely proxied (nothing installed):
 }
 ```
 
-### `workspaces/<slug>.json` — one file per workspace (custom aggregate)
+### Workspaces — one row per workspace (custom aggregate)
 
-A **workspace** exposes a chosen subset of servers as its own aggregate at `/mcp/w/<slug>`. The `slug`
-doubles as the filename and is derived from the name. Each member may override the base server's `env`,
-`args`, or `headers` for that workspace only. Each member runs as an isolated downstream instance, so a
+A **workspace** exposes a chosen subset of servers as its own aggregate at `/mcp/w/<slug>`. The `slug` is
+derived from the name. Each member may override the base server's `env`, `args`, or `headers` for that
+workspace only. Each member runs as an isolated downstream instance, so a
 workspace can run a server that's globally disabled, and its overrides never touch the base server.
 
 ```jsonc
 {
   "name": "Coding assistant",
-  "slug": "coding-assistant",               // matches the filename; auto-derived
+  "slug": "coding-assistant",               // auto-derived from the name
   "enabled": true,                          // false → /mcp/w/<slug> returns 404
   "description": "GitHub + local files for a code client.",  // optional
   "members": {
@@ -205,5 +227,31 @@ workspace can run a server that's globally disabled, and its overrides never tou
 ```
 
 A member's effective enabled state is `workspace.enabled && member.enabled`. The base server's own `enabled`
-flag is ignored inside a workspace. Members that reference a server which no longer exists are skipped.
-Manage workspaces from the **Workspaces** page in the web UI, or hand-edit these files and reload.
+flag is ignored inside a workspace. Members are stored as `workspace_members` rows, so a member must name an
+installed server, and deleting a server removes it from every workspace. Manage workspaces from the
+**Workspaces** page in the web UI, `/api/workspaces` or GraphQL.
+
+## Upgrading from the config files
+
+Routers before the database (2.x) kept their config as JSON files under `DATA_DIR/config`: `settings.json`,
+`registries.json`, `servers/<name>.json` and `workspaces/<slug>.json`. On the first boot of a newer router,
+while the database is still empty, it imports them all in one transaction and renames each imported file
+`*.imported`, so they are kept but never read again. After that the database is the only source of truth, and
+the files are not read again.
+
+- An invalid `settings.json` or `registries.json` stops the import and nothing is stored: fix the file and
+  restart. An invalid server or workspace file is logged and left in place, not renamed, and the rest is
+  imported; add that one again from the UI.
+- Keys the tables have no column for are dropped, and the log names the files that had them.
+- The image now runs as uid 1000 (the `node` user) rather than root. A data folder an older image wrote to is
+  owned by root, so hand it over before starting the new one:
+
+  ```bash
+  sudo chown -R 1000:1000 data
+  ```
+
+## Backups
+
+With PGlite, everything (the database, installed server packages, caches) is in the data folder: stop the
+router and copy `DATA_DIR`. With Postgres, back up the database with `pg_dump`, plus `DATA_DIR/servers` for the
+installed npm packages. Secrets are stored in plaintext, so keep backups as private as the router itself.

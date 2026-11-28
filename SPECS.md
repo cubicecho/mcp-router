@@ -88,7 +88,7 @@ Served by `discoveryMiddleware` from `@cubicecho/mcp-discovery`; the cards are b
 | `GET /api/servers` | `ServerStatus[]` (config + runtime state) |
 | `POST /api/servers` | install (`InstallRequest`: from registry entry, raw npm package, or remote URL) |
 | `GET /api/servers/:name` | single `ServerStatus` |
-| `PATCH /api/servers/:name` | `UpdateServerRequest` (env, enabled, transport, …) → persists to its JSON file |
+| `PATCH /api/servers/:name` | `UpdateServerRequest` (env, enabled, transport, …) → saved to its `servers` row |
 | `DELETE /api/servers/:name` | stop, delete its row (and its workspace memberships), remove `data/servers/<name>` install dir |
 | `POST /api/servers/:name/restart` | kill + respawn (used after env edits) |
 | `POST /api/servers/:name/oauth/check` | ask a remote, without a token, whether it wants a login; `ServerStatus` (`needs-auth` when it does) |

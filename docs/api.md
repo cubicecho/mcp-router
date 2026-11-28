@@ -17,7 +17,7 @@ non-2xx with `{ "error": "...", "detail": "..." }`.
 | `GET /api/servers` | All installed servers with runtime state |
 | `POST /api/servers` | Install (from a registry entry, a raw npm package, or a remote URL) |
 | `GET /api/servers/:name` | Single server status |
-| `PATCH /api/servers/:name` | Update env / enabled / transport; persists to its JSON file |
+| `PATCH /api/servers/:name` | Update env / enabled / transport; saved to its database row |
 | `DELETE /api/servers/:name` | Stop, delete config, remove its install dir |
 | `POST /api/servers/:name/restart` | Kill and respawn (use after env edits) |
 | `GET /api/servers/:name/tools` | Connect (spawning if needed) and list downstream tools |
@@ -31,7 +31,7 @@ non-2xx with `{ "error": "...", "detail": "..." }`.
 | `GET /api/workspaces/:slug` | Single workspace |
 | `PATCH /api/workspaces/:slug` | Update members / overrides / enabled (renaming re-slugs and moves the URL) |
 | `DELETE /api/workspaces/:slug` | Remove a workspace (underlying servers untouched) |
-| `POST /api/reload` | Re-read all config from disk and reconcile running processes |
+| `POST /api/reload` | Re-read all config from the database and reconcile running processes |
 
 ## MCP endpoints
 

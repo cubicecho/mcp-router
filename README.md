@@ -70,6 +70,15 @@ Ready-made files are in [`deploy/`](deploy/README.md):
 - **QNAP Container Station:** a compose file to paste in as an Application, and a custom App Template
 - **A fuller compose file**, with the port, data folder and image tag set from `.env`
 
+### Upgrading from 2.x
+
+- **Config moves into a database.** On its first boot the new router imports the old config files under
+  `DATA_DIR/config` automatically and renames them `*.imported`. Nothing needs doing by hand.
+- **Config is no longer hand-editable.** Manage it from the web UI, `/graphql` or the REST API; there is no file
+  watcher. See [docs/configuration.md](docs/configuration.md#upgrading-from-the-config-files).
+- **The data folder must be writable by uid 1000.** The image no longer runs as root, so give a folder an older
+  image wrote to to its `node` user: `sudo chown -R 1000:1000 data`.
+
 ## Connecting MCP clients
 
 All MCP endpoints speak streamable HTTP and require the bearer token (unless auth is off).
@@ -199,8 +208,8 @@ The main environment variables:
 | `DATA_DIR` | Where state lives (`/data` in the image) |
 | `DATABASE_URL` | A `postgres://` URL to use Postgres. Unset uses PGlite in `DATA_DIR/pg` |
 
-Everything else (the keep-alive timeouts, `settings.json`, registries, and the per-server and per-workspace
-files) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
+Everything else (`DB_CONNECT_TIMEOUT_MS`, the keep-alive timeouts, what the settings, registries, servers and
+workspaces hold, upgrading and backups) is in [docs/configuration.md](docs/configuration.md). The REST API and the MCP endpoints are listed in
 [docs/api.md](docs/api.md).
 
 ## Security notes

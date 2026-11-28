@@ -12,15 +12,15 @@ services:
     # uses mDNS multicast, which the default bridge network drops. For it to work,
     # replace `ports` with:
     # network_mode: host
-    # Config files, installed server packages, caches and logs. A named volume,
-    # because the container runs as node (uid 1000) and a bind mount keeps the
-    # host folder's owner. Edit the config with
-    # `docker compose exec mcp-router sh`, then POST /api/reload (or the Settings page).
+    # The database (PGlite in /data/pg), installed server packages, caches and
+    # logs. A named volume, because the container runs as node (uid 1000) and a
+    # bind mount keeps the host folder's owner. Config is managed from the web UI,
+    # /graphql or /api; there are no config files to edit.
     volumes: [mcp_router_data:/data]
     environment:
       # Set a bearer token, OR set SECURE_LOCAL_NET=true to disable auth on a
-      # trusted local network. If neither is set, a token is generated into
-      # /data/config/settings.json on first run and printed to the logs.
+      # trusted local network. If neither is set, a token is generated into the
+      # database on first run and printed to the logs.
       MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
       SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
     healthcheck:

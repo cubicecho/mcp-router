@@ -14,15 +14,16 @@ services:
     # replace `ports` with:
     # network_mode: host
     volumes:
-      # Config, installed server packages and caches. The config files under
-      # config/ are hand-editable; apply edits with the Reload button in Settings.
+      # The database (PGlite in pg/), installed server packages and caches.
+      # Config is managed from the web UI; back up by copying this folder while
+      # the router is stopped.
       # The container runs as uid 1000, so the folder must be writable by it
       # (`sudo chown 1000:1000 data`): Docker creates a missing one as root.
       - ${MCP_ROUTER_DATA:-./data}:/data
     environment:
       # The bearer token for the web UI, the API and every MCP endpoint. Generate
-      # one with `openssl rand -hex 32`. Left empty, a token is generated into
-      # config/settings.json on first run and printed once to the container log.
+      # one with `openssl rand -hex 32`. Left empty, a token is generated into the
+      # database on first run and printed once to the container log.
       MCP_ROUTER_TOKEN: ${MCP_ROUTER_TOKEN:-}
       # true turns auth off entirely. Only on a network you trust.
       SECURE_LOCAL_NET: ${SECURE_LOCAL_NET:-false}
