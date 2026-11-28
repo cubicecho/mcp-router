@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@/components/ui/toast';
 import * as api from '@/lib/api';
 import { AddServerDialog } from '../add-server-dialog.tsx';
 
@@ -10,7 +11,9 @@ function renderDialog(server?: ServerStatus) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <AddServerDialog open onOpenChange={() => {}} server={server} />
+      <ToastProvider>
+        <AddServerDialog open onOpenChange={() => {}} server={server} />
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

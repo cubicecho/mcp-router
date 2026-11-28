@@ -5,6 +5,7 @@ import userEvent, { PointerEventsCheckLevel } from '@testing-library/user-event'
 import type { ReactNode } from 'react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { InstallDialog } from '@/components/domain/browse/install-dialog';
+import { ToastProvider } from '@/components/ui/toast';
 import * as api from '@/lib/api';
 
 vi.mock('@/lib/api', { spy: true });
@@ -29,7 +30,9 @@ const SERVER: RegistryServer = {
 function renderDialog(onInstalled = vi.fn()) {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false }, mutations: { retry: false } } });
   const wrapper = ({ children }: { children: ReactNode }) => (
-    <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>
+    <QueryClientProvider client={queryClient}>
+      <ToastProvider>{children}</ToastProvider>
+    </QueryClientProvider>
   );
   render(<InstallDialog registry="official" server={SERVER} open onOpenChange={vi.fn()} onInstalled={onInstalled} />, {
     wrapper,

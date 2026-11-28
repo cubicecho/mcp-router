@@ -1,6 +1,5 @@
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
@@ -18,7 +17,7 @@ import { Switch } from '@/components/ui/switch';
 import { SCOPE_WORKSPACE } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useDeleteWorkspace, useUpdateWorkspace, useWorkspace } from '@/lib/queries';
-import { toastApiError, toastCopyError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** The `/workspaces/$slug` route. */
 export const Route = createFileRoute('/workspaces_/$slug')({
@@ -31,6 +30,7 @@ export const Route = createFileRoute('/workspaces_/$slug')({
  * @returns The page.
  */
 function WorkspaceDetailPage() {
+  const toasts = useToasts();
   const { slug } = Route.useParams();
   const navigate = useNavigate();
   const query = useWorkspace(slug);
@@ -45,10 +45,10 @@ function WorkspaceDetailPage() {
   const handleDelete = () => {
     remove.mutate(slug, {
       onSuccess: () => {
-        toast.success(`Deleted workspace ${workspace?.name ?? slug}`);
+        toasts.success(`Deleted workspace ${workspace?.name ?? slug}`);
         navigate({ to: '/workspaces' });
       },
-      onError: toastApiError,
+      onError: toasts.apiError,
     });
   };
 
@@ -118,7 +118,7 @@ function WorkspaceDetailPage() {
                                 variant="ghost"
                                 value={endpoint}
                                 label="Copy endpoint URL"
-                                onError={toastCopyError}
+                                onError={toasts.copyError}
                               />
                             }
                           />
@@ -148,8 +148,9 @@ function WorkspaceDetailPage() {
                             update.mutate(
                               { slug, enabled },
                               {
-                                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
-                                onError: toastApiError,
+                                onSuccess: () =>
+                                  toasts.success(`${enabled ? 'Enabled' : 'Disabled'} ${workspace.name}`),
+                                onError: toasts.apiError,
                               },
                             )
                           }

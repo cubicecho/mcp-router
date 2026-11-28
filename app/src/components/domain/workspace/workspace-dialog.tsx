@@ -9,7 +9,6 @@ import {
 } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { type ReactElement, useMemo, useState } from 'react';
-import { toast } from 'sonner';
 import { InputField, SwitchField, TextareaField, useAppForm } from '@/components/app-form';
 import { DialogLayout } from '@/components/dialog-layout';
 import { ConnectCard } from '@/components/domain/endpoint/connect-card';
@@ -24,7 +23,7 @@ import { argsFromLines } from '@/lib/arg-lines';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
 import { useCreateWorkspace, useServers, useUpdateWorkspace } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /**
  * One server's membership while editing: whether it is in the workspace, and its
@@ -164,6 +163,7 @@ interface WorkspaceDialogProps {
  * The URL slug follows the name, so renaming a workspace moves its endpoint.
  */
 export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: WorkspaceDialogProps) {
+  const toasts = useToasts();
   const isEdit = workspace !== undefined;
   // Undefined until the installed servers are known. The member list is drawn from them and rebuilt from
   // them on save, so until then there is nothing to choose from and nothing safe to send.
@@ -194,16 +194,16 @@ export function WorkspaceDialog({ open, onOpenChange, workspace, onSaved }: Work
         if (isEdit) {
           // An edit sends the description even when empty: left out, the server would keep the old one.
           const updated = await update.mutateAsync({ slug: workspace.slug, ...body, description });
-          toast.success(`Saved workspace ${updated.name}`);
+          toasts.success(`Saved workspace ${updated.name}`);
           onSaved?.(updated);
         } else {
           const created = await create.mutateAsync(body);
-          toast.success(`Created workspace ${created.name}`);
+          toasts.success(`Created workspace ${created.name}`);
           onSaved?.(created);
         }
         onOpenChange(false);
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });

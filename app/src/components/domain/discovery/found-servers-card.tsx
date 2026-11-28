@@ -1,14 +1,13 @@
 import type { DiscoveredServer } from '@mcp-router/shared';
 import { RadarIcon } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ListItem } from '@/components/list-item';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Plus } from '@/components/ui/icons';
 import { useSetDismissed } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 import { AddFoundServerDialog } from './add-found-server-dialog.tsx';
 
 /** What the found-servers card is given. */
@@ -19,6 +18,7 @@ export interface FoundServersCardProps {
 
 /** Offers each MCP server another machine on the network announces, to add with one dialog or dismiss. */
 export function FoundServersCard({ servers }: FoundServersCardProps) {
+  const toasts = useToasts();
   const [adding, setAdding] = useState<DiscoveredServer | null>(null);
   const setDismissed = useSetDismissed();
 
@@ -27,10 +27,10 @@ export function FoundServersCard({ servers }: FoundServersCardProps) {
       { key: server.key, dismissed: true },
       {
         onSuccess: () =>
-          toast.success(`Dismissed ${server.title ?? server.cardName}`, {
+          toasts.success(`Dismissed ${server.title ?? server.cardName}`, {
             description: 'Offer it again from Settings, on the Network tab.',
           }),
-        onError: toastApiError,
+        onError: toasts.apiError,
       },
     );
   };

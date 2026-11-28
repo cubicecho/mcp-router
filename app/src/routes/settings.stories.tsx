@@ -101,7 +101,11 @@ export const SavesTheIdleTimeout: Story = {
     await waitFor(() =>
       expect(apiRequest).toHaveBeenCalledWith('PATCH /api/settings', { idleTimeoutMs: NEW_TIMEOUT_MS }),
     );
-    await waitFor(() => expect(within(canvasElement.ownerDocument.body).getByText('Idle timeout saved')).toBeVisible());
+    await waitFor(() =>
+      expect(
+        within(canvasElement.ownerDocument.body).getByText('Idle timeout saved. Applies from each server’s next use.'),
+      ).toBeVisible(),
+    );
   },
 };
 
@@ -149,7 +153,9 @@ export const ReloadsTheConfig: Story = {
 
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith('POST /api/reload', undefined));
     await waitFor(() =>
-      expect(within(canvasElement.ownerDocument.body).getByText('Configuration reloaded')).toBeVisible(),
+      expect(
+        within(canvasElement.ownerDocument.body).getByText('Configuration reloaded. Running servers were reconciled.'),
+      ).toBeVisible(),
     );
   },
 };

@@ -116,8 +116,7 @@ export const SaysWhyAGetFailed: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: /standup/ }));
     await userEvent.click(canvas.getByRole('button', { name: 'Get' }));
     const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByText('Prompt get failed')).toBeVisible());
-    await expect(body.getByText('Unknown prompt.')).toBeVisible();
+    await waitFor(() => expect(body.getByText('Prompt get failed: Unknown prompt.')).toBeVisible());
     await expect(canvas.queryByText('Result')).not.toBeInTheDocument();
   },
 };

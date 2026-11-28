@@ -8,7 +8,7 @@ import {
   RouterProvider,
 } from '@tanstack/react-router';
 import { useState } from 'react';
-import { Toaster } from '@/components/ui/sonner';
+import { ToastProvider } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { routeTree } from '@/routeTree.gen';
 
@@ -71,8 +71,9 @@ export const withProviders: Decorator = (Story, { parameters }) => {
       ? createAppRouter(route)
       : createComponentRouter(() => (
           <TooltipProvider>
-            <Story />
-            <Toaster toastOptions={{ classNames: { description: 'text-popover-foreground/70!' } }} />
+            <ToastProvider>
+              <Story />
+            </ToastProvider>
           </TooltipProvider>
         )),
   );

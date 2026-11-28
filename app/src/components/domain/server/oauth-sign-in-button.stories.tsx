@@ -99,8 +99,7 @@ export const ReportsACancelledLogin: Story = {
     reportFromSignInWindow(false);
 
     const body = within(canvasElement.ownerDocument.body);
-    await expect(await body.findByText('Signing in to home-assistant failed')).toBeVisible();
-    await expect(body.getByText('access_denied')).toBeVisible();
+    await expect(await body.findByText('Signing in to home-assistant failed. access_denied')).toBeVisible();
   },
 };
 
@@ -129,7 +128,10 @@ export const ShowsWhyTheSignInCouldNotStart: Story = {
   play: async ({ canvasElement }) => {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Sign in' }));
     const body = within(canvasElement.ownerDocument.body);
-    await expect(await body.findByText('Could not start the sign-in for server "home-assistant"')).toBeVisible();
-    await expect(body.getByText(/does not support dynamic client registration/)).toBeVisible();
+    await expect(
+      await body.findByText(
+        'Could not start the sign-in for server "home-assistant": Incompatible auth server: does not support dynamic client registration',
+      ),
+    ).toBeVisible();
   },
 };

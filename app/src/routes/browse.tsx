@@ -9,6 +9,7 @@ import { LoadError, LoadState } from '@/components/load-state';
 import { PageLayout } from '@/components/page-layout';
 import { Button } from '@/components/ui/button';
 import { Search } from '@/components/ui/icons';
+import { LoadMoreButton } from '@/components/ui/load-more-button';
 import { SearchInput } from '@/components/ui/search-input';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useRegistries, useRegistrySearch } from '@/lib/queries';
@@ -105,16 +106,11 @@ export function RegistrySearch({ onInstalled }: { onInstalled: (name: string) =>
               />
             ))}
           />
-          {results.hasNextPage && (
-            <Button
-              variant="outline"
-              className="self-center"
-              loading={results.isFetchingNextPage}
-              loadingLabel="Loading…"
-              onClick={() => results.fetchNextPage()}
-              content="Load more"
-            />
-          )}
+          <LoadMoreButton
+            hasMore={results.hasNextPage}
+            onLoadMore={results.fetchNextPage}
+            loading={results.isFetchingNextPage}
+          />
         </>
       )}
     </div>

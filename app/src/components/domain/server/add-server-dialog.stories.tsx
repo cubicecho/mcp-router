@@ -46,8 +46,8 @@ export const AddsACommandServer: Story = {
     await userEvent.type(dialog.getByRole('textbox', { name: 'Arguments (one per line)' }), '-y{Enter}echo-mcp');
     await userEvent.type(dialog.getByRole('textbox', { name: 'Working directory (optional)' }), '/srv/echo');
     await userEvent.click(dialog.getByRole('button', { name: 'Add variable' }));
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Environment variables name' }), 'API_KEY');
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Value for API_KEY' }), 'abc123');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Variable 1' }), 'API_KEY');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Value 1' }), 'abc123');
     await userEvent.click(dialog.getByRole('button', { name: 'Add server' }));
 
     await waitFor(() =>
@@ -78,8 +78,8 @@ export const AddsAnHttpServer: Story = {
     await userEvent.click(dialog.getByRole('tab', { name: 'HTTP (streamable)' }));
     await userEvent.type(await dialog.findByRole('textbox', { name: 'Server URL' }), 'https://notes.example.test/mcp');
     await userEvent.click(dialog.getByRole('button', { name: 'Add header' }));
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Headers name' }), 'Authorization');
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Value for Authorization' }), 'Bearer abc');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Header 1' }), 'Authorization');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Value 1' }), 'Bearer abc');
     await userEvent.click(dialog.getByRole('button', { name: 'Add server' }));
 
     await waitFor(() =>
@@ -137,7 +137,8 @@ export const FillsTheFieldsFromAPastedConfig: Story = {
     await expect(dialog.getByRole('textbox', { name: 'Local name' })).toHaveValue('thinking');
     await expect(dialog.getByRole('textbox', { name: 'Command' })).toHaveValue('npx');
     await expect(dialog.getByRole('textbox', { name: 'Arguments (one per line)' })).toHaveValue('-y\nthinking-mcp');
-    await expect(dialog.getByRole('textbox', { name: 'Value for DEPTH' })).toHaveValue('3');
+    await expect(dialog.getByRole('textbox', { name: 'Variable 1' })).toHaveValue('DEPTH');
+    await expect(dialog.getByRole('textbox', { name: 'Value 1' })).toHaveValue('3');
     // Only the first server of the paste is used, and the toast says so.
     await waitFor(() => expect(body.getByText(/Ignored 1 other server in the paste/)).toBeVisible());
     await expect(dialog.getByRole('button', { name: 'Add server' })).toBeEnabled();
@@ -170,7 +171,8 @@ export const FillsTheHttpTabFromAPastedUrl: Story = {
     await expect(dialog.getByRole('tab', { name: 'HTTP (streamable)' })).toHaveAttribute('aria-selected', 'true');
     await expect(dialog.getByRole('textbox', { name: 'Local name' })).toHaveValue('notes');
     await expect(dialog.getByRole('textbox', { name: 'Server URL' })).toHaveValue('https://notes.example.test/mcp');
-    await expect(dialog.getByRole('textbox', { name: 'Value for Authorization' })).toHaveValue('Bearer abc');
+    await expect(dialog.getByRole('textbox', { name: 'Header 1' })).toHaveValue('Authorization');
+    await expect(dialog.getByRole('textbox', { name: 'Value 1' })).toHaveValue('Bearer abc');
     await waitFor(() => expect(body.getByText('Config applied — fields filled in below')).toBeVisible());
     await expect(dialog.getByRole('button', { name: 'Add server' })).toBeEnabled();
   },
@@ -232,7 +234,8 @@ export const EditsACommandServer: Story = {
     await expect(dialog.getByRole('textbox', { name: 'Local name' })).toHaveValue('filesystem');
     await expect(dialog.queryByRole('textbox', { name: 'Paste a config' })).not.toBeInTheDocument();
     await expect(dialog.getByRole('textbox', { name: 'Arguments (one per line)' })).toHaveValue('index.js\n/tmp');
-    await expect(dialog.getByRole('textbox', { name: 'Value for ROOT_DIR' })).toHaveValue('/tmp');
+    await expect(dialog.getByRole('textbox', { name: 'Variable 1' })).toHaveValue('ROOT_DIR');
+    await expect(dialog.getByRole('textbox', { name: 'Value 1' })).toHaveValue('/tmp');
 
     const command = dialog.getByRole('textbox', { name: 'Command' });
     await expect(command).toHaveValue('node');
@@ -290,8 +293,7 @@ export const ShowsWhyTheEditWasRefused: Story = {
     const dialog = within(await body.findByRole('dialog', { name: 'Edit filesystem' }));
     await userEvent.type(dialog.getByRole('textbox', { name: 'Working directory (optional)' }), 'relative');
     await userEvent.click(dialog.getByRole('button', { name: 'Save changes' }));
-    await waitFor(() => expect(body.getByText('Invalid transport')).toBeVisible());
-    await expect(body.getByText('cwd must be absolute')).toBeVisible();
+    await waitFor(() => expect(body.getByText('Invalid transport: cwd must be absolute')).toBeVisible());
     await expect(args.onOpenChange).not.toHaveBeenCalled();
   },
 };

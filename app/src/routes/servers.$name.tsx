@@ -2,7 +2,6 @@ import { ServerRuntimeState, TRANSPORT_STDIO } from '@mcp-router/shared';
 import { createFileRoute, Link, useNavigate } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
 import { useState } from 'react';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ConfirmButton } from '@/components/confirm-button';
 import { CapabilityTabs } from '@/components/domain/capability/tabs';
@@ -21,10 +20,11 @@ import { ArrowLeft, Pencil, Trash2 } from '@/components/ui/icons';
 import { Switch } from '@/components/ui/switch';
 import { SCOPE_SERVER } from '@/lib/api';
 import { endpointPath, endpointUrl } from '@/lib/endpoint';
-import { formatRelativeTime, formatSource } from '@/lib/format';
+import { formatAgo } from '@/lib/format';
 import { useDeleteServer, useRestartServer, useServer, useSignOutServerOAuth, useUpdateServer } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
-import { toastApiError, toastCopyError } from '@/lib/toast';
+import { formatSource } from '@/lib/server-source';
+import { useToasts } from '@/lib/toast';
 
 /** The `/servers/$name` route. */
 export const Route = createFileRoute('/servers/$name')({
@@ -37,6 +37,7 @@ export const Route = createFileRoute('/servers/$name')({
  * @returns The page.
  */
 function ServerDetailPage() {
+  const toasts = useToasts();
   const { name } = Route.useParams();
   const navigate = useNavigate();
   const query = useServer(name);
@@ -53,36 +54,47 @@ function ServerDetailPage() {
   const handleDelete = () => {
     remove.mutate(name, {
       onSuccess: () => {
-        toast.success(`Deleted ${name}`);
+        toasts.success(`Deleted ${name}`);
         navigate({ to: '/' });
       },
-      onError: toastApiError,
+      onError: toasts.apiError,
     });
   };
 
   const handleRestart = () => {
     restart.mutate(name, {
-      onSuccess: () => toast.success(`Restarted ${name}`),
-      onError: toastApiError,
+      onSuccess: () => toasts.success(`Restarted ${name}`),
+      onError: toasts.apiError,
     });
   };
 
   const handleSignOut = () => {
     signOut.mutate(name, {
-      onSuccess: () => toast.success(`Signed out of ${name}`),
-      onError: toastApiError,
+      onSuccess: () => toasts.success(`Signed out of ${name}`),
+      onError: toasts.apiError,
     });
   };
 
   const handleSaveEnv = async (env: Record<string, string>) => {
     try {
       await update.mutateAsync({ name, env });
-      toast.success('Environment saved', {
+      toasts.success('Environment saved', {
         description: 'Restart the server for changes to take effect.',
-        action: { label: 'Restart', onClick: handleRestart },
+        actionSlot: (dismiss) => (
+          <Button
+            variant="link"
+            size="sm"
+            className="h-auto px-0"
+            content="Restart"
+            onClick={() => {
+              dismiss();
+              handleRestart();
+            }}
+          />
+        ),
       });
     } catch (error) {
-      toastApiError(error);
+      toasts.apiError(error);
     }
   };
 
@@ -160,7 +172,7 @@ function ServerDetailPage() {
                                 variant="ghost"
                                 value={endpoint}
                                 label="Copy endpoint URL"
-                                onError={toastCopyError}
+                                onError={toasts.copyError}
                               />
                             }
                           />
@@ -215,7 +227,7 @@ function ServerDetailPage() {
                           {server.startedAt && (
                             <PropertyRow
                               label="Started"
-                              value={formatRelativeTime(server.startedAt)}
+                              value={formatAgo(server.startedAt, Date.now(), { style: 'narrow' })}
                               hint={new Date(server.startedAt).toLocaleString()}
                             />
                           )}
@@ -235,8 +247,8 @@ function ServerDetailPage() {
                             update.mutate(
                               { name, enabled },
                               {
-                                onSuccess: () => toast.success(`${enabled ? 'Enabled' : 'Disabled'} ${name}`),
-                                onError: toastApiError,
+                                onSuccess: () => toasts.success(`${enabled ? 'Enabled' : 'Disabled'} ${name}`),
+                                onError: toasts.apiError,
                               },
                             )
                           }

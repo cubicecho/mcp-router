@@ -1,10 +1,9 @@
 import { oauthResultMessageSchema } from '@mcp-router/shared';
 import { type ComponentProps, useEffect, useRef, useState } from 'react';
-import { toast } from 'sonner';
 import { Button } from '@/components/ui/button';
 import { KeyRound } from '@/components/ui/icons';
 import { useInvalidateServers, useStartServerOAuth } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** The name the sign-in window is opened under, so a second click reuses it rather than stacking windows. */
 const SIGN_IN_WINDOW = 'mcp-router-oauth';
@@ -35,6 +34,7 @@ type OAuthSignInButtonProps = {
  * router's callback page, which posts the result here and closes it.
  */
 export function OAuthSignInButton({ name, onSignedIn, variant = 'info', size = 'sm' }: OAuthSignInButtonProps) {
+  const toasts = useToasts();
   const start = useStartServerOAuth();
   const invalidateServers = useInvalidateServers();
   const popup = useRef<Window | null>(null);
@@ -75,15 +75,15 @@ export function OAuthSignInButton({ name, onSignedIn, variant = 'info', size = '
       setWaiting(false);
       invalidateRef.current();
       if (parsed.data.ok) {
-        toast.success(`Signed in to ${name}`);
+        toasts.success(`Signed in to ${name}`);
         onSignedInRef.current?.();
       } else {
-        toast.error(`Signing in to ${name} failed`, { description: parsed.data.error });
+        toasts.error(`Signing in to ${name} failed`, { description: parsed.data.error });
       }
     };
     window.addEventListener('message', handleMessage);
     return () => window.removeEventListener('message', handleMessage);
-  }, [name]);
+  }, [name, toasts]);
 
   const handleClick = () => {
     setBlockedUrl(undefined);
@@ -97,7 +97,7 @@ export function OAuthSignInButton({ name, onSignedIn, variant = 'info', size = '
             opened?.close();
             popup.current = null;
             invalidateServers();
-            toast.success(`Signed in to ${name}`);
+            toasts.success(`Signed in to ${name}`);
             onSignedInRef.current?.();
             return;
           }
@@ -111,7 +111,7 @@ export function OAuthSignInButton({ name, onSignedIn, variant = 'info', size = '
         onError: (error) => {
           opened?.close();
           popup.current = null;
-          toastApiError(error);
+          toasts.apiError(error);
         },
       },
     );

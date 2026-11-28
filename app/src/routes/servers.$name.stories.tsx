@@ -181,7 +181,9 @@ export const SavesTheEnvironment: Story = {
       expect(apiRequest).toHaveBeenCalledWith(`PATCH ${SERVER_ROUTE}`, { env: { ROOT_DIR: '/srv/files' } }),
     );
     const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByText('Environment saved')).toBeVisible());
+    await waitFor(() =>
+      expect(body.getByText('Environment saved. Restart the server for changes to take effect.')).toBeVisible(),
+    );
     // The change needs a restart, and the toast offers one.
     const toasts = within(body.getByRole('region', { name: /Notifications/ }));
     await expect(toasts.getByRole('button', { name: 'Restart' })).toBeVisible();

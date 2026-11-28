@@ -8,7 +8,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { getToken } from '@/lib/auth';
 import { claudeCodeSnippet, curlSnippet, mcpJsonSnippet, opencodeSnippet } from '@/lib/connect-snippets';
 import { useRouterStatus } from '@/lib/queries';
-import { toastCopyError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 const TOKEN_PLACEHOLDER = '<YOUR_TOKEN>';
 const TOKEN_MASK = '••••••••••••';
@@ -21,11 +21,12 @@ const TOKEN_MASK = '••••••••••••';
  * @returns The code block.
  */
 function Snippet({ display, copyText }: { display: string; copyText: string }) {
+  const toasts = useToasts();
   return (
     <CodeBlock
       wrap
       content={display}
-      actionSlot={<CopyButton variant="ghost" value={copyText} label="Copy snippet" onError={toastCopyError} />}
+      actionSlot={<CopyButton variant="ghost" value={copyText} label="Copy snippet" onError={toasts.copyError} />}
     />
   );
 }

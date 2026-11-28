@@ -5,7 +5,7 @@ import { CollapsibleRow } from '@/components/collapsible-row';
 import { List } from '@/components/list';
 import { LoadError } from '@/components/load-state';
 import { Play } from '@/components/ui/icons';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 import type { SlotNode } from '@/lib/utils';
 import { DataBlock } from './json-view.tsx';
 
@@ -137,13 +137,14 @@ export function RunForm({ onSubmit, contentSlot }: { onSubmit: () => void; conte
  * its submit.
  */
 export function useCapabilityRun<TData, TVariables>(mutation: UseMutationResult<TData, Error, TVariables>) {
+  const toasts = useToasts();
   const [result, setResult] = useState<TData | null>(null);
   const run = async (variables: TVariables): Promise<void> => {
     setResult(null);
     try {
       setResult(await mutation.mutateAsync(variables));
     } catch (error) {
-      toastApiError(error);
+      toasts.apiError(error);
     }
   };
   return { result, run };

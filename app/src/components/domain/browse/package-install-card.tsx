@@ -1,13 +1,12 @@
 import { type InstallRequest, serverNameSchema, suggestServerName } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
-import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
-import { KeyValueRows } from '@/components/domain/key-value/rows';
+import { KeyValueField } from '@/components/domain/key-value/key-value-field';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { serverNameError } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 type Ecosystem = 'npm' | 'pypi';
 
@@ -47,6 +46,7 @@ export function PackageInstallCard({
   ecosystem: Ecosystem;
   onInstalled?: (name: string) => void;
 }) {
+  const toasts = useToasts();
   const copy = COPY[ecosystem];
   const install = useInstallServer();
   const form = useAppForm({
@@ -60,11 +60,11 @@ export function PackageInstallCard({
       };
       try {
         const status = await install.mutateAsync(body);
-        toast.success(`Installed ${status.config.name}`);
+        toasts.success(`Installed ${status.config.name}`);
         formApi.reset();
         onInstalled?.(status.config.name);
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -104,19 +104,14 @@ export function PackageInstallCard({
 
           <div className="flex items-end justify-between gap-4">
             <div className="min-w-0 flex-1">
-              <form.Field name="envRows">
-                {(field) => (
-                  <KeyValueRows
-                    legend="Environment variables"
-                    value={field.state.value}
-                    onValueChange={field.handleChange}
-                    keyLabel="Variable name"
-                    unnamed="new variable"
-                    addLabel="Add env var"
-                    hideLegendWhenEmpty
-                  />
-                )}
-              </form.Field>
+              <KeyValueField
+                form={form}
+                name="envRows"
+                label="Environment variables"
+                keyLabel="Variable"
+                valueLabel="Value"
+                addLabel="Add env var"
+              />
             </div>
             <form.AppForm>
               <form.SubmitButton

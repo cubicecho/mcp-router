@@ -1,12 +1,11 @@
 import type { DiscoveredServer } from '@mcp-router/shared';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { EmptyState } from '@/components/empty-state';
 import { ListItem } from '@/components/list-item';
 import { Button } from '@/components/ui/button';
 import { EyeOff } from '@/components/ui/icons';
 import { useSetDismissed } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** What the dismissed-servers card is given. */
 export interface DismissedServersCardProps {
@@ -18,12 +17,13 @@ export interface DismissedServersCardProps {
 
 /** Lists the found servers the user dismissed, each with a button that offers it on the Servers page again. */
 export function DismissedServersCard({ servers, loading }: DismissedServersCardProps) {
+  const toasts = useToasts();
   const setDismissed = useSetDismissed();
 
   const offerAgain = (server: DiscoveredServer, title: string) => {
     setDismissed.mutate(
       { key: server.key, dismissed: false },
-      { onSuccess: () => toast.success(`${title} is offered again`), onError: toastApiError },
+      { onSuccess: () => toasts.success(`${title} is offered again`), onError: toasts.apiError },
     );
   };
 

@@ -7,18 +7,17 @@ import {
 } from '@mcp-router/shared';
 import { useStore } from '@tanstack/react-form';
 import { useMemo } from 'react';
-import { toast } from 'sonner';
 import { InputField, useAppForm } from '@/components/app-form';
 import { Combobox } from '@/components/combobox';
 import { DialogLayout } from '@/components/dialog-layout';
-import { KeyValueRows } from '@/components/domain/key-value/rows';
+import { KeyValueField } from '@/components/domain/key-value/key-value-field';
 import { FormField } from '@/components/form-field';
 import { Button } from '@/components/ui/button';
 import { type KeyValueRow, rowsToRecord } from '@/lib/key-value';
 import { useInstallServer } from '@/lib/queries';
 import { buildOptions, defaultEnvValues, defaultSelector } from '@/lib/registry-options';
 import { serverNameError } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 const FORM_ID = 'install-server-form';
 
@@ -45,6 +44,7 @@ interface InstallDialogProps {
  * variable of the same name.
  */
 export function InstallDialog({ registry, server, open, onOpenChange, onInstalled }: InstallDialogProps) {
+  const toasts = useToasts();
   const install = useInstallServer();
   const options = useMemo(() => buildOptions(server), [server]);
   const initialSelector = defaultSelector(server);
@@ -75,11 +75,11 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
       };
       try {
         const status = await install.mutateAsync(body);
-        toast.success(`Installed ${status.config.name}`);
+        toasts.success(`Installed ${status.config.name}`);
         onOpenChange(false);
         onInstalled?.(status.config.name);
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -158,18 +158,14 @@ export function InstallDialog({ registry, server, open, onOpenChange, onInstalle
             </fieldset>
           )}
 
-          <form.Field name="customRows">
-            {(field) => (
-              <KeyValueRows
-                legend="Additional environment variables"
-                value={field.state.value}
-                onValueChange={field.handleChange}
-                keyLabel="Variable name"
-                unnamed="new variable"
-                addLabel="Add env var"
-              />
-            )}
-          </form.Field>
+          <KeyValueField
+            form={form}
+            name="customRows"
+            label="Additional environment variables"
+            keyLabel="Variable"
+            valueLabel="Value"
+            addLabel="Add env var"
+          />
         </form>
       }
     />

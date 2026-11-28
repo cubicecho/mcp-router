@@ -3,6 +3,7 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { ToastProvider } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import * as api from '@/lib/api';
 import { ActivityCard } from '../activity-card.tsx';
@@ -21,9 +22,11 @@ function renderCard() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   return render(
     <QueryClientProvider client={client}>
-      <TooltipProvider>
-        <ActivityCard scope={{ kind: 'server', name: 'echo-server' }} />
-      </TooltipProvider>
+      <ToastProvider>
+        <TooltipProvider>
+          <ActivityCard scope={{ kind: 'server', name: 'echo-server' }} />
+        </TooltipProvider>
+      </ToastProvider>
     </QueryClientProvider>,
   );
 }

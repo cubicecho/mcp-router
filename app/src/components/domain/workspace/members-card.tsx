@@ -1,5 +1,4 @@
 import { TRANSPORT_STDIO, type WorkspaceMember, type WorkspaceStatus } from '@mcp-router/shared';
-import { toast } from 'sonner';
 import { CardLayout } from '@/components/card-layout';
 import { ServerStateBadge } from '@/components/domain/server/state-badge';
 import { EmptyState } from '@/components/empty-state';
@@ -8,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Switch } from '@/components/ui/switch';
 import { useServers, useUpdateWorkspace } from '@/lib/queries';
 import { serverLabel } from '@/lib/server-name';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /**
  * Names the overrides a member carries, for the hint badges.
@@ -40,6 +39,7 @@ function overrideLabels(member: WorkspaceMember): string[] {
  * @returns The card.
  */
 export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
+  const toasts = useToasts();
   const { data: servers } = useServers();
   const update = useUpdateWorkspace();
 
@@ -55,8 +55,8 @@ export function MembersCard({ workspace }: { workspace: WorkspaceStatus }) {
     update.mutate(
       { slug: workspace.slug, members },
       {
-        onSuccess: () => toast.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${workspace.name}`),
-        onError: toastApiError,
+        onSuccess: () => toasts.success(`${on ? 'Enabled' : 'Disabled'} ${name} in ${workspace.name}`),
+        onError: toasts.apiError,
       },
     );
   };

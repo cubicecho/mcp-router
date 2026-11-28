@@ -95,8 +95,7 @@ export const SaysWhyAReadFailed: Story = {
     await userEvent.click(await canvas.findByRole('button', { name: /notes\.txt/ }));
     await userEvent.click(canvas.getByRole('button', { name: 'Read' }));
     const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByText('Resource read failed')).toBeVisible());
-    await expect(body.getByText('No such file.')).toBeVisible();
+    await waitFor(() => expect(body.getByText('Resource read failed: No such file.')).toBeVisible());
     await expect(canvas.queryByText('Result')).not.toBeInTheDocument();
   },
 };

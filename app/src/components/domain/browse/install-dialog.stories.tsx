@@ -40,8 +40,8 @@ export const InstallsWithTheFilledInVariables: Story = {
     const dialog = within(await body.findByRole('dialog', { name: 'Install Weather' }));
     await userEvent.type(dialog.getByLabelText(/^WEATHER_API_KEY/), 'abc123');
     await userEvent.click(dialog.getByRole('button', { name: 'Add env var' }));
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Variable name' }), 'UNITS');
-    await userEvent.type(dialog.getByRole('textbox', { name: 'Value for UNITS' }), 'metric');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Variable 1' }), 'UNITS');
+    await userEvent.type(dialog.getByRole('textbox', { name: 'Value 1' }), 'metric');
     await userEvent.click(dialog.getByRole('button', { name: 'Install' }));
 
     await waitFor(() =>

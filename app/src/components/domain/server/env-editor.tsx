@@ -1,7 +1,6 @@
 import type { EnvVarMeta } from '@mcp-router/shared';
 import { InputField, useAppForm } from '@/components/app-form';
-import { KeyValueRows } from '@/components/domain/key-value/rows';
-import { EmptyState } from '@/components/empty-state';
+import { KeyValueField } from '@/components/domain/key-value/key-value-field';
 import { PasswordField } from '@/components/password-field';
 import { recordToRows, rowsToRecord } from '@/lib/key-value';
 
@@ -82,24 +81,15 @@ export function EnvEditor({ env, envMeta, onSave, loading = false }: EnvEditorPr
         ),
       )}
 
-      <form.Field name="extraRows">
-        {(field) => (
-          <>
-            {declared.length === 0 && field.state.value.length === 0 && (
-              <EmptyState compact title="No environment variables configured." />
-            )}
-            <KeyValueRows
-              legend={declared.length > 0 ? 'Other variables' : 'Variables'}
-              hideLegendWhenEmpty
-              keyLabel="Variable name"
-              unnamed="new variable"
-              addLabel="Add variable"
-              value={field.state.value}
-              onValueChange={field.handleChange}
-            />
-          </>
-        )}
-      </form.Field>
+      <KeyValueField
+        form={form}
+        name="extraRows"
+        label={declared.length > 0 ? 'Other variables' : 'Variables'}
+        keyLabel="Variable"
+        valueLabel="Value"
+        addLabel="Add variable"
+        emptyTitle={declared.length > 0 ? undefined : 'No environment variables configured.'}
+      />
 
       <div className="flex justify-end">
         <form.AppForm>

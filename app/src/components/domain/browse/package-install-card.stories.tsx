@@ -41,8 +41,8 @@ export const InstallsTheNamedPackage: Story = {
     await userEvent.type(canvas.getByRole('textbox', { name: 'Package' }), '@example/weather-mcp');
     await userEvent.type(canvas.getByRole('textbox', { name: 'Version' }), '1.2.0');
     await userEvent.click(canvas.getByRole('button', { name: 'Add env var' }));
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Variable name' }), 'WEATHER_API_KEY');
-    await userEvent.type(canvas.getByRole('textbox', { name: 'Value for WEATHER_API_KEY' }), 'abc123');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Variable 1' }), 'WEATHER_API_KEY');
+    await userEvent.type(canvas.getByRole('textbox', { name: 'Value 1' }), 'abc123');
     await userEvent.click(canvas.getByRole('button', { name: 'Install' }));
 
     await waitFor(() =>
@@ -111,8 +111,9 @@ export const ShowsWhyTheInstallFailed: Story = {
     const body = within(canvasElement.ownerDocument.body);
     await userEvent.type(canvas.getByRole('textbox', { name: 'Package' }), '@example/weather-mcp');
     await userEvent.click(canvas.getByRole('button', { name: 'Install' }));
-    await waitFor(() => expect(body.getByText('npm install failed')).toBeVisible());
-    await expect(body.getByText('E404 @example/weather-mcp is not in this registry')).toBeVisible();
+    await waitFor(() =>
+      expect(body.getByText('npm install failed: E404 @example/weather-mcp is not in this registry')).toBeVisible(),
+    );
     await expect(args.onInstalled).not.toHaveBeenCalled();
     // What was typed is kept, so it can be corrected and sent again.
     await expect(canvas.getByRole('textbox', { name: 'Package' })).toHaveValue('@example/weather-mcp');

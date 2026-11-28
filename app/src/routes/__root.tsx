@@ -6,8 +6,8 @@ import { AppLayout } from '@/components/layouts/app-layout';
 import { AppBarItem, SidebarItem } from '@/components/sidebar';
 import { Button } from '@/components/ui/button';
 import { Layers, Library, Lock, Server, Settings } from '@/components/ui/icons';
-import { Toaster } from '@/components/ui/sonner';
 import { useThemePreference } from '@/components/ui/theme-preference';
+import { ToastProvider } from '@/components/ui/toast';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import { clearToken, requireAuth, setToken, useNeedsAuth } from '@/lib/auth';
 import { useRouterStatus } from '@/lib/queries';
@@ -54,9 +54,7 @@ function RootComponent() {
 
   return (
     <TooltipProvider>
-      {needsAuth ? <TokenForm onUnlock={unlock} /> : <AppFrame />}
-      {/* The vendored toaster is fixed to sonner's dark theme, whose near-white description is unreadable on a light popover. */}
-      <Toaster toastOptions={{ classNames: { description: 'text-popover-foreground/70!' } }} />
+      <ToastProvider>{needsAuth ? <TokenForm onUnlock={unlock} /> : <AppFrame />}</ToastProvider>
     </TooltipProvider>
   );
 }

@@ -1,7 +1,6 @@
 import { DiscoveredServerState, MS_PER_MINUTE, type RouterStatus } from '@mcp-router/shared';
 import { createFileRoute } from '@tanstack/react-router';
 import { RotateCwIcon } from 'lucide-react';
-import { toast } from 'sonner';
 import { useAppForm } from '@/components/app-form';
 import { CardLayout } from '@/components/card-layout';
 import { DismissedServersCard } from '@/components/domain/discovery/dismissed-servers-card';
@@ -15,9 +14,9 @@ import { Code, CodeBlock } from '@/components/ui/code';
 import { Input } from '@/components/ui/input';
 import { Switch } from '@/components/ui/switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { formatUptime } from '@/lib/format';
+import { formatDuration } from '@/lib/format';
 import { useDiscovery, useReloadConfig, useRouterStatus, useUpdateSettings } from '@/lib/queries';
-import { toastApiError } from '@/lib/toast';
+import { useToasts } from '@/lib/toast';
 
 /** The `/settings` route. */
 export const Route = createFileRoute('/settings')({
@@ -37,15 +36,16 @@ const CONFIG_TREE = `config/
  * @returns The form; Save is enabled only for a positive number that differs from the stored timeout.
  */
 function IdleTimeoutEditor({ currentMs }: { currentMs: number }) {
+  const toasts = useToasts();
   const update = useUpdateSettings();
   const form = useAppForm({
     defaultValues: { minutes: String(currentMs / MS_PER_MINUTE) },
     onSubmit: async ({ value }) => {
       try {
         await update.mutateAsync({ idleTimeoutMs: Math.round(Number(value.minutes) * MS_PER_MINUTE) });
-        toast.success('Idle timeout saved', { description: 'Applies from each server’s next use.' });
+        toasts.success('Idle timeout saved', { description: 'Applies from each server’s next use.' });
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -112,6 +112,7 @@ function isPublicUrl(text: string): boolean {
  * @returns The form; Save is enabled only for a blank or valid URL that differs from the stored one. Blank clears it.
  */
 function PublicUrlEditor({ current }: { current?: string }) {
+  const toasts = useToasts();
   const update = useUpdateSettings();
   const form = useAppForm({
     defaultValues: { url: current ?? '' },
@@ -119,9 +120,9 @@ function PublicUrlEditor({ current }: { current?: string }) {
       const url = value.url.trim().replace(/\/+$/, '');
       try {
         await update.mutateAsync({ publicUrl: url || null });
-        toast.success(url ? 'Public URL saved' : 'Public URL cleared');
+        toasts.success(url ? 'Public URL saved' : 'Public URL cleared');
       } catch (error) {
-        toastApiError(error);
+        toasts.apiError(error);
       }
     },
   });
@@ -174,10 +175,11 @@ function PublicUrlEditor({ current }: { current?: string }) {
  * @returns The card.
  */
 function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
+  const toasts = useToasts();
   const update = useUpdateSettings();
 
   const toggle = (patch: { lanAdvertise: boolean } | { lanDiscovery: boolean }, message: string) => {
-    update.mutate(patch, { onSuccess: () => toast.success(message), onError: toastApiError });
+    update.mutate(patch, { onSuccess: () => toasts.success(message), onError: toasts.apiError });
   };
 
   return (
@@ -236,6 +238,7 @@ function NetworkDiscoveryCard({ status }: { status: RouterStatus }) {
  * @returns The page, opened on General.
  */
 function SettingsPage() {
+  const toasts = useToasts();
   const status = useRouterStatus();
   const { data } = status;
   const discovery = useDiscovery();
@@ -247,8 +250,8 @@ function SettingsPage() {
 
   const handleReload = () => {
     reload.mutate(undefined, {
-      onSuccess: () => toast.success('Configuration reloaded', { description: 'Running servers were reconciled.' }),
-      onError: toastApiError,
+      onSuccess: () => toasts.success('Configuration reloaded', { description: 'Running servers were reconciled.' }),
+      onError: toasts.apiError,
     });
   };
 
@@ -279,7 +282,7 @@ function SettingsPage() {
                         contentSlot={
                           <>
                             <PropertyRow label="Version" value={data.version} />
-                            <PropertyRow label="Uptime" value={formatUptime(data.uptimeSeconds)} />
+                            <PropertyRow label="Uptime" value={formatDuration(data.uptimeSeconds)} />
                             <PropertyRow label="Port" value={port} />
                             <PropertyRow label="Servers" value={`${data.runningCount}/${data.serverCount} running`} />
                             <PropertyRow

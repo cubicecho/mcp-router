@@ -53,6 +53,10 @@ export const DismissesAFoundServer: Story = {
     await userEvent.click(within(canvasElement).getByRole('button', { name: 'Dismiss MCP Skills on nas' }));
     await waitFor(() => expect(apiRequest).toHaveBeenCalledWith(DISMISS_ROUTE, { key: skills.key, dismissed: true }));
     const body = within(canvasElement.ownerDocument.body);
-    await waitFor(() => expect(body.getByText('Dismissed MCP Skills on nas')).toBeVisible());
+    await waitFor(() =>
+      expect(
+        body.getByText('Dismissed MCP Skills on nas. Offer it again from Settings, on the Network tab.'),
+      ).toBeVisible(),
+    );
   },
 };

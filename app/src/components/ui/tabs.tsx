@@ -6,13 +6,14 @@ import {
   TABS_LIST_INSET,
   TABS_TRIGGER_CLASS,
   TABS_TRIGGER_TEXT_CLASS,
+  TABS_TRIGGER_TRAILING_CLASS,
   TABS_TRIGGER_WEB_HEIGHT,
   type TabsContentProps,
   type TabsListProps,
   type TabsProps,
   type TabsTriggerProps,
 } from '@/components/ui/tabs-base';
-import { cn, FOCUS_EDGE } from '@/lib/utils';
+import { cn, FOCUS_EDGE, hasSlot } from '@/lib/utils';
 
 /** The shared contract, widened to what the radix part underneath accepts. */
 type Wide<Base, Radix> = Base & Omit<Radix, keyof Base>;
@@ -109,6 +110,12 @@ function TabsTrigger({
   linkSlot,
   ...props
 }: Wide<TabsTriggerProps, React.ComponentProps<typeof TabsPrimitive.Trigger>>) {
+  const trailing =
+    hasSlot(trailingSlot) === false ? null : (
+      <span data-slot="tabs-trigger-trailing" className={cn('inline-flex', TABS_TRIGGER_TRAILING_CLASS)}>
+        {trailingSlot}
+      </span>
+    );
   return (
     <TabsPrimitive.Trigger
       data-slot="tabs-trigger"
@@ -131,10 +138,10 @@ function TabsTrigger({
       {linkSlot === undefined ? (
         <>
           {children}
-          {trailingSlot}
+          {trailing}
         </>
       ) : (
-        React.cloneElement(linkSlot, undefined, children, trailingSlot)
+        React.cloneElement(linkSlot, undefined, children, trailing)
       )}
     </TabsPrimitive.Trigger>
   );
